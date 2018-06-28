@@ -1,0 +1,593 @@
+\documentclass[,table,dvipsnames]{article}
+\usepackage[usenames, dvipsnames]{color}
+\usepackage{graphicx}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{hyperref}
+\usepackage{longtable}
+\usepackage{float}
+\usepackage{tikz}
+\usetikzlibrary{shapes.geometric, arrows}
+\hypersetup{
+	citecolor=black,
+	filecolor=black,
+	linkcolor=black,
+	urlcolor=black
+}
+\usepackage{xcolor}
+
+\graphicspath{ {images/} {images/mat60_1AG/} }
+\title{Dynamic sampling pointnet notes}
+\author{xyz}
+\date{Feb 2018}
+
+\definecolor{maroon}{cmyk}{0,0.87,0.68,0.32}
+
+\begin{document}
+	\noindent
+	\begin{titlepage}
+		\maketitle
+	\end{titlepage}	
+	
+	\tableofcontents{}
+	\section{Experiments 2 on MODELNET40}
+
+\section{Feed Dict platform}
+\subsection{Charles Point++, fast distance sampling}	
+\subsubsection{MODELNET40}
+\begin{tabular}{ |p{8cm}|p{5cm}| }
+	\hline
+	config & epoch-train acc/eval acc-eval cls acc \\ 
+	\hline
+	batch\_size=32, decay\_rate=0.7, decay\_step=200000, learning\_rate=0.001, log\_dir='log', max\_epoch=251, model='pointnet2\_cls\_ssg', momentum=0.9, normal=False, num\_gpus=2, num\_point=1024, optimizer='a     dam &4-0.746/0.819-0.748\par 10-0.802/0.848-0.788\par 40-0.886/0.875-0.858\par 60-0.916/0.892-0.859 \\
+	\hline
+	aug=True, batch\_size=32, decay\_rate=0.7, decay\_step=200000, gpu=1, indrop=True, learning\_rate=0.001, log\_dir='log', max\_epoch=251, model='pointnet2\_cls\_ssg', momentum=0.9, normal=True, num\_point=8     192, optimizer='adam', shuffle=True & 10-0.806/0.853-0.817 \par  60-0.939/0.8946/0.868 \par 100-0.971/0.9036-0.883\\
+	\hline
+	
+\end{tabular}
+\noindent
+\subsection{MODELNET40, My point++}	
+\emph{After fix shuffle problem}
+\subsubsection{3m}
+\begin{tabular}{|p{1.5cm}|p{1.5cm}|p{1cm}|p{1.5cm}|p{1.5cm}|p{1.5cm}|p{5cm}| }
+	\hline
+	\multicolumn{7}{|p{14cm}|}{bxmh5:1024\_gs3\_3\_fmn1444-1024\_320-24\_32-0d2\_0d4-0d1\_0d2-pd3-2M1\par 
+		No block merging. Replicate redundant. }\\
+	\hline
+	
+	model & bs& lr\par bn decay & elements\par group pos & norm innet\par aug & loss weight\par in drop & epoch-pacc-cacc train/eval \\
+	\hline
+	3m & 36 & 1-30 \par 7-7 & xyzg\par bc & Rotate Ref & E, NN5 &1-0.707/0.775\par 2-0.744/0.804\par 4-0.785/0.817\par 10-0.831/0.826\par 30-0.906/0.857\par 60-0.967/0.852 \\
+	\hline
+	3m & 36 & 1-30 \par 7-7 & xyzg\par mean & Rotate Ref & E, NN5 &1-0.704/0.754\par 2-0.747/0.781\par 4-0.783/0.810\par 10-0.839/0.835\par 60-0.969/0.865 \\
+	\hline
+	3m & 36 & 1-30 \par 7-7 & xyzrsg\par mean & Rotate Ref & E, NN5 &10-0.844/0.830\par 60-0.978/0.868 \\	
+	\hline
+	\rowcolor{yellow!20}
+	3m & 36 & 1-30 \par 7-7 & xyzrsg, nxnynz\par mean & Rotate Ref & E, NN5 &10-0.887/0.881\par 60-0.985/0.890 \\	
+	\hline\hline
+	
+	\multicolumn{7}{|p{14cm}|}{bxmh5:4096\_gs3\_3\_fmn1444-1024\_320-48\_32-0d2\_0d4-0d1\_0d2-pd3-2M2\par 
+		No block merging. Replicate redundant. }\\
+	\hline
+	3m & 28 & 1-30 \par 7-7 & xyzg\par mean & Rotate Ref & E, NN5 &1-0.698/0.795 \par 10-0.834/0.853\par 60-0.962/0.874 \\	
+	\hline
+	3m & 28 & 1-30 \par 7-7 & xyzg\par bc & Rotate Ref & E, NN5 &1-0.703/0.786 \par 10-0.832/0.847\par 60-0.957/0.867 \\	
+	\hline
+	3m & 28 & 1-30 \par 7-7 & xyzrsg\par mean & Rotate Ref & E, NN5 &1-0.695/0.764 \par 10-0.840/0.847\par 60-0.976/0.880 \\
+	\hline
+	\rowcolor{yellow!20}
+	3m & 28 & 1-30 \par 7-7 & xyzrsg, nxnynz\par mean & Rotate Ref & E, NN5 &1-0.747/0.814 \par 10-0.882/0.879\par 60-0.985/0.897\par 160-0.998/0.905 \\
+	\hline\hline
+	
+	\multicolumn{7}{|p{14cm}|}{bxmh5:4096\_mgs1\_gs2\_2\_fmn14\_mvp1-1024\_240\_1-48\_27\_160-0d2\_0d4-0d1\_0d2-pd3-mbf-neg-2M2p\par}\\
+	\hline 
+	3Vm & 58 & 1-30 \par 5-5 & xyzrsg nxnynz\par mean & Rotate Ref & E, NN5 &1-0.549/0.635 \par 10-0.852/0.812\par 30-0.961/0.840\par 60-0.984/0.837\par 100-0.994/0.828\\
+	\hline
+	3Vm & 58 & 1-30 \par 5-5 & xyzrsg nxnynz\par mean & Rotate Ref & E, 3N5 &1-0.543/0.614 \par 10-0.852/0.798\par 20-0.926/0.825\par 27-0.955/0.800\\
+	\hline
+	3m & 52 & 1-30 \par 5-5 & xyzrsg nxnynz \par mean & RotateRef & E, NN5 &10-9.763/0.803\par 60-0.879-0.876 \par 100-0.921/0.872\\
+	\hline 
+	
+	\multicolumn{7}{|p{16cm}|}{ Conclusion:\par	
+		(0) The performance of pointnet++ based on farest distance sampling is better. The reason may be on line sampling, the lost part is each epoch is different.\par 
+		(1) group pos: mean \textgreater bc a bit, speed is slower firstly, but higher later.\par
+		(2) Larger points is better: same training accuracy, but reduce overfitting\par 
+		(3) xyzrsg $>$ xyzg\par 
+		(4) Shuffle is significantly important for MODELNET } \\
+	\hline	
+\end{tabular}
+
+\subsubsection{3m summary, xyzsgn, lr 0.001-10}
+\begin{tabular}{|p{1.5cm}|p{1cm}|p{2cm}|p{1.5cm}|p{1.5cm}|p{1.5cm}|p{5cm}| }
+	\hline
+	\multicolumn{7}{|p{14cm}|}{bxmh5:4096\_mgs1\_gs2\_2-neg\_fmn14\_mvp1-1024\_240\_1-64\_27\_256-0d2\_0d4-0d1\_0d2-pd3-2M2pp\par 
+		No block merging. Negative redundant. }\\
+	\hline
+	
+	model & bs& lr\par bn decay & elements\par group pos & norm innet\par aug & loss weight\par in drop & epoch-pacc-cacc train/eval \\
+	\hline\hline
+	
+	\rowcolor{yellow!20}
+	3m & 32 & 0.001-10 & xyzsg-nxnynz\par mean & None & E,NN5 & 0-0.387/0.526\par 10-0.763/0.794\par 40-0.865/0.863\par 60-0.890/0.873\par 76-0.897/0.880\par 80-0.904/0.870\\
+	
+	\rowcolor{orange!20}
+	3m & 32 & 0.001-10 & xyzsg-nxnynz\par mean & AugInAll & E,NN5 & 0-0.403/0.528\par 10-0.770/0.812\par 38-0.857/0.868\par 40-0.865/0.857\par 41-0.870/0.873\par 60-0.888/0.873\par 64-0.891/0.884\par 80-0.905/0.886\\ 
+	
+	\rowcolor{green!20}
+	3m & 32 & 0.001-10 & xyzsg-nxnynz\par mean & r & E,NN5 & 0-0.419/0.578\par 10-0.779/0.819\par 20-0.825/0.847\par 40-0.876/0.859\par 80-0.915/0.887 \\
+	
+	\rowcolor{orange!20}
+	3m & 32 & 0.001-10 & xyzsg-nxnynz\par mean & z & E,NN5 & 0-0.372/0.499\par 10-0.690/0.717\par 40-0.810/0.821\par   80-0.866/0.846\\
+	
+	\rowcolor{yellow}
+	3m & 32 & 0.001-10 & xyzsg-nxnynz\par mean & psfj & E,NN5 & 0-0.489/0.643\par 20-0.863/0.872\par 40-0.905/0.889\par 63-0.929/0.898\\
+	
+	\rowcolor{blue!20}
+	3m & 32 & 0.01-10 & xyzsg-nxnynz\par mean & AugInAll & E,NN5 & 0-0.287/0.308\par 10-0.603/0.795\par 20-0.671/0.729\par 40-0.764/0.807\par 80-0.828/0.842\\
+	
+	\rowcolor{red!20}
+	3m & 32 & 0.01-10 & xyzsg-nxnynz\par mean& None & E,NN5 & 0-0.3/0.429\par 
+	10-0.613/0.619\par 20-0.68/0.73\par 40-0.779/0.791\par 80-0.835/0.837\\
+	\hline	
+\end{tabular}
+
+\subsubsection{3m summary, xyzrsgn, lr 0.001-30}
+\begin{tabular}{|p{1.5cm}|p{1cm}|p{2cm}|p{1.5cm}|p{1.5cm}|p{1.5cm}|p{5cm}| }
+	\hline
+	\multicolumn{7}{|p{14cm}|}{bxmh5:4096\_mgs1\_gs2\_2-neg\_fmn14\_mvp1-1024\_240\_1-64\_27\_256-0d2\_0d4-0d1\_0d2-pd3-2M2pp\par 
+		No block merging. Negative redundant. }\\
+	\hline
+	
+	model & bs& lr\par bn decay & elements\par group pos & norm innet\par aug & loss weight\par in drop & epoch-pacc-cacc train/eval \\
+	\hline\hline
+	
+	\rowcolor{yellow!20}
+	3m & 32 & 0.001-30 & xyzrsg-nxnynz\par mean& rpsfj & E,NN5 &0-0.383/0.515\par 10-0.741/0.787\par 40-0.842/0.853 \par 80-0.885/0.877\par \\
+	
+	\rowcolor{green!20}
+	3m & 32 & 0.001-30 & xyzrsg-nxnynz\par mean& r & E,NN5& 0-0.401/0.578\par 40-0.854/0.855\par 80-0.893/0.873\\
+	
+	\rowcolor{orange!20}
+	3m & 32 & 0.001-30 & xyzrsg-nxnynz\par mean& z & E,NN5& 0-0.354/0.435\par 10-0.666/0.708\par 40-0.790/0.797\par 80-0.854/0.836\\
+	
+	\rowcolor{yellow}
+	3m & 32 & 0.001-30 & xyzrsg-nxnynz\par mean& psfj & E,NN5& 1-0.482/0.655\par 6-0.770/0.808\par 10-0.792/0.833\par 20-0.836/0.857\par 40-0.884/0.882\par 80-0.918/0.879\par 69-0.910/0.899\\
+	
+	\hline	
+\end{tabular}
+
+
+\subsubsection{4m}
+\begin{tabular}{|p{1.5cm}|p{1.5cm}|p{1cm}|p{1.5cm}|p{1.5cm}|p{1.5cm}|p{5cm}| }
+	\hline
+	\multicolumn{7}{|p{14cm}|}{bxmh5:4096\_mgs1\_gs2\_2d2\_fmn1444\_mvp1-3200\_1024\_48\_1-18\_24\_56\_56-0d1\_0d2\_0d6-0d0\_0d1\_0d4-pd3-mbf-neg-3M1\par 
+	}\\
+	\hline
+	model & bs& lr\par bn decay & elements\par group pos & aug & loss weight\par in drop & epoch-pacc-cacc train/eval \\
+	\hline
+	
+	4m & 16 & 1-30 & xyzrsg-nxnynz & RotateRef & E\par NN5 & 10-0.688/0.755\par 60-0.845/0.859\par 100-0.873/0.875\par 200-0.914/0.880\\
+	\hline 
+	4m & 16 & 1-30 & xyzg & RotateRef & E\par NN5 & 10-0.635/0.680\par 60-0.784/0.807\par 120-0.837/0.830\par 241-0.878/0.846\\
+	\hline 
+	4m & 16 & 1-30 & xyzrsg-nxnynz & RotateRef & E\par 3N5 & 10-0.623/0.671\par 60-0.766/0.793\par 120-0.821/0.810\\
+	\hline 
+	4m & 16 & 1-30 & xyzg-nxnynz & RotateRef & E\par NN5 & 10-0.691/0.726\par 60-0.840/0.853\par 1100-0.874/0.862\par 120-0.886/0.861\\
+	\hline 
+	4Vm & 56 & 1-30 & xyzg-nxnynz & RotateRef & E\par NN5 & 10-0.894/0.817\par 60-0.993/0.834\par 79-0.997/0.842\\
+	\hline
+\end{tabular}
+\par
+\noindent
+\begin{tabular}{|p{1.5cm}|p{1.5cm}|p{1cm}|p{1.5cm}|p{1.5cm}|p{1.5cm}|p{5cm}| }
+	\hline \hline
+	\multicolumn{7}{|p{14cm}|}{bxmh5:4096\_mgs1\_gs2\_2d2\_fmn1444\_mvp1-3200\_1024\_48\_1-18\_24\_56\_56-0d1\_0d2\_0d6-0d0\_0d1\_0d4-pd3-neg-3M1\par No Block Merging 
+	}\\
+	\hline
+	4m & 16 & 1-30 & xyzg-nxnynz & RotateRef & E\par NN5 & 10-0.711/0.705\par 60-0.878/0.850\par 100-0.912/0.869\\
+	\hline 
+	4m & 16 & 1-30 & xyzg & RotateRef & E\par NN5 & 10-0.644/0.682\par 60-0.778/0.802\par 100-0.816/0.827\\
+	\hline 
+	4m & 16 & 1-30 & xyzs & RotateRef & E\par NN5 & 10-0.637/0.676\par 60-0.784/0.792\par 100-0.821/0.828\\
+	\hline 
+	4m & 16 & 1-30 & xyzr & RotateRef & E\par NN5 & 10-0.658/0.698\par 60-0.801/0.821\par 70-0.815/0.819\\
+	\hline 
+	4Vm & 30 & 1-30 & xyzg-nxnynz & RotateRef & E\par NN5 & 10-0.890/0.830\par 51-0.992/0.841\par 100-0.999/0.847\par 113-0.999/0.853\par 129-0.999/0.847\\
+	\hline 
+	4Vm & 30 & 1-30 & xyzg-nxnynz & RotateRef & E\par 575 & 10-0.846/0.796\par 49-0.982/0.841\\
+	\hline 
+	4Vm & 30 & 1-30 & xyzg-nxnynz & RotateRef & E\par N75 & 10-0.848/0.824\par 60-0.989/0.831\\
+	\hline
+	4Vm & 28 & 1-30 & xyzg & RotateRef & E\par NN5 & 10-0.884/0.821\par 60-0.994/0.838\par 80-0.996/0.842\\
+	\hline 
+	4Vm & 30 & 1-30 & xyzg nxnynz & RotateRef\par RotateVox & E\par NN5 & 10-0.752/0.663\par 60-0.949/0.828\par 79-0.969/0.814\\
+	\hline \hline
+	
+	\multicolumn{7}{|p{16cm}|}{ Conclusion:\par	
+		(1) Input drop out increase overfitting here. This is not reasonable!\par
+		(2) Learns much slower than 3m?\par 
+		(3) The variance is greater, maybe because of small bacth size.\par 
+		(4) Block merge is a little bit helpful for pointnet++
+		(5) xyzs is a little bit better than xyzg for pointnet++ } \\
+	\hline 
+	
+\end{tabular}
+
+\noindent
+\begin{tabular}{|p{1.5cm}|p{1.5cm}|p{1cm}|p{1.5cm}|p{1.5cm}|p{1.5cm}|p{5cm}| }
+	\hline 
+	\multicolumn{7}{|p{14cm}|}{bxmh5:4096\_mgs1\_gs2\_2d2\_fmn1444\_mvp1-3200\_1024\_48\_1-18\_24\_56\_56-0d1\_0d2\_0d6-0d0\_0d1\_0d4-pd3-neg-3M1\par No Block Merging }\\
+	\hline
+	4Vm-S2 & 30 & 3-30 & xyzs & RotateRef\par RotateVox & E\par NN5 & 10-0.885/0.815\par 30-0.979/0.847 \par40-0.982/0.855\\
+	\hline
+	4Vm-S2 & 30 & 3-30 & xyzs nxnynz & RotateRef\par RotateVox & E\par NN5 & 10-0.889/0.843\par 30-0.980/0.843\par 60-0.995/0.848\\
+	\hline
+	4Vm-S3 & 30 & 3-30 & xyzs nxnynz & RotateRef\par RotateVox & E\par NN5 & 10-0.894/0.838\par 30-0.981/0.851\par 60-0.996/0.853\\
+	\hline
+	4Vm-S4 & 30 & 3-30 & xyzs nxnynz & RotateRef\par RotateVox & E\par NN5 & 10-0.888/0.862\par 30-0.976/0.865\par 48-0.989/0.850\\
+	\hline\hline
+	4Vm-S3\par normal label & 50 & 1-20 & xyzg& RotateRef\par RotateVox & E\par NN5 & 10-0.930/0.829\par 30-0.983/0.841\par 50-0.991/0.847\par 69-0.998/0.861\par 80-0.998/0.855\\
+	\hline
+	4Vm-S3\par normal label & 50 & 1-20 & xyzrsg& RotateRef\par RotateVox & E\par NN5 & 10-0.923/0.847\par 30-0.981/0.837\par 52-0.996/0.865\par 53-0.993/0.856\\
+	\hline\hline 
+	
+	4Vm-S2L2 & 29& 1-30 & xyzs nxnynz & RotateRef\par RotateVox & E\par NN5 & 10-0.900/0.841\par 30-0.981/0.838\par 60-0.996/0.851\\
+	\hline
+	4Vm-S3L3 & 29& 1-30 & xyzs nxnynz & RotateRef\par RotateVox & E\par NN5 & 10-0.899/0.841\par 30-0.992/0.847\par 60-0.996-0.854\\
+	\hline
+	
+	\multicolumn{7}{|p{16cm}|}{ Conclusion:\par	} \\
+	\hline 	
+\end{tabular}
+
+\noindent
+\begin{tabular}{|p{1.5cm}|p{1.5cm}|p{1cm}|p{1.5cm}|p{1.5cm}|p{1.5cm}|p{5cm}| }
+	\hline 
+	\multicolumn{7}{|p{14cm}|}{bxmh5:4096\_mgs1\_gs2\_2d2\_fmn1444\_mvp1-3200\_1024\_48\_1-18\_24\_56\_56-0d1\_0d2\_0d6-0d0\_0d1\_0d4-pd3-neg-3M1\par No Block Merging }\\
+	\hline
+	4Vm1 & 24 & 1-10 & xyzs nxnynz & RotateIn & E & 10-0.862/0.859\\
+	\hline
+	4Vm1-S3 & 24 & 1-10 & xyzs nxnynz & RotateIn & E & 10-0.874/0.867\par 11-0.883/0.873\par 20-0.952/0.868\par 40-0.990/0.862\\
+	\hline 
+\end{tabular}
+
+\subsubsection{5m}
+\noindent
+\begin{tabular}{|p{1.5cm}|p{1.5cm}|p{1cm}|p{1.5cm}|p{1.5cm}|p{1.5cm}|p{5cm}| }
+	\hline
+	\multicolumn{7}{|p{14cm}|}{bxmh5:10000\_gs3\_3d5\_fmn1444\_mvp1-2560\_1024\_80\_16\_1-24\_32\_48\_27\_48-0d0\_0d2\_0d5\_1d1-0d0\_0d1\_0d3\_0d6-pd3-mbf-neg-4M1\par 
+	}\\
+	\hline
+	model & bs& lr\par bn decay & elements\par group pos & aug & loss weight\par in drop & epoch-pacc-cacc train/eval \\
+	\hline
+	
+	5m1 & 32 & 1-30 & xyzg & RotateRef & E & 60-0.956/0.843\par 200-0.998/0.845\\
+	\hline 
+	5m & 48 & 1-30 & xyzrsg-nxnyznz & RotateRef & E & 60-0.852/0.837\par 100-0.894/0.866\par 119-0.923-0.878\par 150-0.938-0.867\\
+	\hline 
+	5Vm & 32 & 1-30 & xyzr & N & E &10-0.853/0.802\par 60-0.985/0.829\par 160-0.998/0.831\\
+	\hline 
+	\multicolumn{7}{|p{16cm}|}{ Conclusion:\par	
+		(0)  } \\
+	\hline	
+\end{tabular}
+
+\section{TF estimator platform initial, Plain net}	
+\subsection{learning rate and batch norm decay}
+\noindent\begin{tabular}{|p{10cm}|p{5cm}| }	
+	\hline
+	\multicolumn{2}{|p{15cm}|}{Merged\_tfrecord/6\_mgs1\_gs2\_2-mbf-neg\_fmn14\_mvp1-1024\_240\_1-64\_27\_256-0d2\_0d4-0d1\_0d2-pd3-2M2pp}\\
+	\hline
+	model bs feed aug lr0 bnd optimizer filters0 & train/eval \\
+	\hline
+	pl34m 64 xyzg-nxnynz none 0.01 0.5 adam 32 &0-?/0.12\par 5-0.337/0.175\par 10-0.425/0.368\par 30-0.544/0.625 \\
+	\hline
+	pl34m 64 xyzg-nxnynz none 0.01 0.997 adam 32 &0-?/0.033\par 5-0.073/0.048\par 10-0.056/0.044\par 20-0.099/0.119\\
+	\rowcolor{green!10}
+	pl34m 64 xyzg-nxnynz none 0.001 0.5 adam 32 & 0-?/0.580\par 5-0.781/0.756\par 
+	15-0.854/0.818\\
+	\rowcolor{yellow!10}
+	pl34m 64 xyzg-nxnynz none 0.001 0.997 adam 32 & 0-?/0.041\par 5-0.491/0.687\par 10-0.712/0.503\par 20-0.973/0.853\\
+	\hline
+	pl34m 64 xyzg-nxnynz all 0.001 0.7 adam 32 & 0-0.090/0.110\par 24-0.557/0.524\\
+	\hline
+	pl34m 32 xyzg-nxnynz none 0.001 0.7 adam 32 & 0-0.016/0.516\par 24-0.815/0.823 \\
+	\hline	
+	pl34m 64 xyzg-nxnynz none 0.0001 0.7 adam 32 & 0-0.037/0.417\par 24-0.935/0.812\\
+	\hline
+	pl34m 64 xyzg-nxnynz none 0.001 0.7 adam 32 &0-0.047/0.560\par 24-0.897/0.825 \\
+	\hline
+	pl34m 64 xyzg-nxnynz none 0.001 0.9 adam 32 &0-0.029/0.464\par 24-0.883/0.821\\
+	\hline \hline \\ \hline
+	
+	pl34m 64 xyzg-nxnynz all 0.001 0.7 momentum 32 & 0-0.055/0.078\par 24-0.577/0.472\\	
+	\hline
+	
+	pl34m 64 xyzg-nxnynz none 0.0001 0.7 momentum 32 & 0-4.177/3.609--0.015/0.164\par 30-0.640/1.087--0.911/0.775\\
+	\hline 
+	pl34m 64 xyzg-nxnynz none 0.001 0.7 momentum 32 & 0-0.022/0.478\par 24-0.987/0.829\\
+	\hline
+	pl34m 64 xyzg-nxnynz none 0.001 0.9 momentum 32 & 0.058/0.547\par 24-0.980/0.833\\
+	\hline
+	pl34m 32 xyzg-nxnynz none 0.001 0.7 momentum 32 & 0-0.045/0.608\par 24-0.965/0.849\\
+	\hline
+	
+	\multicolumn{2}{|p{15cm}|}{ Conclusion:\par	
+		(0)Learning rate too high leads to no convergence\par
+		(1)Batch norm decay seems always better. Especially can allow high learning rate.\par
+		()bnd $0.5$, 0.997 doesnt work
+		()lr $0.001 > 0.01$  } \\
+	\hline	
+\end{tabular}
+
+\subsection{aug none and all}
+\subsubsection{voxel}
+\noindent\begin{tabular}{|p{10cm}|p{5cm}| }	
+	\rowcolor{gray!10}
+	\multicolumn{2}{|p{15cm}|}{Merged\_tfrecord/6\_mgs1\_gs2\_2-mbf-neg\_fmn14\_mvp1-1024\_240\_1-64\_27\_256-0d2\_0d4-0d1\_0d2-pd3-2M2pp}\\
+	\hline
+	model bs feed aug lr0 bnd optimizer filters0 & train/eval \\
+	\rowcolor{yellow!30}
+	rs34V 48 xyzg-nxnynz all 0.001 0.9 adam 32 & 0-113.598/2.431--0.084/0.448 \par 9-1.675/1.232--0.687/0.755 \par 35-0.341/1.007--0.980/0.850 \\
+	\rowcolor{red!30}
+	rs34V 48 xyzg-nxnynz f 0.001 0.9 adam 32 & 0-7.958/2.025--0.027/0.581\\
+	\rowcolor{green!30}
+	rs34V 48 xyzg-nxnynz none 0.0001 0.9 adam 32 & 0-4.220/1.459--0.059/0.712\par 15-0.481/1.612--0.976/0.803\\
+	\rowcolor{yellow!30}
+	rs34V 48 xyzg-nxnynz none 0.001 0.9 adam 32 & 0-7.067/3.760--0.052/0.509\par  9-0.732/1.176--0.890/0.812\par 25-0.365/1.026--0.974/0.844\par 6-0.307/1.025--0.993/0.870  7615\par 40-0.180/1.284--0.999/0.860  16041\\
+	\rowcolor{blue!30}
+	rs34V 48 xyzg-nxnynz r 0.001 0.9 adam 32 & 0-8.119/2.267--0.011/0.486\par 9-0.842/0.982--0.864/0.819\par  40-0.275/1.147--0.990/0.852\\
+	\rowcolor{red!20}
+	rs34V 48 xyzg-nxnynz s 0.001 0.9 adam 32 & 0-43.883/2.201--0.047/0.585\par 9-0.710/1.168--0.893/0.790\par 40-0.229/1.042--0.994/0.876\\
+	
+	\rowcolor{yellow}
+	\multicolumn{2}{|p{15cm}|}{ Conclusion:\par	
+		(0)$s>r$ } \\
+	
+\end{tabular}
+
+\subsubsection{Pointnet++ residual}
+\noindent\begin{tabular}{|p{9cm}|p{6cm}| }	
+	\hline
+	\rowcolor{gray!10}
+	\multicolumn{2}{|p{15cm}|}{Merged\_tfrecord/6\_mgs1\_gs2\_2-mbf-neg\_fmn14\_mvp1-1024\_240\_1-64\_27\_256-0d2\_0d4-0d1\_0d2-pd3-2M2pp}\\
+	\hline
+	model bs feed aug lr0 bnd optimizer filters0 & train/eval \\
+	\rowcolor{yellow!30}
+	rs34m 16 xyzg-nxnynz none 0.001 0.9 adam 32 & 625-4.059/1.490--0.041/0.671  \par 6160-0.558/1.032--0.949/0.832  \par 19075-0.418/0.937--0.991/0.878 \\
+	\rowcolor{blue!20}
+	rs34m 48 xyzg-nxnynz none 0.0001 0.9 adam 32 & 8220-0.402/1.013--1.000/0.837\\
+	\rowcolor{red!20}
+	rs34m 48 xyzg-nxnynz none 0.01 0.9 adam 32 & 0-26.717/1.521--0.016/0.703  215\par 9-0.665/1.004--0.902/0.816  2060\par 35-0.303/0.758--0.998/0.894\par 30-0.149/0.678--1.000/0.897  13950\\
+	\rowcolor{green!20}
+	rs34m 96 xyzg-nxnynz none 0.001 0.9 adam 32& 0-4.485/1.356--0.035/0.721  112\par 9-0.530/1.044--0.958/0.832  1030\par 35-0.382/0.966--1.000/0.876  3682\par \\
+	\hline
+	
+\end{tabular}
+
+\subsection{No aug, no drop: xyzg vs xyzs, Learning rate, Batch size}
+\noindent\begin{tabular}{|p{9cm}|p{6cm}| }	
+	\hline
+	\multicolumn{2}{|p{15cm}|}{Merged\_tfrecord/6\_mgs1\_gs2\_2-mbf-neg\_fmn14\_mvp1-1024\_240\_1-64\_27\_256-0d2\_0d4-0d1\_0d2-pd3-2M2pp}\\
+	\hline
+	model bs feed aug lr0 bnd optimizer filters0 & train/eval \\
+	
+	\rowcolor{blue!20}
+	rs34m 32 xyzg none 0.001 0.9 adam 32& 1 4.053/1.774--0.083/0.621\par 10 0.743/1.197--0.882/0.783\par 25 0.494/1.205--0.963/0.814\par 40 0.397/1.064--0.998/0.846\\
+	
+	\rowcolor{yellow!20}	
+	rs34m 64 xyzg none 0.001 0.9 adam 32& 1 4.251/1.741--0.034/0.644\par 10 0.678/1.145--0.913/0.791\par 40 0.385/1.064--1.000/0.852\\
+	
+	
+	\hline\hline
+	\rowcolor{green!20}
+	\hline
+	rs34m 32 xyzs none 0.001 0.9 adam 32 & 1 4.067/1.980--0.054/0.579\par 10 0.674/1.242--0.914/0.771\par 25 0.517/1.245--0.961/0.804\par 40 0.391/1.158--1.000/0.837\\
+	
+	
+	\rowcolor{blue!20} 
+	rs34m 32 xyzs none 0.01 0.9 adam 32& 1 10.757/1.779--0.016/0.623\par 0.796/1.124--0.859/0.771\par 25 0.658/0.981--0.880/0.819\par 35 0.270/0.879--0.999/0.860\\
+	
+	\rowcolor{Orange!20}
+	rs34m 64 xyzs none 0.01 0.9 adam 32& 1 42.370/2.499--0.014/0.428\par 10 0.963/1.149--0.824/0.774\par 40 0.277/1.076--0.999/0.846\par 60 0.192/0.983--0.996/0.852\\
+	
+	\rowcolor{red!20}
+	rs34m 64 xyzs none 0.001 0.9 adam 32& 1 4.133/1.766--0.016/0.620\par 10 0.582/1.199--0.945/0.808\par 25 0.454/1.501--0.980/0.774\par  40 0.389/1.187--1.000/0.838\\
+	
+	\hline
+	
+\end{tabular}
+
+\subsection{aug rotation}
+\noindent\begin{tabular}{|p{9cm}|p{6cm}| }	
+	\hline
+	\multicolumn{2}{|p{15cm}|}{Merged\_tfrecord/6\_mgs1\_gs2\_2-mbf-neg\_fmn14\_mvp1-1024\_240\_1-64\_27\_256-0d2\_0d4-0d1\_0d2-pd3-2M2pp}\\
+	\hline
+	model bs feed aug lr0 bnd optimizer filters0 & train/eval \\
+	
+	
+	\rowcolor{green!20}
+	rs34m 64 xyzs r-360\_0\_0 0.01 0.9 adam 32& 1 48.100/2.417--0.014/0.440\par 10 1.038/1.276--0.796/0.731\par 25 0.705/1.248--0.868/0.743\par 40 0.318/0.979--0.986/0.839\\
+	
+	\rowcolor{yellow!20}
+	rs34m 64 xyzs r-360\_30\_30 0.01 0.9 adam 32& 1 51.557/3.245--0.013/0.246\par 40 0.342/2.055--0.994/0.615\\
+	
+	\rowcolor{blue!20}
+	rs34m 64 xyzs r-0\_0\_360 0.01 0.9 adam 32& 1 53.404/2.661--0.009/0.375\par 10 1.302/1.431--0.719/0.688\par 40 0.350/1.410--0.991/0.776\\ 
+	
+	\rowcolor{red!20}
+	rs34m 64 xyzs r-0\_360\_0 0.01 0.9 adam 32& 1 44.500/3.347--0.009/0.246\par 9 1.481/1.560--0.696/0.668\par 41 0.327/1.488--0.996/0.787\\
+	
+	\rowcolor{green!20}
+	rs34m 32 xyzs r-360\_0\_0 0.01 0.9 adam 32& 1 10.584/2.093--0.015/0.512\par 7 1.293/1.255--0.715/0.739\\
+	\hline
+	
+\end{tabular}
+
+\subsection{aug sfj}
+\noindent\begin{tabular}{|p{9cm}|p{6cm}| }	
+	\hline
+	\multicolumn{2}{|p{15cm}|}{Merged\_tfrecord/6\_mgs1\_gs2\_2-mbf-neg\_fmn14\_mvp1-1024\_240\_1-64\_27\_256-0d2\_0d4-0d1\_0d2-pd3-2M2pp}\\
+	\hline
+	model bs feed aug lr0 bnd optimizer filters0 & train/eval \\
+	
+	\rowcolor{yellow!20}
+	rs34m 64 xyzs s 0.01 0.9 adam 32&1 57.040/2.343--0.013/0.472\par 30 1.213/0.906--0.797/0.853\par 60 0.229/0.992--0.995/0.848\\
+	
+	\rowcolor{red!20}
+	rs34m 64 xyzs f 0.01 0.9 adam 32& 1 49.818/2.240--0.010/0.477\par 10 1.026/1.086--0.807/0.797\par 40 0.330/0.836--0.984/0.869\par 60 0.264/0.834--0.977/0.867\\
+	
+	\rowcolor{blue!20}
+	rs34m 64 xyzs j 0.01 0.9 adam 32& 1 63.166/2.140--0.024/0.502\par 10 0.870/1.077--0.843/0.789\par 40 0.280/0.963--0.995/0.859\par 60 0.206/0.882--0.989/0.852\\
+	\hline
+	
+\end{tabular}
+
+\subsection{dropout}
+\noindent\begin{tabular}{|p{9cm}|p{6cm}| }	
+	\hline
+	\multicolumn{2}{|p{15cm}|}{Merged\_tfrecord/6\_mgs1\_gs2\_2-mbf-neg\_fmn14\_mvp1-1024\_240\_1-64\_27\_256-0d2\_0d4-0d1\_0d2-pd3-2M2pp}\\
+	\hline
+	model bs feed aug lr0 bnd optimizer filters0 & train/eval \\
+	
+	\rowcolor{green!20}
+	rs34m 64 xyzs none 0\_0\_3 0.01 0.9 adam 32 & 1 39.920/1.931--0.012/0.615\par 10 0.906/1.066--0.837/0.798\par \par 30 0.671/0.893--0.906/0.860\par 60 0.245/1.006--0.997/0.851 \\
+	
+	\rowcolor{yellow!20}
+	rs34m 32 xyzs none 0\_0\_5 0.01 0.9 adam 32& 1 5.472/1.770--0.009/0.596\par 10 0.940/1.022--0.829/0.802\par 30 0.540/0.770--0.919/0.863\par 60 0.228/0.948--0.996/0.860\\
+	
+	\rowcolor{blue!20}
+	rs34m 64 xyzs none 0\_0\_5 0.01 0.9 adam 32& 1 40.743/1.985--0.012/0.544\par 10 0.871/1.064--0.857/0.795\par 30 0.712/0.919--0.905/0.848\par 40 0.441/0.956--0.981/0.856\par 61 0.272/0.961--1.000/0.858\\
+	
+	\rowcolor{orange!20}
+	rs34m 64 xyzs none  0\_0\_7 0.01 0.9 adam 32& 1 24.039/1.855--0.014/0.604\par 10 1.064/1.094--0.802/0.787\par 30 0.860/0.890--0.861/0.853\par 60 0.326/0.943--0.977/0.857\\
+	
+	\hline
+\end{tabular}
+
+
+\subsection{integration rs34m}
+\noindent\begin{tabular}{|p{9cm}|p{6cm}| }	
+	\hline
+	\multicolumn{2}{|p{15cm}|}{Merged\_tfrecord/6\_mgs1\_gs2\_2-mbf-neg\_fmn14\_mvp1-1024\_240\_1-64\_27\_256-0d2\_0d4-0d1\_0d2-pd3-2M2pp}\\
+	\hline
+	model bs feed aug lr0 bnd optimizer filters0 & train/eval \\
+	
+	\rowcolor{green!20}
+	pl34m 32 xyzs rsfj-360\_0\_0 0\_0\_5 0.001 0.5 adam 32& 1 4.594/3.275--0.070/0.195\par 10 1.714/1.682--0.584/0.595\par 60 0.963/1.080--0.802/0.767\par 120 0.902/1.069--0.825/0.774\\
+	
+	\rowcolor{red!20}
+	pl34m 32 xyzs sfj 0\_0\_5 0.001 0.5 adam 32& 1 4.756/2.999--0.099/0.265\par 60 0.745/0.909--0.861/0.824\par 120 0.705/0.913--0.878/0.821\\
+	
+	\rowcolor{blue!20}
+	rs34m 32 xyzs rsfj-360\_0\_0 0\_0\_5 0.001 0.5 adam 32&  1 5.085/2.686--0.098/0.352\par 10 1.519/1.538--0.666/0.664\par 60 0.861/1.027--0.848/0.815\\
+	
+	\rowcolor{yellow!20}
+	rs34m 32 xyzs sfj 0\_0\_5 0.001 0.5 adam 32& 1 5.775/2.230--0.138/0.478\par 40 0.669/0.905--0.908/0.845\par 60 0.631/0.894--0.922/0.848\\
+	\hline\hline
+	
+	
+	\rowcolor{orange!20}
+	rs34m 64 xyzg sfj 0\_0\_5 0.001 0.5 adam 32& 1 5.064/1.906--0.247/0.574\par 40 0.626/0.847--0.923/0.858\par 60 0.568/0.846--0.938/0.859\par 100 0.532/0.845--0.952/0.856\\
+	
+	\rowcolor{blue!20}
+	rs34m 32 xyzg sfj 0\_0\_5 0.01 0.5 adam 32& 1 7.503/1.544--0.149/0.662\par 45 0.432/0.680--0.933/0.876\\
+	
+	\rowcolor{yellow!20}
+	rs34m 64 xyzg rsfj-360\_0\_0 0\_0\_5 0.001 0.5 adam 32& 1 4.950/2.256--0.163/0.463\par 40 0.893/0.977--0.841/0.823\par 100 0.794/0.939--0.866/0.828\\
+	
+	\rowcolor{green!20}
+	rs34m 32 xyzg rsfj-360\_0\_0 0\_0\_5 0.01 0.5 adam 32&1 8.848/2.317--0.152/0.424\par 40 0.640/0.759--0.870/0.840\par 100 0.492/0.706--0.912/0.855\\
+	
+	\rowcolor{orange!20}
+	rs34m 32 xyzg rsfj-360\_0\_0 0\_0\_5 0.001 0.5 adam 32& 1 6.015/2.569--0.109/0.406\par 10 1.417/1.428--0.698/0.697\\
+	\hline 
+\end{tabular}
+
+\subsection{integration pl18m}
+\noindent\begin{tabular}{|p{9cm}|p{6cm}| }	
+	\hline
+	\multicolumn{2}{|p{15cm}|}{Merged\_tfrecord/6\_mgs1\_gs2\_2-mbf-neg\_fmn14\_mvp1-1024\_240\_1-64\_27\_256-0d2\_0d4-0d1\_0d2-pd3-2M2pp}\\
+	\hline
+	model use\_bias bs feed aug drop\_imo lr0 bnd optimizer filters0 & train/eval \\
+	
+	\rowcolor{yellow!20}
+	pl18m True 32 xyzsg-nxnynz rsfj-360\_0\_0 0\_0\_5 0.001 0.7 adam 64 &1 3.660/2.453--0.053/0.289\par  10 0.679/0.724--0.798/0.792\par 40 0.264/0.460--0.914/0.858\\
+	
+	\rowcolor{green!20}
+	pl18m True 64 xyzsg-nxnynz rsfj-360\_0\_0 0\_0\_5 0.001 0.7 adam 64& 1 3.566/1.918--0.059/0.471\par 10 0.606/0.633--0.825/0.809\par 40 0.204/0.452--0.934/0.869\\
+	\hline 
+\end{tabular}
+
+\subsection{integration pl28m}
+\subsubsection{Aug N}
+\noindent\begin{tabular}{|p{9cm}|p{6cm}| }	
+	\hline
+	\multicolumn{2}{|p{15cm}|}{Merged\_tfrecord/6\_mgs1\_gs2\_2-mbf-neg\_fmn14\_mvp1-1024\_240\_1-64\_27\_256-0d2\_0d4-0d1\_0d2-pd3-2M2pp}\\
+	\hline
+	model use\_bias bs feed aug drop\_imo lr0 bnd optimizer filters0 & train/eval \\
+	
+	\rowcolor{red!20}
+	pl28m True 32 xyzg N 0\_0\_5 0.001\_0.7 0.7 adam 64& 10 0.714/0.837--0.780/0.760\par 55 0.306/0.568--0.902/0.842\par 65 0.194/0.574--0.936/0.844\\
+	
+	\rowcolor{blue!20}
+	pl28m True 32 xyzr N 0\_0\_5 0.001\_0.7 0.7 adam 64& 10 0.787/0.968--0.774/0.697\par 55 0.281/0.602--0.908/0.834\\
+	
+	\rowcolor{yellow!20}
+	pl28m True 32 xyzs N 0\_0\_5 0.001\_0.7 0.7 adam 64& 1 5.000/1.727--0.020/0.494\par 10 0.759/0.842--0.774/0.748\par 60 0.205/0.555--0.926/0.856\par 120 0.009/0.818--0.997/0.850\\
+	
+	\rowcolor{orange!20}
+	pl28m True 32 xyzrsg-nxnynz N 0\_0\_5 0.001\_0.7 0.7 adam 64& 1 4.363/1.509--0.045/0.559\par 10 0.569/0.636--0.811/0.806\par 30 0.385/0.433--0.880/0.872\par 40 0.259/0.406--0.912/0.879\par 60 0.168/0.459--0.937/0.868\\ 
+	
+	\rowcolor{blue!20}
+	pl28m True 32 xyzsg-nxnynz N 0\_0\_5 0.001\_0.7 0.7 adam 64& 1 4.628/1.465--0.067/0.555\par 10 0.544/0.612--0.845/0.815\par 30 0.354/0.486--0.886/0.866\par 45 0.196/0.424--0.932/0.884\par 60 0.120/0.504--0.955/0.883\\
+	
+	\hline 
+\end{tabular}
+
+\subsubsection{Aug}	
+\noindent\begin{tabular}{|p{9cm}|p{6cm}| }	
+	\hline	
+	\rowcolor{yellow}
+	pl28m True 32 xyzrsg-nxnynz psfj 0\_0\_5 0.001 0.7 adam 64 & 1 4.078/1.573--0.073/0.534\par 10 0.631/0.686--0.805/0.801\par 40 0.264/0.453--0.903/0.877\par 60 0.181/0.411--0.944/0.888\par 121 0.011/0.614--0.998/0.891\\
+	
+	\rowcolor{blue!20}
+	pl28m True 32 xyzrsg-nxnynz rpsfj-360\_0\_0 0\_0\_5 0.001 0.7 adam 64& 1 3.898/2.091--0.059/0.373\par 10 0.873/0.833--0.737/0.763\par 60 0.249/0.452--0.919/0.871\\
+	
+	\rowcolor{orange!20}
+	pl28m True 32 xyzsg-nxnynz p 0\_0\_5 0.001 0.7 adam 64& 1 3.638/2.674--0.048/0.299\par 10 0.612/0.674--0.820/0.800\\
+	
+	\rowcolor{blue!20}
+	pl28m True 32 xyzsg-nxnynz rpsfj-360\_0\_0 0\_0\_5 0.001 0.7 adam 64& 1 3.692/3.239--0.052/0.150\par 60 0.356/0.504--0.889/0.858\\
+	
+	\rowcolor{yellow!20}
+	pl28m True 32 xyzsg-nxnynz rsfj-360\_0\_0 0\_0\_5 0.001 0.7 adam 64& 1 3.593/3.190--0.038/0.159\par 10 1.012/0.978--0.706/0.713\par 40 0.391/0.522--0.870/0.841\\
+	\hline 
+\end{tabular}	
+
+\section{Res net}	
+\subsection{No aug}
+\noindent\begin{tabular}{|p{10cm}|p{5cm}| }	
+	\hline
+	\multicolumn{2}{|p{15cm}|}{Merged\_tfrecord/6\_mgs1\_gs2\_2-mbf-neg\_fmn14\_mvp1-1024\_240\_1-64\_27\_256-0d2\_0d4-0d1\_0d2-pd3-2M2pp}\\
+	\hline
+	model use\_bias bs feed aug drop\_imo lr0\_dc bnd optimizer filters0 & train/eval \\
+	
+	\rowcolor{red!20}
+	rs28m True 32 xyzsg-nxnynz N 0\_0\_5 0.001\_0.6 0.7 adam 64&
+	1 4.524/0.970--0.063/0.742\par 10 0.284/0.447--0.906/0.868\par 30 0.150/0.414--0.952/0.893\par 60 0.011/0.561--0.998/0.893 \\
+	
+	\rowcolor{blue!20}
+	rs28m True 32 xyzs-nxnynz N 0\_0\_5 0.001\_0.6 0.7 momentum 64&
+	1 4.117/1.272--0.046/0.667\par 4 0.673/0.614--0.808/0.813\par 10 0.344/0.444--0.894/0.861\par 30 0.046/0.379--0.985/0.895\par 60 0.004/0.398--1.000/0.887\\
+	
+	\rowcolor{yellow!20}
+	rs28m True 32 xyzsg-nxnynz N 0\_0\_5 0.001\_0.6 0.7 momentum 64&
+	1 4.103/1.114--0.047/0.691\par 4 0.576/0.596--0.840/0.822\par 10 0.267/0.447--0.923/0.860\par  30 0.041/0.408--0.991/0.888\par 60 0.006/0.422--1.000/0.891\\
+	
+	
+	\hline 
+\end{tabular}
+
+\end{document}

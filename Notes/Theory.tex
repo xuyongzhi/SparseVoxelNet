@@ -1,0 +1,151 @@
+\documentclass[,table,dvipsnames]{article}
+\usepackage[usenames, dvipsnames]{color}
+\usepackage{graphicx}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{hyperref}
+\usepackage{longtable}
+\usepackage{float}
+\usepackage{tikz}
+\usetikzlibrary{shapes.geometric, arrows}
+\hypersetup{
+	citecolor=black,
+	filecolor=black,
+	linkcolor=black,
+	urlcolor=black
+}
+\usepackage{xcolor}
+
+\graphicspath{ {images/} {images/mat60_1AG/} }
+\title{Dynamic sampling pointnet notes}
+\author{xyz}
+\date{Feb 2018}
+
+\definecolor{maroon}{cmyk}{0,0.87,0.68,0.32}
+
+\begin{document}
+\noindent
+\begin{titlepage}
+\maketitle
+\end{titlepage}	
+
+\tableofcontents{}
+\section{Deep 3D Learning Notes}
+
+\subsection{potential solutions for over fitting}
+\begin{itemize}
+	\item combine auxiliary tasks:\par 
+	1. use nxnynz as auxiliary loss
+	2. boundary \par 
+	3. planet \par 
+	\item data augmentation: rotation, different size scale
+	\item data regulation: group norm
+	\item dropout
+	\item combine ShapeNet data
+	\item more powerful network to learn more systematic information:\par
+	1. use large global block size\par
+	2. dynamic sampling
+	\item smaller net
+\end{itemize}
+
+\subsection{Important improvements}
+\begin{itemize}
+	\item Generate bxmh5 online. So the randomly missing part in each epoch is different. This maybe solve the info missing problem for sparse voxel 3d cnn, especially considering that block merging cannot be applied for voxel cnn. However, on line sampling can only solve missing problom of training, test missing still need some tricks to perform block merging.
+	\item Check this: my usage of tf.gather\_nd should cost a lot of memory, maybe too much!
+\end{itemize}
+
+\subsection{Theory}
+\subsubsection{bidxmap}
+\includegraphics[width=\textheight]{theory/bxmap.png}
+
+\subsubsection{group sampling configuration}
+$$ steps = [0.1,0.3,0.9,2.7] + [-6.3]$$
+$$ strides = [0.1,0.2,0.6,1.8] + [-3.6] $$
+$$ voxel\ size=[, 3, 4, 4, 3] $$
+principles:\par
+(1)Alignment between differert scales:
+$$ steps[i] = steps[i-1]+strides[i-1]*(k-1)\  (k=voxel\ size) $$
+(2)Alignment between voxels on one scale:
+$$ strides[i] \% steps[i-1] == 0 $$
+Examples:\par
+$$ 0.3=0.1+0.1*2 \Rightarrow voxel\ size=3 $$
+$$ 0.2=0.1*2 $$
+$$ 0.9=0.3+0.2*3 \Rightarrow voxel\ size=4 $$ 
+$$ 0.6=0.3*2 $$
+$$$$
+$$ 6.3=2.7+1.8*2 $$
+$$ 3.6=1.8*2 $$
+
+\subsubsection{Sparse voxel 3DCNN }
+\tikzstyle{startstop} = [rectangle, rounded corners, minimum width=3cm, minimum height=1cm,text centered, draw=black, fill=red!10]
+\tikzstyle{io} = [trapezium, trapezium left angle=70, trapezium right angle=110, minimum width=3cm, minimum height=1cm, text centered, draw=black, fill=blue!10]
+\tikzstyle{process} = [rectangle, minimum width=3cm, minimum height=1cm, text centered, draw=black, fill=orange!10]
+\tikzstyle{decision} = [diamond, minimum width=3cm, minimum height=1cm, text centered, draw=black, fill=green!10]
+\tikzstyle{arrow} = [thick,->,>=stealth]
+
+\subsubsection{multi-scale classification}
+
+
+
+\subsubsection{Data Augmentation} 
+\begin{itemize}
+\item (1.1) Rotate corrdinate reference: Rotate both point and voxel box \par
+Performed by rotating points after sampling and grouping. \par
+This should only be applied to point position (cascade 0). What if also to features (upper cascades).
+
+\item (1.2) Rotae point only, or rotate voxel box only. \par
+a) It can be performed by rotating points before sampling and grouping.\par
+b) If rotate angle is integral times of pi/2, it can be performed by rotating point indices inside the voxel.\par
+Rotate voxel can be applied to all cascades.
+\item (2.1) Rotate the global block by the same angle
+\item (2.2) Rotate each voxel by seperate angle in each scale.\par
+Since the features are calculated independently in each voxel, it should be fine to apply different rotatio angle for each voxel. It doesn't matter that the rotation center is voxel center or global block center. It alos doesn't matter that it rotates refference or only rotates voxel.
+
+\end{itemize}
+
+\begin{tikzpicture}[node distance=2cm]
+	\node (start) [startstop] {Sparse voxel 3D CNN};
+	\node (in) [io, below of=start] {$(b,n_1,c_1)$};
+	\node (group) [process, below of=in] {$(b,[g_1]_{n_2},c_1)$};
+	\draw [arrow] (in) -- node [anchor=west] {grouping: $g_1$ is inconsistant} (group);
+	\node (extend) [process, below of=group] {$(b,n_2,g_{1m},c_1)$};
+	\draw [arrow] (group) -- node [anchor=west] {extend: $g_{1m}$ is maximum $g_1$. Tile 0!} (extend);
+	\node (transform) [process, below of=extend, align=center] {$(b,n_2,g_{1i},c_1)$ \\ $(b,n_2,d_1,h_1,w_1,c_1)$};
+	\draw [arrow] (extend) -- node [anchor=west] {Transform: $g_{1i}$ is the intact number of the voxel} (transform);
+	\node (3dconv) [process, below of=transform, align=center] {$(b,n_2,d_{2a},h_{2a},w_{2a},c_{2a})$\\ $(b,n_2,d_{2b},h_{2b},w_{2b},c_{2b})$ \\$(b,n_2,1,1,1,c_2)$};
+	\draw [arrow] (transform) -- node [anchor=west] {3D CONV MLP} (3dconv);
+	\node (out) [io, below of=3dconv] {$(b,n_2,c_2)$};
+	\draw [arrow] (3dconv) -- node [anchor=west] {$n_2$ is the numbel of aim block. Get the feature of each aim block.} (out);
+\end{tikzpicture}
+\par \par
+Two main obstacles for performing 3D convolution on point cloud are: (1) there are too many vacant points, (2) the position of points are not aligned.
+The key idea of sparse voxel is to perform 3DCONV on cascades from the second. Because the positions are actually almost aligned. At the same time, the vacant rate within a small block is acceptably large. Above all, it may be possible to do apply 3D-CONV within a small block. 
+\par
+Centres of blocks in cascades other than first one are actually aligned to the grid. So it is possible to perform 3d convolution directly. However, the average position of points inside these blocks are not aligned. Thus it is also maybe beneficial to utilise a transform net to align them.\par
+On the other hand, there are many vacant points in the block. I am wondering if it is beneficial to set the features of vacant points by a T-net from around existing points.
+\par
+
+Purpose of T-Net: fix number + align + till \par
+There are some interesting problems for Transform net:
+\begin{itemize}
+	\item Only depend on position or feature.
+	\item Should be resolution invariant.
+	\item If it should be constant for all channels.
+	\item If it should be constant for all local aim blocks.
+\end{itemize}
+\par
+Reasons that we do not need the T-Net:
+\begin{itemize}
+	\item 3d-conv can till features of the vacant points.
+	\item If the base-points are not strictly aligned, add the position to feature map. Or get a special feature of positions within the block and then add ot the main feature map.
+\end{itemize}
+\par
+\begin{tikzpicture}[node distance=2cm]
+	\node (start) [startstop] {Transform net: };
+	\node (in) [io, below of=start] {$(b,n,g_m,3)$};
+	\node (p1) [process, below of=in] {$(b,n,g_m,c_1)$};
+	\node (p2) [process, below of=p1] {$(b,n,g_m,c_2)$};
+	\node (out) [io, below of=p2] {$(b,n,g_m,g_i)$};
+\end{tikzpicture}
+
+\end{document}
