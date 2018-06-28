@@ -3,9 +3,7 @@
 import os, sys
 import numpy as np
 from plyfile import PlyData, PlyElement
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-sys.path.append(BASE_DIR+'/all_datasets_meta')
-from datasets_meta import DatasetsMeta
+from datasets.all_datasets_meta.datasets_meta import DatasetsMeta
 
 def test_plyfile():
     vertex = np.array([(0, 0, 0), (0,1,0), (1,1,0), (1,0,0),

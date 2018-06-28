@@ -22,8 +22,6 @@ import os, sys
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT_DIR = os.path.dirname(BASE_DIR)
 DATA_DIR = os.path.join(ROOT_DIR, 'data')
-sys.path.append(BASE_DIR)
-sys.path.append(os.path.join(ROOT_DIR,'utils_xyz'))
 
 from absl import app as absl_app
 from absl import flags
@@ -35,18 +33,10 @@ import resnet_run_loop
 import os, glob, sys
 import numpy as np
 from modelnet_configs import get_block_paras, DEFAULTS
-
-
-BASE_DIR = os.path.abspath(__file__)
-ROOT_DIR = os.path.dirname(BASE_DIR)
-sys.path.append(ROOT_DIR)
-
 from dataset_utils import parse_pl_record
 
 _DATA_PARAS = None
 
-#_DEFAULT_IMAGE_SIZE = 224
-#_NUM_CHANNELS = 3
 _NUM_CLASSES = 40
 
 _NUM_IMAGES = {
@@ -175,7 +165,7 @@ def check_data():
 
 def get_data_meta_from_hdf5(data_dir):
   global _DATA_PARAS
-  from block_data_prep_util import GlobalSubBaseBLOCK
+  from datasets.block_data_prep_util import GlobalSubBaseBLOCK
   gsbb_load = GlobalSubBaseBLOCK()
   basen = os.path.basename(data_dir)
   dirn = os.path.dirname(os.path.dirname(data_dir))
@@ -413,7 +403,7 @@ def define_model_dir():
     logname += 'w'
   logname += '-Bnd'+str(int(flags.FLAGS.batch_norm_decay0*100))
 
-  model_dir = os.path.join(ROOT_DIR, 'train_res/object_detection_result', logname)
+  model_dir = os.path.join(ROOT_DIR, 'results/object_detection_result', logname)
   if not os.path.exists(model_dir):
     os.makedirs(model_dir)
   add_log_file(model_dir)
