@@ -24,11 +24,11 @@ DEFAULTS['lr_decay_epochs'] = 15
 DEFAULTS['lr_warmup'] = 1
 DEFAULTS['batch_norm_decay0'] = 0.7
 
-DEFAULTS['model_flag'] = 'm'
-DEFAULTS['resnet_size'] = 34
+DEFAULTS['model_flag'] = 'V'
+DEFAULTS['resnet_size'] = 18
 DEFAULTS['num_filters0'] = 64
 DEFAULTS['feed_data'] = 'xyzs'
-DEFAULTS['aug_types'] = 'rpsfj-360_0_0'
+DEFAULTS['aug_types'] = 'N' # 'rpsfj-360_0_0'
 DEFAULTS['drop_imo'] = '0_0_5'
 DEFAULTS['batch_size'] = 16
 DEFAULTS['num_gpus'] = 2

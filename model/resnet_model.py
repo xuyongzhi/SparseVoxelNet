@@ -51,26 +51,32 @@ ALLOWED_TYPES = (DEFAULT_DTYPE,) + CASTABLE_TYPES
 USE_CHARLES = True
 
 
-def tensor_info(tensor_ls, tensor_name_ls=None, scope=None):
+def tensor_info(tensor_ls, tensor_name_ls=None, scope=None,
+                weight_num_bytes=None):
   if type(tensor_ls) != list:
     tensor_ls = [tensor_ls]
   if tensor_name_ls == None:
     tensor_name_ls = [''] * len(tensor_ls)
   elif type(tensor_name_ls) != list:
     tensor_name_ls = [tensor_name_ls]
-  tensor_info = ''
+  tensor_sum = ''
 
   for i in range(len(tensor_ls)):
     if scope!=None:
-      tensor_info += '%-20s'%(scope)
-    tensor_info += '%-20s: '%(tensor_name_ls[i])
+      tensor_sum += '%-20s'%(scope)
+    tensor_sum += '%-20s: '%(tensor_name_ls[i])
     if tensor_ls[i] == None:
-        tensor_info += 'None'
+        tensor_sum += 'None'
     else:
-        tensor_info += str( [s.value for s in tensor_ls[i].shape] )
+        tensor_sum += '%-22s'%(str( [s.value for s in tensor_ls[i].shape] ))
+
+    if weight_num_bytes!=None:
+      weight_num, weight_bytes = weight_num_bytes
+      tensor_sum += '(%d %0.3fK)'%(weight_num, weight_bytes/1000.0)
     if i < len(tensor_ls)-1:
-        tensor_info += '\n'
-  return tensor_info
+        tensor_sum += '\n'
+  return tensor_sum
+
 
 def unique_nd( inputs, axis=-1, unit=3 ):
     org_inputs = inputs
@@ -264,6 +270,7 @@ def _bottleneck_block_v1(inputs, filters, training, projection_shortcut,
 
 
 
+
 class ResConvOps(object):
   ''' Basic convolution operations '''
   _block_layers_num = 0
@@ -271,6 +278,8 @@ class ResConvOps(object):
   _conv3d_num = 0
   IsShowModel = False
   _epoch = 0
+  trainable_num = 0
+  trainable_bytes = 0
 
   def __init__(self, data_net_configs):
     self.residual = data_net_configs['residual']
@@ -328,6 +337,15 @@ bnd optimizer filters0\n'
       self.model_log_f.flush()
     ResConvOps._epoch += 1
 
+  def train_w_bytes(self, scope=None):
+    trainable_variables = tf.trainable_variables(scope)
+    weight_num = len(trainable_variables)
+    weight_bytes = np.sum([np.prod(v.get_shape().as_list()) * v.dtype.size \
+                          for v in trainable_variables])
+    if scope!=None: # assume it is a unique scope
+      self.trainable_num += weight_num
+      self.trainable_bytes += weight_bytes
+    return weight_num, weight_bytes
   def batch_norm(self, inputs, training, data_format):
     """Performs a batch normalization using a standard set of parameters."""
     # We set fused=True for a significant performance boost. See
@@ -428,21 +446,26 @@ bnd optimizer filters0\n'
     if projection_shortcut is not None:
       shortcut = projection_shortcut(inputs)
 
-    inputs = self.conv2d3d_fixed_padding(
-        inputs=inputs, filters=filters, kernel_size=b_kernel_size, strides=strides,
-        padding_s1=padding_s1, data_format=data_format)
-    if self.IsShowModel:
-      self.log( tensor_info(inputs, '%s k,s,p=%d,%d,%s'%
-                    (conv_str,b_kernel_size,strides,padding_s1), 'block_v2'))
+    with tf.variable_scope('conv0'):
+      inputs = self.conv2d3d_fixed_padding(
+          inputs=inputs, filters=filters, kernel_size=b_kernel_size, strides=strides,
+          padding_s1=padding_s1, data_format=data_format)
+      if self.IsShowModel:
+        self.log( tensor_info(inputs, '%s k,s,p=%d,%d,%s'%
+                      (conv_str,b_kernel_size,strides,padding_s1), 'block_v2',
+                      self.train_w_bytes(tf.get_variable_scope().name)) )
 
-    inputs = self.batch_norm(inputs, training, data_format)
-    inputs = tf.nn.relu(inputs)
-    inputs = self.conv2d3d_fixed_padding(
-        inputs=inputs, filters=filters, kernel_size=b_kernel_size, strides=1,
-        padding_s1='s', data_format=data_format)
-    if self.IsShowModel:
-      self.log( tensor_info(inputs, '%s k,s,p=%d,%d,%s'%
-                (conv_str,b_kernel_size,strides,padding_s1), 'block_v2')+'\n')
+    with tf.variable_scope('conv1'):
+      inputs = self.batch_norm(inputs, training, data_format)
+      inputs = tf.nn.relu(inputs)
+      inputs = self.conv2d3d_fixed_padding(
+          inputs=inputs, filters=filters, kernel_size=b_kernel_size, strides=1,
+          padding_s1='s', data_format=data_format)
+      if self.IsShowModel:
+        self.log( tensor_info(inputs, '%s k,s,p=%d,%d,%s'%
+                  (conv_str,b_kernel_size,strides,padding_s1), 'block_v2',
+                  self.train_w_bytes(tf.get_variable_scope().name))
+                  +'\n')
 
     if self.residual:
       assert inputs.shape == shortcut.shape
@@ -550,15 +573,17 @@ bnd optimizer filters0\n'
       # Here we use kernel>1 and padding_s1='VALID'
       # Use kernel>1 in shortcut may somewhat impede the identity forward, try
       # optimize later.
-      kernel_size_shortcut = b_kernel_size if padding_s1=='v' else 1
-      shortcut = self.conv2d3d_fixed_padding(
-          inputs=inputs, filters=filters_out,
-          kernel_size=kernel_size_shortcut,
-          strides=strides, padding_s1=padding_s1, data_format=data_format)
-      if self.IsShowModel:
-        conv_str = 'conv2d' if len(inputs.shape)==4 else 'conv3d'
-        self.log( tensor_info(shortcut, '%s k,s,p=%d,%d,%s'%(conv_str,
-              kernel_size_shortcut, strides, padding_s1),'projection_shortcut'))
+      with tf.variable_scope('shortcut'):
+        kernel_size_shortcut = b_kernel_size if padding_s1=='v' else 1
+        shortcut = self.conv2d3d_fixed_padding(
+            inputs=inputs, filters=filters_out,
+            kernel_size=kernel_size_shortcut,
+            strides=strides, padding_s1=padding_s1, data_format=data_format)
+        if self.IsShowModel:
+          conv_str = 'conv2d' if len(inputs.shape)==4 else 'conv3d'
+          self.log( tensor_info(shortcut, '%s k,s,p=%d,%d,%s'%(conv_str,
+                kernel_size_shortcut, strides, padding_s1),'projection_shortcut',
+                self.train_w_bytes(tf.get_variable_scope().name)) )
       return shortcut
 
     # Only the first block per block_layer uses projection_shortcut and strides
@@ -571,8 +596,9 @@ bnd optimizer filters0\n'
     inputs = block_fn(inputs, filters, training, projection_shortcut_0, b_kernel_size,
                       strides, padding_s1, data_format)
 
-    for _ in range(1, blocks):
-      inputs = block_fn(inputs, filters, training, None, b_kernel_size, 1, 's', data_format)
+    for j in range(1, blocks):
+      with tf.variable_scope('l%d'%(j)):
+        inputs = block_fn(inputs, filters, training, None, b_kernel_size, 1, 's', data_format)
 
     self._block_layers_num += 1
     return tf.identity(inputs, name)
@@ -751,13 +777,15 @@ class Model(ResConvOps):
       A logits Tensor with shape [<batch_size>, self.num_classes].
     """
 
-    return self._call(
+    outputs = self._call(
           inputs_dic['points'],
           inputs_dic['sg_bidxmaps'],
           inputs_dic['b_bottom_centers_mm'],
           inputs_dic['bidxmaps_flat'],
           inputs_dic['fmap_neighbor_idis'],
           training)
+
+    return outputs
 
   def _call(self, inputs, sg_bidxmaps, b_bottom_centers_mm, bidxmaps_flat,
             fmap_neighbor_idis, is_training):
@@ -800,7 +828,7 @@ class Model(ResConvOps):
           block_bottom_center_mm = tf.cast(block_bottom_center_mm, tf.float32, name='block_bottom_center_mm')
 
           l_xyz, new_points, root_point_features = self.res_sa_module(k, l_xyz,
-                          new_points, sg_bidxmap_k, block_bottom_center_mm, scope='sa_layer'+str(k) )
+                          new_points, sg_bidxmap_k, block_bottom_center_mm )
           if k == 0:
               l_points[0] = root_point_features
           l_points.append(new_points)
@@ -822,54 +850,63 @@ class Model(ResConvOps):
       if self.IsShowModel:
         self.log( tensor_info(inputs, 'dense', 'final') +'\n\n' )
         self.show_layers_num_summary()
+
+        total_w_num, total_w_bytes = self.train_w_bytes()
+        self.log('Total trainable weights: (%d %0.3f)  Counted (%d %0.3f)'%(
+          total_w_num, total_w_bytes/1000.0, self.trainable_num,
+          self.trainable_bytes/1000.0))
         self.log('------------------------------------------------------------')
+        #total_size = np.sum([np.prod(v.get_shape().as_list()) for v in tf.trainable_variables()])
         self.model_log_f.close()
+
       return inputs
 
-  def res_sa_module(self, cascade_id, xyz, points, bidmap, block_bottom_center_mm, scope):
-    batch_size = xyz.shape[0].value
-    new_xyz, grouped_xyz, inputs, valid_mask = self.grouping(cascade_id, xyz,
-                        points, bidmap, block_bottom_center_mm, scope)
-    if cascade_id == 0:
-      inputs = self.initial_layer(inputs)
-    elif self.voxel3d:
-      inputs = self.grouped_points_to_voxel_points( cascade_id, inputs,
-                          valid_mask, block_bottom_center_mm, grouped_xyz)
-
-    outputs= self.res_sa_model(cascade_id,
-                inputs, grouped_xyz, valid_mask, block_bottom_center_mm, scope)
-
-    if cascade_id == 0 or (not self.voxel3d):
-      # use max pooling to reduce map size
+  def res_sa_module(self, cascade_id, xyz, points, bidmap, block_bottom_center_mm):
+    with tf.variable_scope('sa_%d'%(cascade_id)):
+      batch_size = xyz.shape[0].value
+      new_xyz, grouped_xyz, inputs, valid_mask = self.grouping(cascade_id, xyz,
+                          points, bidmap, block_bottom_center_mm)
       if cascade_id == 0:
-        root_point_features = outputs
+        inputs = self.initial_layer(inputs)
+      elif self.voxel3d:
+        inputs = self.grouped_points_to_voxel_points( cascade_id, inputs,
+                            valid_mask, block_bottom_center_mm, grouped_xyz)
+
+      outputs= self.res_sa_model(cascade_id,
+                  inputs, grouped_xyz, valid_mask, block_bottom_center_mm)
+
+      if cascade_id == 0 or (not self.voxel3d):
+        # use max pooling to reduce map size
+        if cascade_id == 0:
+          root_point_features = outputs
+        else:
+          root_point_features = None
+        assert len(outputs.shape)==4
+        outputs = tf.reduce_max(outputs, axis=2 if self.data_format=='channels_last' else 3)
+        if self.IsShowModel: self.log( tensor_info(outputs, 'max', 'cas%d'%(cascade_id)) +'\n' )
       else:
+        # already used 3D CNN to reduce map size, just reshape
         root_point_features = None
-      assert len(outputs.shape)==4
-      outputs = tf.reduce_max(outputs, axis=2 if self.data_format=='channels_last' else 3)
-      if self.IsShowModel: self.log( tensor_info(outputs, 'max', 'cas%d'%(cascade_id)) +'\n' )
-    else:
-      # already used 3D CNN to reduce map size, just reshape
-      root_point_features = None
-      if self.voxel3d:
-        # self.grouping only spport 2D point cloud
-        assert len(outputs.shape)==5
-        channels_idxs = np.arange(1,4) + int(self.data_format=='channels_first')
-        tmp = np.array( [outputs.shape[j].value for j in channels_idxs] )
-        tmp = tmp[0]*tmp[1]*tmp[2]
-        # Except the last cascade, the voxel size should be reduced to 1
-        if cascade_id != self.cascade_num-1:
-          assert tmp==1
-        else:
-          assert outputs.shape[0].value == batch_size # global block
-        if self.data_format=='channels_last':
-          outputs = tf.reshape(outputs, [batch_size,-1,outputs.shape[-1].value])
-        else:
-          outputs = tf.reshape(outputs, [batch_size,outputs.shape[1].value,-1])
+        if self.voxel3d:
+          # self.grouping only spport 2D point cloud
+          assert len(outputs.shape)==5
+          channels_idxs = np.arange(1,4) + int(self.data_format=='channels_first')
+          tmp = np.array( [outputs.shape[j].value for j in channels_idxs] )
+          tmp = tmp[0]*tmp[1]*tmp[2]
+          # Except the last cascade, the voxel size should be reduced to 1
+          if cascade_id != self.cascade_num-1:
+            assert tmp==1
+          else:
+            assert outputs.shape[0].value == batch_size # global block
+          if self.data_format=='channels_last':
+            outputs = tf.reshape(outputs, [batch_size,-1,outputs.shape[-1].value])
+          else:
+            outputs = tf.reshape(outputs, [batch_size,outputs.shape[1].value,-1])
 
-    return new_xyz, outputs, root_point_features
+      return new_xyz, outputs, root_point_features
 
-  def initial_layer(self, inputs):
+  def initial_layer(self, inputs, scope_ini='initial'):
+    with tf.variable_scope(scope_ini):
       inputs = self.conv2d3d_fixed_padding(
           inputs=inputs, filters=self.num_filters, kernel_size=1,
           strides=1, padding_s1='s', data_format=self.data_format)
@@ -882,124 +919,125 @@ class Model(ResConvOps):
       if self.resnet_version == 1:
         inputs = self.batch_norm(inputs, training, self.data_format)
         inputs = tf.nn.relu(inputs)
-      if self.IsShowModel:self.log(tensor_info(inputs,'conv2d ks:1,1','initial'))
+      if self.IsShowModel:self.log(tensor_info(inputs,'conv2d ks:1,1','initial',
+                                  self.train_w_bytes(tf.get_variable_scope().name)))
 
-      return inputs
+    return inputs
 
   def res_sa_model(self, cascade_id, inputs, grouped_xyz,
-                   valid_mask, block_bottom_center_mm, scope):
+                   valid_mask, block_bottom_center_mm):
       for i, num_blocks in enumerate(self.block_sizes[cascade_id]):
         if self.IsShowModel:
           self.log('--------------cascade_id %d, block %d----------------'%(cascade_id, i))
         num_filters = self.num_filters * (2**(self.block_num_count-cascade_id))
         num_filters = min(num_filters, 1024)
-        inputs = self.block_layer(
-            inputs=inputs, filters=num_filters, bottleneck=self.bottleneck,
-            block_fn=self.block_fn, blocks=num_blocks,
-            b_kernel_size=self.block_kernels[cascade_id][i],
-            strides=self.block_strides[cascade_id][i],
-            padding_s1=self.block_paddings[cascade_id][i],
-            training=self.is_training,
-            name='block_layer{}'.format(i + 1), data_format=self.data_format)
+        with tf.variable_scope('block_%d'%(i)):
+          inputs = self.block_layer(
+              inputs=inputs, filters=num_filters, bottleneck=self.bottleneck,
+              block_fn=self.block_fn, blocks=num_blocks,
+              b_kernel_size=self.block_kernels[cascade_id][i],
+              strides=self.block_strides[cascade_id][i],
+              padding_s1=self.block_paddings[cascade_id][i],
+              training=self.is_training,
+              name='block_layer{}'.format(i + 1), data_format=self.data_format)
         self.block_num_count += 1
       return inputs
 
-  def grouping(self, cascade_id, xyz, points, bidmap, block_bottom_center_mm, scope):
+  def grouping(self, cascade_id, xyz, points, bidmap, block_bottom_center_mm):
     if self.data_format == 'channels_first':
       points = tf.transpose(points, [0, 2, 1])
 
     batch_size = xyz.get_shape()[0].value
-    with tf.variable_scope(scope) as sc:
-        assert self.cascade_num == self.flatten_bm_extract_idx.shape[0]-1  # include global here (Note: cascade_num does not include global in block_pre_util )
-        assert self.sub_block_step_candis.size == self.cascade_num-1
-        #if cascade_id==0:
-        #    indrop_keep_mask = tf.get_default_graph().get_tensor_by_name('indrop_keep_mask:0') # indrop_keep_mask:0
+    assert self.cascade_num == self.flatten_bm_extract_idx.shape[0]-1  # include global here (Note: cascade_num does not include global in block_pre_util )
+    assert self.sub_block_step_candis.size == self.cascade_num-1
+    #if cascade_id==0:
+    #    indrop_keep_mask = tf.get_default_graph().get_tensor_by_name('indrop_keep_mask:0') # indrop_keep_mask:0
 
-        assert len(xyz.shape) == 3
-        if not ( len(xyz.shape) == len(points.shape) == len(bidmap.shape) == \
-                len(block_bottom_center_mm.shape) == 3 ):
-          import pdb; pdb.set_trace()  # XXX BREAKPOINT
-          pass
+    assert len(xyz.shape) == 3
+    if not ( len(xyz.shape) == len(points.shape) == len(bidmap.shape) == \
+            len(block_bottom_center_mm.shape) == 3 ):
+      import pdb; pdb.set_trace()  # XXX BREAKPOINT
+      pass
 
-        if bidmap==None:
-            grouped_xyz = tf.expand_dims( xyz, 1 )
-            grouped_points = tf.expand_dims( points, 1 )
-            new_xyz = None
-            valid_mask = None
-        else:
-            batch_idx = tf.reshape( tf.range(batch_size),[batch_size,1,1,1] )
-            nsubblock = bidmap.get_shape()[1].value
-            npoint_subblock = bidmap.get_shape()[2].value
-            batch_idx_ = tf.tile( batch_idx,[1,nsubblock,npoint_subblock,1] )
-            bidmap = tf.expand_dims( bidmap,axis=-1, name='bidmap' )
-            bidmap_concat = tf.concat( [batch_idx_,bidmap],axis=-1, name='bidmap_concat' )  # gpu_0/sa_layer0/bidmap_concat:0
-            # The value for invalid item in bidmap is -17.
-            # On GPU, the responding grouped_xyz and grouped_points is 0.
-            # NOT WORK on CPU !!!
+    if bidmap==None:
+        grouped_xyz = tf.expand_dims( xyz, 1 )
+        grouped_points = tf.expand_dims( points, 1 )
+        new_xyz = None
+        valid_mask = None
+    else:
+        batch_idx = tf.reshape( tf.range(batch_size),[batch_size,1,1,1] )
+        nsubblock = bidmap.get_shape()[1].value
+        npoint_subblock = bidmap.get_shape()[2].value
+        batch_idx_ = tf.tile( batch_idx,[1,nsubblock,npoint_subblock,1] )
+        bidmap = tf.expand_dims( bidmap,axis=-1, name='bidmap' )
+        bidmap_concat = tf.concat( [batch_idx_,bidmap],axis=-1, name='bidmap_concat' )  # gpu_0/sa_layer0/bidmap_concat:0
+        # The value for invalid item in bidmap is -17.
+        # On GPU, the responding grouped_xyz and grouped_points is 0.
+        # NOT WORK on CPU !!!
 
-            # invalid indices comes from merge_blocks_while_fix_bmap
-            # set point_indices_f for invalid points as
-            # NETCONFIG['redundant_points_in_block'] ( shoud be set < -500)
-            valid_mask = tf.greater( bidmap, tf.constant(-500,tf.int32), 'valid_mask' ) # gpu_0/sa_layer0/valid_mask:0
+        # invalid indices comes from merge_blocks_while_fix_bmap
+        # set point_indices_f for invalid points as
+        # NETCONFIG['redundant_points_in_block'] ( shoud be set < -500)
+        valid_mask = tf.greater( bidmap, tf.constant(-500,tf.int32), 'valid_mask' ) # gpu_0/sa_layer0/valid_mask:0
 
-            grouped_xyz = tf.gather_nd(xyz, bidmap_concat, name='grouped_xyz')  # gpu_0/sa_layer0/grouped_xyz:0
-            grouped_points = tf.gather_nd(points,bidmap_concat, name='group_points')
-            #if cascade_id==0 and  len(indrop_keep_mask.get_shape()) != 0:
-            #    grouped_indrop_keep_mask = tf.gather_nd( indrop_keep_mask, bidmap_concat, name='grouped_indrop_keep_mask' )  # gpu_0/sa_layer0/grouped_indrop_keep_mask:0
+        grouped_xyz = tf.gather_nd(xyz, bidmap_concat, name='grouped_xyz')  # gpu_0/sa_layer0/grouped_xyz:0
+        grouped_points = tf.gather_nd(points,bidmap_concat, name='group_points')
+        #if cascade_id==0 and  len(indrop_keep_mask.get_shape()) != 0:
+        #    grouped_indrop_keep_mask = tf.gather_nd( indrop_keep_mask, bidmap_concat, name='grouped_indrop_keep_mask' )  # gpu_0/sa_layer0/grouped_indrop_keep_mask:0
 
-        # new_xyz is the "voxel center" or "mean position of points in the voxel"
-        if self.mean_grouping_position and (not self.voxel3d):
-            new_xyz = tf.reduce_mean(grouped_xyz,-2)
-        else:
-            new_xyz = block_bottom_center_mm[:,:,3:6] * tf.constant( 0.001, tf.float32 )
-        # the mid can be mean or block center, decided by configs['mean_grouping_position']
-        sub_block_mid = tf.expand_dims( new_xyz,-2, name = 'sub_block_mid' )   # gpu_1/sa_layer0/sub_block_mid
-        global_block_mid = tf.reduce_mean( sub_block_mid,1, keepdims=True, name = 'global_block_mid' )
-        grouped_xyz_submid = grouped_xyz - sub_block_mid
-        grouped_xyz_glomid = grouped_xyz - global_block_mid
+    # new_xyz is the "voxel center" or "mean position of points in the voxel"
+    if self.mean_grouping_position and (not self.voxel3d):
+        new_xyz = tf.reduce_mean(grouped_xyz,-2)
+    else:
+        new_xyz = block_bottom_center_mm[:,:,3:6] * tf.constant( 0.001, tf.float32 )
+    # the mid can be mean or block center, decided by configs['mean_grouping_position']
+    sub_block_mid = tf.expand_dims( new_xyz,-2, name = 'sub_block_mid' )   # gpu_1/sa_layer0/sub_block_mid
+    global_block_mid = tf.reduce_mean( sub_block_mid,1, keepdims=True, name = 'global_block_mid' )
+    grouped_xyz_submid = grouped_xyz - sub_block_mid
+    grouped_xyz_glomid = grouped_xyz - global_block_mid
 
-        grouped_xyz_feed = []
-        if 'raw' in self.xyz_elements:
-            grouped_xyz_feed.append( grouped_xyz )
-        if 'sub_mid' in self.xyz_elements:
-            grouped_xyz_feed.append( grouped_xyz_submid )
-        if 'global_mid' in self.xyz_elements:
-            grouped_xyz_feed.append( grouped_xyz_glomid )
-        grouped_xyz_feed = tf.concat( grouped_xyz_feed, -1 )
+    grouped_xyz_feed = []
+    if 'raw' in self.xyz_elements:
+        grouped_xyz_feed.append( grouped_xyz )
+    if 'sub_mid' in self.xyz_elements:
+        grouped_xyz_feed.append( grouped_xyz_submid )
+    if 'global_mid' in self.xyz_elements:
+        grouped_xyz_feed.append( grouped_xyz_glomid )
+    grouped_xyz_feed = tf.concat( grouped_xyz_feed, -1 )
 
-        if cascade_id==0:
-            # xyz must be at the first in feed_data_elements !!!!
-            grouped_points = tf.concat( [grouped_xyz_feed, grouped_points[...,3:]],-1 )
+    if cascade_id==0:
+        # xyz must be at the first in feed_data_elements !!!!
+        grouped_points = tf.concat( [grouped_xyz_feed, grouped_points[...,3:]],-1 )
 
-            #if len(indrop_keep_mask.get_shape()) != 0:
-            #    if InDropMethod == 'set1st':
-            #        # set all the dropped item as the first item
-            #        tmp1 = tf.multiply( grouped_points, grouped_indrop_keep_mask )
-            #        points_1st = grouped_points[:,:,0:1,:]
-            #        points_1st = tf.tile( points_1st, [1,1,grouped_points.shape[2],1] )
-            #        indrop_mask_inverse = 1 - grouped_indrop_keep_mask
-            #        tmp2 = indrop_mask_inverse * points_1st
-            #        grouped_points = tf.add( tmp1, tmp2, name='grouped_points_droped' ) # gpu_0/sa_layer0/grouped_points_droped
-            #        #tf.add_to_collection( 'check', grouped_points )
-            #    elif InDropMethod == 'set0':
-            #        valid_mask = tf.logical_and( valid_mask, tf.equal(grouped_indrop_keep_mask,0), name='valid_mask_droped' )   # gpu_1/sa_layer0/valid_mask_droped
+        #if len(indrop_keep_mask.get_shape()) != 0:
+        #    if InDropMethod == 'set1st':
+        #        # set all the dropped item as the first item
+        #        tmp1 = tf.multiply( grouped_points, grouped_indrop_keep_mask )
+        #        points_1st = grouped_points[:,:,0:1,:]
+        #        points_1st = tf.tile( points_1st, [1,1,grouped_points.shape[2],1] )
+        #        indrop_mask_inverse = 1 - grouped_indrop_keep_mask
+        #        tmp2 = indrop_mask_inverse * points_1st
+        #        grouped_points = tf.add( tmp1, tmp2, name='grouped_points_droped' ) # gpu_0/sa_layer0/grouped_points_droped
+        #        #tf.add_to_collection( 'check', grouped_points )
+        #    elif InDropMethod == 'set0':
+        #        valid_mask = tf.logical_and( valid_mask, tf.equal(grouped_indrop_keep_mask,0), name='valid_mask_droped' )   # gpu_1/sa_layer0/valid_mask_droped
 
-        else:
-          if self.use_xyz and (not cascade_id==self.cascade_num-1):
-              grouped_points = tf.concat([grouped_xyz_feed, grouped_points],axis=-1)
+    else:
+      if self.use_xyz and (not cascade_id==self.cascade_num-1):
+          grouped_points = tf.concat([grouped_xyz_feed, grouped_points],axis=-1)
 
-        if self.IsShowModel:
-          sc = 'grouping %d'%(cascade_id)
-          self.log(tensor_info(xyz, 'xyz', sc))
-          self.log(tensor_info(new_xyz, 'new_xyz', sc))
-          self.log(tensor_info(grouped_xyz, 'grouped_xyz', sc))
-          self.log(tensor_info(grouped_points, 'grouped_points', sc))
-          self.log('')
+    if self.IsShowModel:
+      sc = 'grouping %d'%(cascade_id)
+      self.log(tensor_info(xyz, 'xyz', sc))
+      self.log(tensor_info(new_xyz, 'new_xyz', sc))
+      self.log(tensor_info(grouped_xyz, 'grouped_xyz', sc))
+      self.log(tensor_info(grouped_points, 'grouped_points', sc))
+      self.log('')
 
-        new_points = grouped_points
-        if self.data_format == 'channels_first':
-          new_points = tf.transpose(new_points, [0, 3, 1, 2])
-        return new_xyz, grouped_xyz, new_points, valid_mask
+    new_points = grouped_points
+    if self.data_format == 'channels_first':
+      new_points = tf.transpose(new_points, [0, 3, 1, 2])
+    return new_xyz, grouped_xyz, new_points, valid_mask
 
   def grouped_points_to_voxel_points (self, cascade_id, new_points, valid_mask, block_bottom_center_mm, grouped_xyz):
     IS_merge_blocks_while_fix_bmap = True
