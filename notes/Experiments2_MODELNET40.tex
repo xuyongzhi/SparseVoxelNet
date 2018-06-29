@@ -567,7 +567,7 @@
 \end{tabular}	
 
 \section{Res net}	
-\subsection{No aug}
+\subsection{No aug, old decay}
 \noindent\begin{tabular}{|p{10cm}|p{5cm}| }	
 	\hline
 	\multicolumn{2}{|p{15cm}|}{Merged\_tfrecord/6\_mgs1\_gs2\_2-mbf-neg\_fmn14\_mvp1-1024\_240\_1-64\_27\_256-0d2\_0d4-0d1\_0d2-pd3-2M2pp}\\
@@ -586,6 +586,38 @@
 	rs28m True 32 xyzsg-nxnynz N 0\_0\_5 0.001\_0.6 0.7 momentum 64&
 	1 4.103/1.114--0.047/0.691\par 4 0.576/0.596--0.840/0.822\par 10 0.267/0.447--0.923/0.860\par  30 0.041/0.408--0.991/0.888\par 60 0.006/0.422--1.000/0.891\\
 	
+	\rowcolor{green!20}
+	rs28m True 32 xyzs-nxnynzN 0\_0\_5 0.001\_0.7\_10 0.7 momentum 32&
+	10 0.437/0.581--0.874/0.824\par 50 0.071/0.429--0.982/0.871\par 61 0.054/0.435--0.987/0.865\\
+	
+	 
+	
+	\hline 
+\end{tabular}
+
+\subsection{No aug, new decay}
+\noindent\begin{tabular}{|p{10cm}|p{5cm}| }	
+	\hline
+	\multicolumn{2}{|p{15cm}|}{Merged\_tfrecord/6\_mgs1\_gs2\_2-mbf-neg\_fmn14\_mvp1-1024\_240\_1-64\_27\_256-0d2\_0d4-0d1\_0d2-pd3-2M2pp}\\
+	\hline
+	model use\_bias bs feed aug drop\_imo lr0\_drate\_depoch bnd optimizer filters0 & train/eval \\
+	
+	\rowcolor{orange!20}
+	rs28m True 32 xyzs-nxnynz r-360\_0\_0 0\_0\_5 0.001\_0.7\_10 0.7 momentum 32& 10 0.694/0.765--0.795/0.770\par60 0.286/0.487--0.919/0.844\\ 
+	
+	\rowcolor{blue!20}
+	rs28m True 32 xyzs N 0\_0\_5 0.001\_0.7\_10 0.7 momentum 64&
+	10 0.485/0.662--0.858/0.801\par 61 0.028/0.519--0.998/0.850\\
+	
+	\rowcolor{green!20}
+	rs28m True 32 xyzs-nxnynzN 0\_0\_5 0.001\_0.7\_10 0.7 momentum 64&
+	10 0.291/0.447--0.916/0.872\par 20 0.092/0.401--0.978/0.885\\
+	
+	\rowcolor{yellow}
+	rs28m True 32 xyzs-nxnynz psfj 0\_0\_5 0.001\_0.7\_10 0.7 momentum 64& 10 0.322/0.442--0.903/0.876\par 40 0.041/0.362--0.995/0.893\par 60 0.020/0.364--0.999/0.888\\
+	
+	\rowcolor{orange!20}
+	rs28m True 32 xyzs-nxnynz rpsfj-360\_0\_0 0\_0\_5 0.001\_0.7\_10 0.7 momentum 64& 10 0.574/0.636--0.825/0.808\par 60 0.179/0.434--0.941/0.871\\
 	
 	\hline 
 \end{tabular}

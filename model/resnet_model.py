@@ -293,7 +293,7 @@ class ResConvOps(object):
       res = 'rs' if self.residual else 'pl'
       key_para_names = 'model use_bias bs feed aug drop_imo lr0_drate_depoch \
 bnd optimizer filters0\n'
-      key_paras_str = '{model_name} {use_bias} {bs} {feed_data_eles}\
+      key_paras_str = '{model_name} {use_bias} {bs} {feed_data_eles} \
 {aug} {drop_imo} {lr0}_{lr_decay_rate}_{lr_decay_epochs} {bnd} {optimizer} \
 {filters0}\n\n'.format(
         model_name=res+str(dnc['resnet_size'])+dnc['model_flag'],
