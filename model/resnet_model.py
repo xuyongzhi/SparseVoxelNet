@@ -437,6 +437,13 @@ bnd optimizer filters0\n'
     inputs = self.batch_norm(inputs, training, data_format)
     inputs = tf.nn.relu(inputs)
     if self.IsShowModel:  self.log('%38s'%('BN RELU'))
+    if projection_shortcut == 'FirstResUnit':
+      # For pointnet, projection shortcut is not needed at the First ResUnit.
+      # However, BN and Activation is still required at the First ResUnit for
+      # pre-activation.
+      shortcut = inputs
+      projection_shortcut = None
+      if self.IsShowModel:  self.log('shortcut%30s'%('BN RELU'))
 
     conv_str = 'conv2d' if len(inputs.shape)==4 else 'conv3d'
     if (not self.voxel3d) and len(inputs.shape)==5:
@@ -512,6 +519,16 @@ bnd optimizer filters0\n'
     inputs = self.batch_norm(inputs, training, data_format)
     inputs = tf.nn.relu(inputs)
     if self.IsShowModel:  self.log('%38s'%('BN RELU'))
+
+    if projection_shortcut == 'FirstResUnit':
+      # For pointnet, projection shortcut is not needed at the First ResUnit.
+      # However, BN and Activation is still required at the First ResUnit for
+      # pre-activation.
+      shortcut = inputs
+      projection_shortcut = None
+      if self.IsShowModel:  self.log('shortcut%30s'%(\
+                      'After activation identity for pointnet first res unit'))
+
     conv_str = 'conv2d' if len(inputs.shape)==4 else 'conv3d'
 
     # The projection shortcut should come after the first batch norm and ReLU
@@ -608,6 +625,8 @@ bnd optimizer filters0\n'
     if (b_kernel_size==1 and strides==1 and inputs.shape[-1].value==filters_out)\
           or (not self.residual):
       projection_shortcut_0 = None
+      if self._block_layers_num == 0:
+        projection_shortcut_0 = 'FirstResUnit'
     else:
       projection_shortcut_0 = projection_shortcut
     inputs = block_fn(inputs, filters, training, projection_shortcut_0, b_kernel_size,
@@ -928,6 +947,9 @@ class Model(ResConvOps):
           inputs=inputs, filters=self.num_filters, kernel_size=1,
           strides=1, padding_s1='s', data_format=self.data_format)
       inputs = tf.identity(inputs, 'initial_conv')
+      if self.IsShowModel:
+        self.log(tensor_info(inputs,'conv2d ks:1,1','initial',
+                  self.train_w_bytes(tf.get_variable_scope().name)))
 
       # We do not include batch normalization or activation functions in V2
       # for the initial conv1 because the first ResNet unit will perform these
@@ -936,10 +958,8 @@ class Model(ResConvOps):
       if self.resnet_version == 1:
         inputs = self.batch_norm(inputs, training, self.data_format)
         inputs = tf.nn.relu(inputs)
-      if self.IsShowModel:
-        self.log(tensor_info(inputs,'conv2d ks:1,1','initial',
-                  self.train_w_bytes(tf.get_variable_scope().name)))
-        self.log('%38s'%('BN RELU'))
+        if self.IsShowModel:
+          self.log('%38s'%('BN RELU'))
 
     return inputs
 
