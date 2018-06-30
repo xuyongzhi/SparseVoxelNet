@@ -192,19 +192,19 @@ def _building_block_v1(inputs, filters, training, projection_shortcut, strides,
 
   if projection_shortcut is not None:
     shortcut = projection_shortcut(inputs)
-    shortcut = self.batch_norm(inputs=shortcut, training=training,
+    shortcut = batch_norm(inputs=shortcut, training=training,
                           data_format=data_format)
 
   inputs = conv2d3d_fixed_padding(
       inputs=inputs, filters=filters, kernel_size=3, strides=strides,
       data_format=data_format)
-  inputs = self.batch_norm(inputs, training, data_format)
+  inputs = batch_norm(inputs, training, data_format)
   inputs = tf.nn.relu(inputs)
 
   inputs = conv2d3d_fixed_padding(
       inputs=inputs, filters=filters, kernel_size=3, strides=1,
       data_format=data_format)
-  inputs = self.batch_norm(inputs, training, data_format)
+  inputs = batch_norm(inputs, training, data_format)
   inputs += shortcut
   inputs = tf.nn.relu(inputs)
 
@@ -243,25 +243,25 @@ def _bottleneck_block_v1(inputs, filters, training, projection_shortcut,
 
   if projection_shortcut is not None:
     shortcut = projection_shortcut(inputs)
-    shortcut = self.batch_norm(inputs=shortcut, training=training,
+    shortcut = batch_norm(inputs=shortcut, training=training,
                           data_format=data_format)
 
   inputs = conv2d3d_fixed_padding(
       inputs=inputs, filters=filters, kernel_size=1, strides=1,
       data_format=data_format)
-  inputs = self.batch_norm(inputs, training, data_format)
+  inputs = batch_norm(inputs, training, data_format)
   inputs = tf.nn.relu(inputs)
 
   inputs = conv2d3d_fixed_padding(
       inputs=inputs, filters=filters, kernel_size=3, strides=strides,
       data_format=data_format)
-  inputs = self.batch_norm(inputs, training, data_format)
+  inputs = batch_norm(inputs, training, data_format)
   inputs = tf.nn.relu(inputs)
 
   inputs = conv2d3d_fixed_padding(
       inputs=inputs, filters=4 * filters, kernel_size=1, strides=1,
       data_format=data_format)
-  inputs = self.batch_norm(inputs, training, data_format)
+  inputs = batch_norm(inputs, training, data_format)
   inputs += shortcut
   inputs = tf.nn.relu(inputs)
 
@@ -434,13 +434,9 @@ bnd optimizer filters0\n'
       The output tensor of the block; shape should match inputs.
     """
     shortcut = inputs
-    with tf.variable_scope('bn_rl0'):
-      inputs = self.batch_norm(inputs, training, data_format)
-      inputs = tf.nn.relu(inputs)
-      if self.IsShowModel:
-        self.log( tensor_info(inputs, '      BN RELU',
-                      'block_v2',
-                      self.train_w_bytes(tf.get_variable_scope().name)) )
+    inputs = self.batch_norm(inputs, training, data_format)
+    inputs = tf.nn.relu(inputs)
+    if self.IsShowModel:  self.log('%38s'%('BN RELU'))
 
     conv_str = 'conv2d' if len(inputs.shape)==4 else 'conv3d'
     if (not self.voxel3d) and len(inputs.shape)==5:
@@ -461,13 +457,9 @@ bnd optimizer filters0\n'
                       (conv_str,b_kernel_size,strides,padding_s1), 'block_v2',
                       self.train_w_bytes(tf.get_variable_scope().name)) )
 
-    with tf.variable_scope('bn_rl1'):
-      inputs = self.batch_norm(inputs, training, data_format)
-      inputs = tf.nn.relu(inputs)
-      if self.IsShowModel:
-        self.log( tensor_info(inputs, '      BN RELU',
-                    'block_v2',
-                    self.train_w_bytes(tf.get_variable_scope().name)) )
+    inputs = self.batch_norm(inputs, training, data_format)
+    inputs = tf.nn.relu(inputs)
+    if self.IsShowModel:  self.log('%38s'%('BN RELU'))
 
     with tf.variable_scope('conv1'):
       inputs = self.conv2d3d_fixed_padding(
@@ -519,6 +511,7 @@ bnd optimizer filters0\n'
     shortcut = inputs
     inputs = self.batch_norm(inputs, training, data_format)
     inputs = tf.nn.relu(inputs)
+    if self.IsShowModel:  self.log('%38s'%('BN RELU'))
     conv_str = 'conv2d' if len(inputs.shape)==4 else 'conv3d'
 
     # The projection shortcut should come after the first batch norm and ReLU
@@ -526,28 +519,40 @@ bnd optimizer filters0\n'
     if projection_shortcut is not None:
       shortcut = projection_shortcut(inputs)
 
-    inputs = self.conv2d3d_fixed_padding(
-        inputs=inputs, filters=filters, kernel_size=1, strides=1, padding_s1=padding_s1,
-        data_format=data_format)
-    if self.IsShowModel:
-      self.log( tensor_info(inputs, '%s k,s=1,1'%(conv_str), 'bottle_v2'))
+    with tf.variable_scope('conv0'):
+      inputs = self.conv2d3d_fixed_padding(
+          inputs=inputs, filters=filters, kernel_size=1, strides=1,
+          padding_s1=padding_s1, data_format=data_format)
+      if self.IsShowModel:
+        self.log( tensor_info(inputs, '%s k,s,p=1,1,%s'%
+                      (conv_str, padding_s1), 'bottle_v2',
+                      self.train_w_bytes(tf.get_variable_scope().name)) )
 
     inputs = self.batch_norm(inputs, training, data_format)
     inputs = tf.nn.relu(inputs)
-    inputs = self.conv2d3d_fixed_padding(
-        inputs=inputs, filters=filters, kernel_size=b_kernel_size, strides=strides,
-        padding_s1=padding_s1, data_format=data_format)
-    if self.IsShowModel:
-      self.log( tensor_info(inputs, '%s k,s=%d,%d'%
-                        (conv_str,b_kernel_size,strides), 'bottle_v2'))
+    if self.IsShowModel:  self.log('%38s'%('BN RELU'))
+
+    with tf.variable_scope('conv1'):
+      inputs = self.conv2d3d_fixed_padding(
+          inputs=inputs, filters=filters, kernel_size=b_kernel_size,
+          strides=strides, padding_s1=padding_s1, data_format=data_format)
+      if self.IsShowModel:
+        self.log( tensor_info(inputs, '%s k,s,p=1,1,%s'%
+                    (conv_str, b_kernel_size, strides, padding_s1), 'bottle_v2',
+                    self.train_w_bytes(tf.get_variable_scope().name)) )
 
     inputs = self.batch_norm(inputs, training, data_format)
     inputs = tf.nn.relu(inputs)
-    inputs = self.conv2d3d_fixed_padding(
-        inputs=inputs, filters=4 * filters, kernel_size=1, strides=1,
-        padding_s1=padding_s1, data_format=data_format)
-    if self.IsShowModel: self.log( tensor_info(inputs, '%s k,s=1,1'%(conv_str),
-                                        'bottle_v2')+'\n' )
+    if self.IsShowModel:  self.log('%38s'%('BN RELU'))
+
+    with tf.variable_scope('conv2'):
+      inputs = self.conv2d3d_fixed_padding(
+          inputs=inputs, filters=4 * filters, kernel_size=1, strides=1,
+          padding_s1=padding_s1, data_format=data_format)
+      if self.IsShowModel:
+        self.log( tensor_info(inputs, '%s k,s,p=1,1,%s'%
+                    (conv_str, b_kernel_size, strides, padding_s1), 'bottle_v2',
+                    self.train_w_bytes(tf.get_variable_scope().name)) + '\n' )
 
     if self.residual:
       assert inputs.shape == shortcut.shape
@@ -594,7 +599,7 @@ bnd optimizer filters0\n'
           if self.IsShowModel:
             conv_str = 'conv2d' if len(inputs.shape)==4 else 'conv3d'
             self.log( tensor_info(shortcut, '%s k,s,p=%d,%d,%s'%(conv_str,
-                  kernel_size_shortcut, strides, padding_s1),'projection_shortcut',
+                  kernel_size_shortcut, strides, padding_s1),'shortcut',
                   self.train_w_bytes(tf.get_variable_scope().name)) )
         return shortcut
 
@@ -934,6 +939,7 @@ class Model(ResConvOps):
       if self.IsShowModel:
         self.log(tensor_info(inputs,'conv2d ks:1,1','initial',
                   self.train_w_bytes(tf.get_variable_scope().name)))
+        self.log('%38s'%('BN RELU'))
 
     return inputs
 
