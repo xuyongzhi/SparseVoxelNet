@@ -434,8 +434,14 @@ bnd optimizer filters0\n'
       The output tensor of the block; shape should match inputs.
     """
     shortcut = inputs
-    inputs = self.batch_norm(inputs, training, data_format)
-    inputs = tf.nn.relu(inputs)
+    with tf.variable_scope('bn_rl0'):
+      inputs = self.batch_norm(inputs, training, data_format)
+      inputs = tf.nn.relu(inputs)
+      if self.IsShowModel:
+        self.log( tensor_info(inputs, '      BN RELU',
+                      'block_v2',
+                      self.train_w_bytes(tf.get_variable_scope().name)) )
+
     conv_str = 'conv2d' if len(inputs.shape)==4 else 'conv3d'
     if (not self.voxel3d) and len(inputs.shape)==5:
       import pdb; pdb.set_trace()  # XXX BREAKPOINT
@@ -455,9 +461,15 @@ bnd optimizer filters0\n'
                       (conv_str,b_kernel_size,strides,padding_s1), 'block_v2',
                       self.train_w_bytes(tf.get_variable_scope().name)) )
 
-    with tf.variable_scope('conv1'):
+    with tf.variable_scope('bn_rl1'):
       inputs = self.batch_norm(inputs, training, data_format)
       inputs = tf.nn.relu(inputs)
+      if self.IsShowModel:
+        self.log( tensor_info(inputs, '      BN RELU',
+                    'block_v2',
+                    self.train_w_bytes(tf.get_variable_scope().name)) )
+
+    with tf.variable_scope('conv1'):
       inputs = self.conv2d3d_fixed_padding(
           inputs=inputs, filters=filters, kernel_size=b_kernel_size, strides=1,
           padding_s1='s', data_format=data_format)
@@ -569,22 +581,22 @@ bnd optimizer filters0\n'
     filters_out = filters * 4 if bottleneck else filters
 
     def projection_shortcut(inputs):
-      # 2d resenet use strides>1 to reduce feature map and create shortcut.
-      # Here we use kernel>1 and padding_s1='VALID'
-      # Use kernel>1 in shortcut may somewhat impede the identity forward, try
-      # optimize later.
-      with tf.variable_scope('shortcut'):
-        kernel_size_shortcut = b_kernel_size if padding_s1=='v' else 1
-        shortcut = self.conv2d3d_fixed_padding(
-            inputs=inputs, filters=filters_out,
-            kernel_size=kernel_size_shortcut,
-            strides=strides, padding_s1=padding_s1, data_format=data_format)
-        if self.IsShowModel:
-          conv_str = 'conv2d' if len(inputs.shape)==4 else 'conv3d'
-          self.log( tensor_info(shortcut, '%s k,s,p=%d,%d,%s'%(conv_str,
-                kernel_size_shortcut, strides, padding_s1),'projection_shortcut',
-                self.train_w_bytes(tf.get_variable_scope().name)) )
-      return shortcut
+        # 2d resenet use strides>1 to reduce feature map and create shortcut.
+        # Here we use kernel>1 and padding_s1='VALID'
+        # Use kernel>1 in shortcut may somewhat impede the identity forward, try
+        # optimize later.
+        with tf.variable_scope('shortcut'):
+          kernel_size_shortcut = b_kernel_size if padding_s1=='v' else 1
+          shortcut = self.conv2d3d_fixed_padding(
+              inputs=inputs, filters=filters_out,
+              kernel_size=kernel_size_shortcut,
+              strides=strides, padding_s1=padding_s1, data_format=data_format)
+          if self.IsShowModel:
+            conv_str = 'conv2d' if len(inputs.shape)==4 else 'conv3d'
+            self.log( tensor_info(shortcut, '%s k,s,p=%d,%d,%s'%(conv_str,
+                  kernel_size_shortcut, strides, padding_s1),'projection_shortcut',
+                  self.train_w_bytes(tf.get_variable_scope().name)) )
+        return shortcut
 
     # Only the first block per block_layer uses projection_shortcut and strides
     # and padding_s1
@@ -852,11 +864,10 @@ class Model(ResConvOps):
         self.show_layers_num_summary()
 
         total_w_num, total_w_bytes = self.train_w_bytes()
-        self.log('Total trainable weights: (%d %0.3f)  Counted (%d %0.3f)'%(
-          total_w_num, total_w_bytes/1000.0, self.trainable_num,
-          self.trainable_bytes/1000.0))
+        self.log('Total trainable weights: (%d %0.3fM)  Counted (%d %0.3fM)'%(
+          total_w_num, total_w_bytes/1e6, self.trainable_num,
+          self.trainable_bytes/1e6))
         self.log('------------------------------------------------------------')
-        #total_size = np.sum([np.prod(v.get_shape().as_list()) for v in tf.trainable_variables()])
         self.model_log_f.close()
 
       return inputs
@@ -883,7 +894,8 @@ class Model(ResConvOps):
           root_point_features = None
         assert len(outputs.shape)==4
         outputs = tf.reduce_max(outputs, axis=2 if self.data_format=='channels_last' else 3)
-        if self.IsShowModel: self.log( tensor_info(outputs, 'max', 'cas%d'%(cascade_id)) +'\n' )
+        if self.IsShowModel:
+          self.log( tensor_info(outputs, 'max', 'cas%d'%(cascade_id)) +'\n' )
       else:
         # already used 3D CNN to reduce map size, just reshape
         root_point_features = None
@@ -919,8 +931,9 @@ class Model(ResConvOps):
       if self.resnet_version == 1:
         inputs = self.batch_norm(inputs, training, self.data_format)
         inputs = tf.nn.relu(inputs)
-      if self.IsShowModel:self.log(tensor_info(inputs,'conv2d ks:1,1','initial',
-                                  self.train_w_bytes(tf.get_variable_scope().name)))
+      if self.IsShowModel:
+        self.log(tensor_info(inputs,'conv2d ks:1,1','initial',
+                  self.train_w_bytes(tf.get_variable_scope().name)))
 
     return inputs
 
