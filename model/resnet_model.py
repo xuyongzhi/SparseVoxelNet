@@ -443,7 +443,8 @@ bnd optimizer filters0\n'
       # pre-activation.
       shortcut = inputs
       projection_shortcut = None
-      if self.IsShowModel:  self.log('shortcut%30s'%('BN RELU'))
+      if self.IsShowModel:  self.log(
+            'shortcut after activation identity for pointnet first res unit'))
 
     conv_str = 'conv2d' if len(inputs.shape)==4 else 'conv3d'
     if (not self.voxel3d) and len(inputs.shape)==5:
@@ -526,8 +527,8 @@ bnd optimizer filters0\n'
       # pre-activation.
       shortcut = inputs
       projection_shortcut = None
-      if self.IsShowModel:  self.log('shortcut%30s'%(\
-                      'After activation identity for pointnet first res unit'))
+      if self.IsShowModel:  self.log(
+            'shortcut after activation identity for pointnet first res unit'))
 
     conv_str = 'conv2d' if len(inputs.shape)==4 else 'conv3d'
 
