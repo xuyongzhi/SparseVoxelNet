@@ -77,7 +77,7 @@ def tensor_info(tensor_ls, tensor_name_ls=None, scope=None,
     if weight_num_bytes_shapes!=None:
       weight_num, weight_bytes, weight_shapes = weight_num_bytes_shapes
       weight_str = '  '.join([str(shape) for shape in weight_shapes])
-      weight_str += ' (%d %0.3fK)'%(weight_num, weight_bytes/1024.0)
+      weight_str += ' (%d %0.1fK)'%(weight_num, weight_bytes/1024.0)
       tensor_sum += '%-30s'%(weight_str)
     if i < len(tensor_ls)-1:
         tensor_sum += '\n'
@@ -383,6 +383,19 @@ bnd optimizer filters0\n'
     self.model_log_f.flush()
     print(log_str)
 
+  def log_tensor_c(self, inputs, b_kernel_size, strides, padding_s1, var_scope, layer_name):
+      if not self.IsShowModel: return
+      self.add_activation_size(inputs)
+      conv_str = 'conv2d' if len(inputs.shape)==4 else 'conv3d'
+      self.log( tensor_info(inputs, '%s k,s,p=%d,%d,%s'%
+                    (conv_str,b_kernel_size,strides,padding_s1), layer_name,
+                    self.train_w_bytes(var_scope)) )
+
+  def log_tensor_p(self, inputs, pool_op_name, layer_name):
+      if not self.IsShowModel: return
+      self.add_activation_size(inputs)
+      self.log(tensor_info(inputs, pool_op_name, layer_name))
+
   def show_layers_num_summary(self):
     self.log('block layers num:{}\nconv2d num:{}\nconv3d num:{}\n'.format(
                   self._block_layers_num, self._conv2d_num, self._conv3d_num))
@@ -399,18 +412,17 @@ bnd optimizer filters0\n'
       conv_fn = tf.layers.conv2d
       self._conv2d_num += 1
 
-    # only used when strides==1
-    if padding_s1=='s':
-      padding_s1 = 'SAME'
-    else:
-      assert padding_s1=='v'
-      padding_s1 = 'VALID'
 
     if strides > 1:
       inputs = fixed_padding(inputs, kernel_size, data_format)
       padding = 'VALID'
     else:
-      padding = padding_s1
+      # only used when strides==1
+      if padding_s1=='s':
+        padding = 'SAME'
+      else:
+        assert padding_s1=='v'
+      padding = 'VALID'
 
     if USE_CHARLES:
       kernel_initializer = tf.contrib.layers.xavier_initializer()   # charles
@@ -424,7 +436,7 @@ bnd optimizer filters0\n'
         data_format=data_format)
     return inputs
 
-  def _building_block_v2(self, inputs, filters, training, projection_shortcut,
+  def building_block_v2(self, inputs, filters, training, projection_shortcut,
                           b_kernel_size, strides, padding_s1, data_format):
     """A single block for ResNet v2, without a bottleneck.
 
@@ -462,9 +474,6 @@ bnd optimizer filters0\n'
             'shortcut after activation identity for pointnet first res unit')
 
     conv_str = 'conv2d' if len(inputs.shape)==4 else 'conv3d'
-    if (not self.voxel3d) and len(inputs.shape)==5:
-      import pdb; pdb.set_trace()  # XXX BREAKPOINT
-      pass
 
     # The projection shortcut should come after the first batch norm and ReLU
     # since it performs a 1x1 convolution.
@@ -501,11 +510,12 @@ bnd optimizer filters0\n'
       return inputs + shortcut
     else:
       return inputs
-  def _bottleneck_block_v2(self, inputs, filters, training, projection_shortcut,
-                          b_kernel_size, strides, padding_s1, data_format):
-    """A single block for ResNet v2, without a bottleneck.
 
-    Similar to _building_block_v2(), except using the "bottleneck" blocks
+  def bottleneck_block_v2(self, inputs, filters, training, projection_shortcut,
+                          b_kernel_size, strides, padding_s1, data_format):
+    """A single block for ResNet v2, with a bottleneck.
+
+    Similar to building_block_v2(), except using the "bottleneck" blocks
     described in:
       Convolution then batch normalization then ReLU as described by:
         Deep Residual Learning for Image Recognition
@@ -538,6 +548,95 @@ bnd optimizer filters0\n'
     inputs = tf.nn.relu(inputs)
     if self.IsShowModel:  self.log('%38s'%('BN RELU'))
 
+    conv_str = 'conv2d' if len(inputs.shape)==4 else 'conv3d'
+
+    # The projection shortcut should come after the first batch norm and ReLU
+    # since it performs a 1x1 convolution.
+    if projection_shortcut is not None:
+      shortcut = projection_shortcut(inputs)
+
+    with tf.variable_scope('conv0'):
+      inputs = self.conv2d3d_fixed_padding(
+          inputs=inputs, filters=filters, kernel_size=1, strides=1,
+          padding_s1=padding_s1, data_format=data_format)
+      self.log_tensor_c(inputs, 1, 1, padding_s1, tf.get_variable_scope().name, 'block_v2')
+
+    inputs = self.batch_norm(inputs, training, data_format)
+    inputs = tf.nn.relu(inputs)
+    if self.IsShowModel:  self.log('%38s'%('BN RELU'))
+
+    with tf.variable_scope('conv1'):
+      inputs = self.conv2d3d_fixed_padding(
+          inputs=inputs, filters=filters, kernel_size=b_kernel_size,
+          strides=strides, padding_s1=padding_s1, data_format=data_format)
+      self.log_tensor_c(inputs, b_kernel_size, strides, padding_s1, tf.get_variable_scope().name, 'bottle_v2')
+
+    inputs = self.batch_norm(inputs, training, data_format)
+    inputs = tf.nn.relu(inputs)
+    if self.IsShowModel:  self.log('%38s'%('BN RELU'))
+
+    with tf.variable_scope('conv2'):
+      inputs = self.conv2d3d_fixed_padding(
+          inputs=inputs, filters=4 * filters, kernel_size=1, strides=1,
+          padding_s1=padding_s1, data_format=data_format)
+      self.log_tensor_c(inputs, 1, 1, padding_s1, tf.get_variable_scope().name, 'bottle_v2')
+
+    if self.residual:
+      if not inputs.shape == shortcut.shape:
+        import pdb; pdb.set_trace()  # XXX BREAKPOINT
+
+      return inputs + shortcut
+    else:
+      return inputs
+
+  def operation(self, op, net):
+    ''' general operation entry
+
+    Args:
+      op: ['conv',filters,kernel_size,strides,padding_s1,data_format]
+          ['max'/'ave',kernel_size,strides]
+    '''
+    if op[0] == 'conv':
+      net = self.conv2d3d_fixed_padding(net, op[1], op[2], op[3])
+    import pdb; pdb.set_trace()  # XXX BREAKPOINT
+    return net
+  def inception_block_v2(self, inputs, filters, training, projection_shortcut,
+                          b_kernel_size, strides, padding_s1, data_format):
+    """A single block for ResNet v2, with inception structure
+
+
+    Args:
+      inputs: A tensor of size [batch, channels, height_in, width_in] or
+        [batch, height_in, width_in, channels] depending on data_format.
+      filters: The number of filters for the convolutions.
+      training: A Boolean for whether the model is in training or inference
+        mode. Needed for batch normalization.
+      projection_shortcut: The function to use for projection shortcuts
+        (typically a 1x1 convolution when downsampling the input).
+      strides: The block's stride. If greater than 1, this block will ultimately
+        downsample the input.
+      data_format: The input format ('channels_last' or 'channels_first').
+
+    Returns:
+      The output tensor of the block; shape should match inputs.
+    """
+    shortcut = inputs
+    net = self.batch_norm(inputs, training, data_format)
+    net = tf.nn.relu(net)
+
+    ops = [[['conv',32,1]],
+                         [['conv',32,1],['conv',32,3]],
+                         [['conv',32,1],['conv',48,3],['conv',64,3]],
+                         ['max',3,1] ]
+    with tf.variable_scope('inception_block_v2'):
+      for b, op in enumerate(ops):
+        with tf.variable_scope('Branch_%d'%(b)):
+          net = self.operation(op, net)
+
+
+    import pdb; pdb.set_trace()  # XXX BREAKPOINT
+    pass
+
     if projection_shortcut == 'FirstResUnit':
       # For pointnet, projection shortcut is not needed at the First ResUnit.
       # However, BN and Activation is still required at the First ResUnit for
@@ -556,13 +655,8 @@ bnd optimizer filters0\n'
 
     with tf.variable_scope('conv0'):
       inputs = self.conv2d3d_fixed_padding(
-          inputs=inputs, filters=filters, kernel_size=1, strides=1,
+          inputs=inputs, filters=filters, kernel_size=b_kernel_size, strides=strides,
           padding_s1=padding_s1, data_format=data_format)
-      if self.IsShowModel:
-        self.add_activation_size(inputs)
-        self.log( tensor_info(inputs, '%s k,s,p=1,1,%s'%
-                      (conv_str, padding_s1), 'bottle_v2',
-                      self.train_w_bytes(tf.get_variable_scope().name)) )
 
     inputs = self.batch_norm(inputs, training, data_format)
     inputs = tf.nn.relu(inputs)
@@ -570,27 +664,8 @@ bnd optimizer filters0\n'
 
     with tf.variable_scope('conv1'):
       inputs = self.conv2d3d_fixed_padding(
-          inputs=inputs, filters=filters, kernel_size=b_kernel_size,
-          strides=strides, padding_s1=padding_s1, data_format=data_format)
-      if self.IsShowModel:
-        self.add_activation_size(inputs)
-        self.log( tensor_info(inputs, '%s k,s,p=1,1,%s'%
-                    (conv_str, b_kernel_size, strides, padding_s1), 'bottle_v2',
-                    self.train_w_bytes(tf.get_variable_scope().name)) )
-
-    inputs = self.batch_norm(inputs, training, data_format)
-    inputs = tf.nn.relu(inputs)
-    if self.IsShowModel:  self.log('%38s'%('BN RELU'))
-
-    with tf.variable_scope('conv2'):
-      inputs = self.conv2d3d_fixed_padding(
-          inputs=inputs, filters=4 * filters, kernel_size=1, strides=1,
-          padding_s1=padding_s1, data_format=data_format)
-      if self.IsShowModel:
-        self.add_activation_size(inputs)
-        self.log( tensor_info(inputs, '%s k,s,p=1,1,%s'%
-                    (conv_str, b_kernel_size, strides, padding_s1), 'bottle_v2',
-                    self.train_w_bytes(tf.get_variable_scope().name)) + '\n' )
+          inputs=inputs, filters=filters, kernel_size=b_kernel_size, strides=1,
+          padding_s1='s', data_format=data_format)
 
     if self.residual:
       assert inputs.shape == shortcut.shape
@@ -598,7 +673,7 @@ bnd optimizer filters0\n'
     else:
       return inputs
 
-  def block_layer(self, inputs, filters, bottleneck, block_fn, blocks, b_kernel_size,
+  def block_layer(self, inputs, filters, block_fn, blocks, b_kernel_size,
                   strides, padding_s1, training, name, data_format):
     """Creates one layer of blocks for the ResNet model.
 
@@ -606,7 +681,6 @@ bnd optimizer filters0\n'
       inputs: A tensor of size [batch, channels, height_in, width_in] or
         [batch, height_in, width_in, channels] depending on data_format.
       filters: The number of filters for the first convolution of the layer.
-      bottleneck: Is the block created a bottleneck block.
       block_fn: The block to use within the model, either `building_block` or
         `bottleneck_block`.
       blocks: The number of blocks contained in the layer.
@@ -621,6 +695,7 @@ bnd optimizer filters0\n'
       The output tensor of the block layer.
     """
     # Bottleneck blocks end with 4x the number of filters as they start with
+    bottleneck = block_fn == self.bottleneck_block_v2
     filters_out = filters * 4 if bottleneck else filters
 
     def projection_shortcut(inputs):
@@ -634,18 +709,12 @@ bnd optimizer filters0\n'
               inputs=inputs, filters=filters_out,
               kernel_size=kernel_size_shortcut,
               strides=strides, padding_s1=padding_s1, data_format=data_format)
-          if self.IsShowModel:
-            self.add_activation_size(inputs)
-            conv_str = 'conv2d' if len(inputs.shape)==4 else 'conv3d'
-            self.log( tensor_info(shortcut, '%s k,s,p=%d,%d,%s'%(conv_str,
-                  kernel_size_shortcut, strides, padding_s1),'shortcut',
-                  self.train_w_bytes(tf.get_variable_scope().name)) )
+          self.log_tensor_c(inputs, kernel_size_shortcut, strides, padding_s1, tf.get_variable_scope().name, 'shortcut')
         return shortcut
 
     # Only the first block per block_layer uses projection_shortcut and strides
     # and padding_s1
-    if (b_kernel_size==1 and strides==1 and inputs.shape[-1].value==filters_out)\
-          or (not self.residual):
+    if (b_kernel_size==1 and strides==1 and inputs.shape[-1].value==filters_out):
       projection_shortcut_0 = None
       if self._block_layers_num == 0:
         projection_shortcut_0 = 'FirstResUnit'
@@ -664,15 +733,15 @@ bnd optimizer filters0\n'
 class Model(ResConvOps):
   """Base class for building the Resnet Model."""
 
-  def __init__(self, model_flag, resnet_size, bottleneck, num_classes, num_filters,
+  def __init__(self, model_flag, resnet_size, block_style, num_classes, num_filters,
                block_sizes, block_kernels, block_strides, block_paddings,
-               final_size, resnet_version=DEFAULT_VERSION, data_format=None,
+               resnet_version=DEFAULT_VERSION, data_format=None,
                dtype=DEFAULT_DTYPE, data_net_configs={}):
     """Creates a model for classifying an image.
 
     Args:
       resnet_size: A single integer for the size of the ResNet model.
-      bottleneck: Use regular blocks or bottleneck blocks.
+      block_style: regular, bottleneck, inception
       num_classes: The number of classes used as labels.
       num_filters: The number of filters to use for the first block layer
         of the model. This number is then doubled for each subsequent block
@@ -688,7 +757,6 @@ class Model(ResConvOps):
         i-th set.
       block_strides: List of integers representing the desired stride size for
         each of the sets of block layers. Should be same length as block_sizes.
-      final_size: The expected size of the model after the second pooling.
       resnet_version: Integer representing which version of the ResNet network
         to use. See README for details. Valid values: [1, 2]
       data_format: Input format ('channels_last', 'channels_first', or None).
@@ -712,17 +780,18 @@ class Model(ResConvOps):
       raise ValueError(
           'Resnet version should be 1 or 2. See README for citations.')
 
-    self.bottleneck = bottleneck
-    if bottleneck:
-      if resnet_version == 1:
-        self.block_fn = _bottleneck_block_v1
-      else:
-        self.block_fn = self._bottleneck_block_v2
+    self.block_style = block_style
+    if resnet_version == 1:
+        raise NotImplementedError
     else:
-      if resnet_version == 1:
-        self.block_fn = _building_block_v1
+      if block_style == 'Regular':
+        self.block_fn = self.building_block_v2
+      elif block_style == 'Bottleneck':
+        self.block_fn = self.bottleneck_block_v2
+      elif block_style == 'Inception':
+        self.block_fn = self.inception_block_v2
       else:
-        self.block_fn = self._building_block_v2
+        raise NotImplementedError
 
     if dtype not in ALLOWED_TYPES:
       raise ValueError('dtype must be one of: {}'.format(ALLOWED_TYPES))
@@ -734,7 +803,6 @@ class Model(ResConvOps):
     self.block_kernels = block_kernels
     self.block_strides = block_strides
     self.block_paddings = block_paddings
-    self.final_size = final_size
     self.dtype = dtype
     self.pre_activation = resnet_version == 2
     self.data_net_configs = data_net_configs
@@ -942,8 +1010,7 @@ class Model(ResConvOps):
           root_point_features = None
         assert len(outputs.shape)==4
         outputs = tf.reduce_max(outputs, axis=2 if self.data_format=='channels_last' else 3)
-        if self.IsShowModel:
-          self.log( tensor_info(outputs, 'max', 'cas%d'%(cascade_id)) +'\n' )
+        self.log_tensor_p(inputs, 'max', 'cas%d'%(cascade_id))
       else:
         # already used 3D CNN to reduce map size, just reshape
         root_point_features = None
@@ -971,10 +1038,7 @@ class Model(ResConvOps):
           inputs=inputs, filters=self.num_filters, kernel_size=1,
           strides=1, padding_s1='s', data_format=self.data_format)
       inputs = tf.identity(inputs, 'initial_conv')
-      if self.IsShowModel:
-        self.add_activation_size(inputs)
-        self.log(tensor_info(inputs,'conv2d ks:1,1','initial',
-                  self.train_w_bytes(tf.get_variable_scope().name)))
+      self.log_tensor_c(inputs, 1, 1, 's', tf.get_variable_scope().name, 'initial')
 
       # We do not include batch normalization or activation functions in V2
       # for the initial conv1 because the first ResNet unit will perform these
@@ -996,9 +1060,10 @@ class Model(ResConvOps):
         num_filters = self.num_filters * (2**(self.block_num_count-cascade_id))
         num_filters = min(num_filters, 1024)
         with tf.variable_scope('block_%d'%(i)):
+          block_fn = self.block_fn if cascade_id!=0 else self.building_block_v2
           inputs = self.block_layer(
-              inputs=inputs, filters=num_filters, bottleneck=self.bottleneck,
-              block_fn=self.block_fn, blocks=num_blocks,
+              inputs=inputs, filters=num_filters,
+              block_fn=block_fn, blocks=num_blocks,
               b_kernel_size=self.block_kernels[cascade_id][i],
               strides=self.block_strides[cascade_id][i],
               padding_s1=self.block_paddings[cascade_id][i],

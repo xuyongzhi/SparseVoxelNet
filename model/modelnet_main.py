@@ -208,25 +208,16 @@ class ModelnetModel(resnet_model.Model):
       dtype: The TensorFlow dtype to use for calculations.
     """
 
-    # For bigger models, we want to use "bottleneck" layers
-    if resnet_size < 50:
-      bottleneck = False
-      final_size = 512
-    else:
-      bottleneck = True
-      final_size = 2048
-
     super(ModelnetModel, self).__init__(
         model_flag = model_flag,
         resnet_size=resnet_size,
-        bottleneck=bottleneck,
+        block_style=data_net_configs['block_style'],
         num_classes=num_classes,
         num_filters=data_net_configs['num_filters0'],
         block_sizes=data_net_configs['block_sizes'],
         block_kernels=data_net_configs['block_kernels'],
         block_strides=data_net_configs['block_strides'],
         block_paddings=data_net_configs['block_paddings'],
-        final_size=final_size,
         resnet_version=resnet_version,
         data_format=data_format,
         dtype=dtype,
@@ -289,6 +280,7 @@ def define_net_configs(flags_obj):
     assert flags_obj.num_gpus == 1
   _DATA_PARAS['residual'] = flags_obj.residual == 1
   _DATA_PARAS['use_bias'] = flags_obj.use_bias == 1
+  _DATA_PARAS['block_style'] = flags_obj.block_style
   _DATA_PARAS['optimizer'] = flags_obj.optimizer
   _DATA_PARAS['learning_rate0'] = flags_obj.learning_rate0
   _DATA_PARAS['lr_decay_rate'] = flags_obj.lr_decay_rate
@@ -380,13 +372,12 @@ def define_model_dir():
     return model_str
 
   if flags.FLAGS.residual == 1:
-    logname = 'Rs'
+    logname = 'R'
   else:
-    logname = 'Pl'
+    logname = 'P'
+  logname += flags.FLAGS.block_style[0]
   if flags.FLAGS.use_bias == 1:
-    logname += 'Ub'
-  else:
-    logname += 'Nb'
+    logname += 'b'
   model_str = get_model_configs_fused()
   logname += str(flags.FLAGS.resnet_size) + '-' + flags.FLAGS.model_flag
   logname += model_str
@@ -431,6 +422,8 @@ def define_modelnet_flags():
   _DATA_PARAS = {}
   flags.DEFINE_integer('residual', DEFAULTS['residual'], '')
   flags.DEFINE_integer('use_bias', DEFAULTS['use_bias'], '')
+  flags.DEFINE_string('block_style', DEFAULTS['block_style'], \
+                      'Regular,Bottleneck,Inception')
   flags.DEFINE_string('optimizer', DEFAULTS['optimizer'], 'adam, momentum')
   flags.DEFINE_float('learning_rate0', DEFAULTS['learning_rate0'],'')
   flags.DEFINE_float('lr_decay_rate', DEFAULTS['lr_decay_rate'],'')
