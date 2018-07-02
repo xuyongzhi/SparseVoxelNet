@@ -865,7 +865,15 @@ class Model(ResConvOps):
           if k == 0:
               l_points[0] = root_point_features
           l_points.append(new_points)
-          if self.IsShowModel: self.log('------------------\n')
+          if self.IsShowModel: self.log(
+            '*****************************************************************')
+
+      # Only apply the BN and ReLU for model that does pre_activation in each
+      # building/bottleneck block, eg resnet V2.
+      if self.pre_activation:
+        inputs = self.batch_norm(inputs, is_training, self.data_format)
+        inputs = tf.nn.relu(inputs)
+        if self.IsShowModel:  self.log('%38s'%('BN RELU'))
 
       # ----------------------
       if self.IsShowModel: self.log( tensor_info(new_points, 'end', 'res blocks') )
