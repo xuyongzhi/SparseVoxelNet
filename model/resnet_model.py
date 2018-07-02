@@ -52,7 +52,7 @@ USE_CHARLES = True
 
 
 def tensor_info(tensor_ls, tensor_name_ls=None, scope=None,
-                weight_num_bytes=None):
+                weight_num_bytes_shapes=None):
   if type(tensor_ls) != list:
     tensor_ls = [tensor_ls]
   if tensor_name_ls == None:
@@ -68,13 +68,17 @@ def tensor_info(tensor_ls, tensor_name_ls=None, scope=None,
     if tensor_ls[i] == None:
         tensor_sum += 'None'
     else:
-        tensor_sum += '%-30s'%(str( [s.value for s in tensor_ls[i].shape] ))
+        activation_shape_str = str([s.value for s in tensor_ls[i].shape])
+        activation_size = np.prod(tensor_ls[i].shape.as_list()[1:])
+        #activation_size = np.prod(tensor_ls[i].shape.as_list())
+        activation_size_str = '(%0.1fK)'%(activation_size/1024.0)
+        tensor_sum += '%-40s'%(str( activation_shape_str + activation_size_str ))
 
-    if weight_num_bytes!=None:
-      weight_num, weight_bytes, weight_shapes = weight_num_bytes
-      weight_shape_str = ['  '.join([str(shape) for shape in weight_shapes]) ]
-      tensor_sum += '%-15s'%( '(%d %0.3fK)'%(weight_num, weight_bytes/1000.0) )
-      tensor_sum += '%-20s'%(weight_shape_str)
+    if weight_num_bytes_shapes!=None:
+      weight_num, weight_bytes, weight_shapes = weight_num_bytes_shapes
+      weight_str = '  '.join([str(shape) for shape in weight_shapes])
+      weight_str += ' (%d %0.3fK)'%(weight_num, weight_bytes/1024.0)
+      tensor_sum += '%-30s'%(weight_str)
     if i < len(tensor_ls)-1:
         tensor_sum += '\n'
   return tensor_sum
@@ -280,8 +284,9 @@ class ResConvOps(object):
   _conv3d_num = 0
   IsShowModel = False
   _epoch = 0
-  trainable_num = 0
-  trainable_bytes = 0
+  _trainable_num = 0
+  _trainable_bytes = 0
+  _activation_size = 0
 
   def __init__(self, data_net_configs):
     self.residual = data_net_configs['residual']
@@ -345,13 +350,16 @@ bnd optimizer filters0\n'
     weight_bytes = np.sum([np.prod(v.get_shape().as_list()) * v.dtype.size \
                           for v in trainable_variables])
     if scope!=None: # assume it is a unique scope
-      self.trainable_num += weight_num
-      self.trainable_bytes += weight_bytes
+      self._trainable_num += weight_num
+      self._trainable_bytes += weight_bytes
 
     weight_shapes = [np.array(v.get_shape().as_list()) \
                           for v in trainable_variables]
     conv_shapes = [shape for shape in weight_shapes if shape.size>=3]
     return weight_num, weight_bytes, conv_shapes
+
+  def add_activation_size(self, activation):
+    self._activation_size += np.prod(activation.shape.as_list()[1:])
 
   def batch_norm(self, inputs, training, data_format):
     """Performs a batch normalization using a standard set of parameters."""
@@ -468,6 +476,7 @@ bnd optimizer filters0\n'
           inputs=inputs, filters=filters, kernel_size=b_kernel_size, strides=strides,
           padding_s1=padding_s1, data_format=data_format)
       if self.IsShowModel:
+        self.add_activation_size(inputs)
         self.log( tensor_info(inputs, '%s k,s,p=%d,%d,%s'%
                       (conv_str,b_kernel_size,strides,padding_s1), 'block_v2',
                       self.train_w_bytes(tf.get_variable_scope().name)) )
@@ -481,6 +490,7 @@ bnd optimizer filters0\n'
           inputs=inputs, filters=filters, kernel_size=b_kernel_size, strides=1,
           padding_s1='s', data_format=data_format)
       if self.IsShowModel:
+        self.add_activation_size(inputs)
         self.log( tensor_info(inputs, '%s k,s,p=%d,%d,%s'%
                   (conv_str,b_kernel_size,strides,padding_s1), 'block_v2',
                   self.train_w_bytes(tf.get_variable_scope().name))
@@ -549,6 +559,7 @@ bnd optimizer filters0\n'
           inputs=inputs, filters=filters, kernel_size=1, strides=1,
           padding_s1=padding_s1, data_format=data_format)
       if self.IsShowModel:
+        self.add_activation_size(inputs)
         self.log( tensor_info(inputs, '%s k,s,p=1,1,%s'%
                       (conv_str, padding_s1), 'bottle_v2',
                       self.train_w_bytes(tf.get_variable_scope().name)) )
@@ -562,6 +573,7 @@ bnd optimizer filters0\n'
           inputs=inputs, filters=filters, kernel_size=b_kernel_size,
           strides=strides, padding_s1=padding_s1, data_format=data_format)
       if self.IsShowModel:
+        self.add_activation_size(inputs)
         self.log( tensor_info(inputs, '%s k,s,p=1,1,%s'%
                     (conv_str, b_kernel_size, strides, padding_s1), 'bottle_v2',
                     self.train_w_bytes(tf.get_variable_scope().name)) )
@@ -575,6 +587,7 @@ bnd optimizer filters0\n'
           inputs=inputs, filters=4 * filters, kernel_size=1, strides=1,
           padding_s1=padding_s1, data_format=data_format)
       if self.IsShowModel:
+        self.add_activation_size(inputs)
         self.log( tensor_info(inputs, '%s k,s,p=1,1,%s'%
                     (conv_str, b_kernel_size, strides, padding_s1), 'bottle_v2',
                     self.train_w_bytes(tf.get_variable_scope().name)) + '\n' )
@@ -622,6 +635,7 @@ bnd optimizer filters0\n'
               kernel_size=kernel_size_shortcut,
               strides=strides, padding_s1=padding_s1, data_format=data_format)
           if self.IsShowModel:
+            self.add_activation_size(inputs)
             conv_str = 'conv2d' if len(inputs.shape)==4 else 'conv3d'
             self.log( tensor_info(shortcut, '%s k,s,p=%d,%d,%s'%(conv_str,
                   kernel_size_shortcut, strides, padding_s1),'shortcut',
@@ -897,8 +911,10 @@ class Model(ResConvOps):
 
         total_w_num, total_w_bytes, train_w_shapes = self.train_w_bytes()
         self.log('Total trainable weights: (%d %0.3fM)  Counted (%d %0.3fM)'%(
-          total_w_num, total_w_bytes/1e6, self.trainable_num,
-          self.trainable_bytes/1e6))
+          total_w_num, total_w_bytes/1e6, self._trainable_num,
+          self._trainable_bytes/pow(1024.0,2)))
+        self.log('Total activation size:%0.1fM'%\
+                 (self._activation_size/pow(1024.0,2)))
         self.log('------------------------------------------------------------')
         self.model_log_f.close()
 
@@ -956,6 +972,7 @@ class Model(ResConvOps):
           strides=1, padding_s1='s', data_format=self.data_format)
       inputs = tf.identity(inputs, 'initial_conv')
       if self.IsShowModel:
+        self.add_activation_size(inputs)
         self.log(tensor_info(inputs,'conv2d ks:1,1','initial',
                   self.train_w_bytes(tf.get_variable_scope().name)))
 
@@ -975,7 +992,7 @@ class Model(ResConvOps):
                    valid_mask, block_bottom_center_mm):
       for i, num_blocks in enumerate(self.block_sizes[cascade_id]):
         if self.IsShowModel:
-          self.log('--------------cascade_id %d, block %d----------------'%(cascade_id, i))
+          self.log('-------------------cascade_id %d, block %d---------------------'%(cascade_id, i))
         num_filters = self.num_filters * (2**(self.block_num_count-cascade_id))
         num_filters = min(num_filters, 1024)
         with tf.variable_scope('block_%d'%(i)):

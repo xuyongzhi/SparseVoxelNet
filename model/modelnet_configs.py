@@ -25,7 +25,7 @@ DEFAULTS['lr_warmup'] = 1
 DEFAULTS['batch_norm_decay0'] = 0.7
 
 DEFAULTS['model_flag'] = 'V'
-DEFAULTS['resnet_size'] = 18
+DEFAULTS['resnet_size'] = 28
 DEFAULTS['num_filters0'] = 64
 DEFAULTS['feed_data'] = 'xyzs'
 DEFAULTS['aug_types'] = 'N' # 'rpsfj-360_0_0'
