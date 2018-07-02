@@ -68,11 +68,13 @@ def tensor_info(tensor_ls, tensor_name_ls=None, scope=None,
     if tensor_ls[i] == None:
         tensor_sum += 'None'
     else:
-        tensor_sum += '%-22s'%(str( [s.value for s in tensor_ls[i].shape] ))
+        tensor_sum += '%-30s'%(str( [s.value for s in tensor_ls[i].shape] ))
 
     if weight_num_bytes!=None:
-      weight_num, weight_bytes = weight_num_bytes
-      tensor_sum += '(%d %0.3fK)'%(weight_num, weight_bytes/1000.0)
+      weight_num, weight_bytes, weight_shapes = weight_num_bytes
+      weight_shape_str = ['  '.join([str(shape) for shape in weight_shapes]) ]
+      tensor_sum += '%-15s'%( '(%d %0.3fK)'%(weight_num, weight_bytes/1000.0) )
+      tensor_sum += '%-20s'%(weight_shape_str)
     if i < len(tensor_ls)-1:
         tensor_sum += '\n'
   return tensor_sum
@@ -345,7 +347,12 @@ bnd optimizer filters0\n'
     if scope!=None: # assume it is a unique scope
       self.trainable_num += weight_num
       self.trainable_bytes += weight_bytes
-    return weight_num, weight_bytes
+
+    weight_shapes = [np.array(v.get_shape().as_list()) \
+                          for v in trainable_variables]
+    conv_shapes = [shape for shape in weight_shapes if shape.size>=3]
+    return weight_num, weight_bytes, conv_shapes
+
   def batch_norm(self, inputs, training, data_format):
     """Performs a batch normalization using a standard set of parameters."""
     # We set fused=True for a significant performance boost. See
@@ -444,7 +451,7 @@ bnd optimizer filters0\n'
       shortcut = inputs
       projection_shortcut = None
       if self.IsShowModel:  self.log(
-            'shortcut after activation identity for pointnet first res unit'))
+            'shortcut after activation identity for pointnet first res unit')
 
     conv_str = 'conv2d' if len(inputs.shape)==4 else 'conv3d'
     if (not self.voxel3d) and len(inputs.shape)==5:
@@ -528,7 +535,7 @@ bnd optimizer filters0\n'
       shortcut = inputs
       projection_shortcut = None
       if self.IsShowModel:  self.log(
-            'shortcut after activation identity for pointnet first res unit'))
+            'shortcut after activation identity for pointnet first res unit')
 
     conv_str = 'conv2d' if len(inputs.shape)==4 else 'conv3d'
 
@@ -888,7 +895,7 @@ class Model(ResConvOps):
         self.log( tensor_info(inputs, 'dense', 'final') +'\n\n' )
         self.show_layers_num_summary()
 
-        total_w_num, total_w_bytes = self.train_w_bytes()
+        total_w_num, total_w_bytes, train_w_shapes = self.train_w_bytes()
         self.log('Total trainable weights: (%d %0.3fM)  Counted (%d %0.3fM)'%(
           total_w_num, total_w_bytes/1e6, self.trainable_num,
           self.trainable_bytes/1e6))
