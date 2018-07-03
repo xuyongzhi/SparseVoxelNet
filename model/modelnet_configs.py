@@ -27,12 +27,12 @@ DEFAULTS['lr_warmup'] = 1
 DEFAULTS['batch_norm_decay0'] = 0.7
 
 DEFAULTS['model_flag'] = 'V'
-DEFAULTS['resnet_size'] = 28
-DEFAULTS['num_filters0'] = 16
+DEFAULTS['resnet_size'] = 36
+DEFAULTS['num_filters0'] = 24
 DEFAULTS['feed_data'] = 'xyzs-nxnynz'
 DEFAULTS['aug_types'] = 'N' # 'rpsfj-360_0_0'
 DEFAULTS['drop_imo'] = '0_0_5'
-DEFAULTS['batch_size'] = 16
+DEFAULTS['batch_size'] = 32
 DEFAULTS['num_gpus'] = 2
 DEFAULTS['gpu_id'] = 1
 DEFAULTS['train_epochs'] = 61
@@ -46,23 +46,12 @@ def get_block_paras(resnet_size, model_flag):
   block_strides = {}
   block_paddings = {}   # only used when strides == 1
 
-  rs = 28
-  block_sizes[rs]    = [[1,1,1], [1,2], [2,2,1]]
+  rs = 36
+  block_sizes[rs]    = [[2,1,0], [1,2], [2,2,1]]
   block_kernels[rs]  = [[1,1,1], [3,1], [3,3,1]]
   block_strides[rs]  = [[1,1,1], [1,1], [1,1,1]]
   block_paddings[rs] = [['s','s','s'], ['v','s'], ['v','v','v']]
 
-  rs = 34
-  block_sizes[rs]    = [[4], [3,1], [2,2,2]]
-  block_kernels[rs]  = [[1], [2,3], [3,3,3]]
-  block_strides[rs]  = [[1], [1,1], [1,1,1]]
-  block_paddings[rs] = [['s'], ['s','v'], ['v','v','v']]
-
-  rs = 50
-  block_sizes[rs]    = [[5], [4,1], [3,3,3]]
-  block_kernels[rs]  = [[1], [2,3], [3,3,3]]
-  block_strides[rs]  = [[1], [1,1], [1,1,1]]
-  block_paddings[rs] = [['s'], ['s','v'], ['v','v','v']]
 
   if 'V' not in model_flag:
     for i in range(len(block_sizes[resnet_size])):
@@ -74,7 +63,7 @@ def get_block_paras(resnet_size, model_flag):
   if resnet_size not in block_sizes:
     err = ('Could not find layers for selected Resnet size.\n'
            'Size received: {}; sizes allowed: {}.'.format(
-               resnet_size, resnet_size.keys()))
+               resnet_size, block_sizes.keys()))
     raise ValueError(err)
 
   # check settings

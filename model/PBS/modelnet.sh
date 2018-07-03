@@ -1,4 +1,4 @@
-resnet_size=28
+resnet_size=36
 residual=1
 batch_norm_decay0=0.7
 

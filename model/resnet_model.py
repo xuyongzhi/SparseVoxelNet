@@ -684,6 +684,7 @@ bnd optimizer filters0 shortcut\n'
     Returns:
       The output tensor of the block layer.
     """
+    if blocks==0: return inputs
     # Bottleneck blocks end with 4x the number of filters as they start with
     bottleneck = block_fn == self.bottleneck_block_v2
     filters_out = filters * 4 if bottleneck else filters
@@ -1048,7 +1049,8 @@ class Model(ResConvOps):
         # Keep the same dimension between the end of cascade i and begin of
         # cascades i+1
         num_filters = self.num_filters * (2**(self.block_num_count-cascade_id))
-        num_filters = min(num_filters, 1024)
+        max_filters = 1024 if self.block_style == 'Regular' else 512
+        num_filters = min(num_filters, max_filters)
         with tf.variable_scope('b%d'%(i)):
           block_fn = self.block_fn if cascade_id!=0 else self.building_block_v2
           inputs = self.block_layer(
