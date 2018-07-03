@@ -83,14 +83,6 @@ def tensor_info(tensor_ls, tensor_name_ls=None, layer_name=None,
         tensor_sum += '\n'
   return tensor_sum
 
-def get_feature_shape(net, data_format):
-  if len(net.shape)==4:
-    if data_format == 'channels_last':
-      shape = net.shape.as_list()[1:3]
-  elif len(net.shape)==5:
-    if data_format == 'channels_last':
-      shape = net.shape.as_list()[1:4]
-  return np.array(shape)
 
 def unique_nd( inputs, axis=-1, unit=3 ):
     org_inputs = inputs
@@ -125,40 +117,6 @@ def unique_nd( inputs, axis=-1, unit=3 ):
 ################################################################################
 
 
-def fixed_padding(inputs, kernel_size, data_format):
-  """Pads the input along the spatial dimensions independently of input size.
-
-  Args:
-    inputs: A tensor of size [batch, channels, height_in, width_in] or
-      [batch, height_in, width_in, channels] depending on data_format.
-    kernel_size: The kernel to be used in the conv2d or max_pool2d operation.
-                 Should be a positive integer.
-    data_format: The input format ('channels_last' or 'channels_first').
-
-  Returns:
-    A tensor with the same format as the input with the data either intact
-    (if kernel_size == 1) or padded (if kernel_size > 1).
-  """
-  pad_total = kernel_size - 1
-  pad_beg = pad_total // 2
-  pad_end = pad_total - pad_beg
-
-  if data_format == 'channels_first':
-    if len(inputs.shape)==4:
-      padded_inputs = tf.pad(inputs, [[0, 0], [0, 0],
-                                      [pad_beg, pad_end], [pad_beg, pad_end]])
-    elif len(inputs.shape)==5:
-      padded_inputs = tf.pad(inputs, [[0, 0], [0, 0],
-                    [pad_beg, pad_end], [pad_beg, pad_end], [pad_beg, pad_end]])
-  else:
-    if len(inputs.shape)==4:
-      padded_inputs = tf.pad(inputs, [[0, 0], [pad_beg, pad_end],
-                                      [pad_beg, pad_end], [0, 0]])
-    elif len(inputs.shape)==5:
-      padded_inputs = tf.pad(inputs, [[0, 0], [pad_beg, pad_end],
-                            [pad_beg, pad_end], [pad_beg, pad_end], [0, 0]])
-  return padded_inputs
-
 
 
 def conv3d_fixed_padding(inputs, filters, kernel_size, strides, padding, data_format):
@@ -188,6 +146,7 @@ class ResConvOps(object):
   _trainable_num = 0
   _trainable_bytes = 0
   _activation_size = 0
+  _padding = {'s':'same', 'v':'valid' }
 
   def __init__(self, data_net_configs, data_format):
     self.data_format = data_format
@@ -197,7 +156,7 @@ class ResConvOps(object):
     self.batch_norm_decay = data_net_configs['bndecay_fn'](global_step)
     tf.summary.scalar('batch_norm_decay', self.batch_norm_decay)
     self.use_bias = data_net_configs['use_bias']
-    self.shortcut_method = 'C' #'C' 'PC' 'PZ'
+    self.shortcut_method = data_net_configs['shortcut'] #'C' 'PC' 'PZ'
 
     model_dir = data_net_configs['model_dir']
     if ResConvOps._epoch==0:
@@ -211,10 +170,10 @@ class ResConvOps(object):
       dnc = data_net_configs
       res = 'rs' if self.residual else 'pl'
       key_para_names = 'model use_bias bs feed aug drop_imo lr0_drate_depoch \
-bnd optimizer filters0\n'
+bnd optimizer filters0 shortcut\n'
       key_paras_str = '{model_name} {use_bias} {bs} {feed_data_eles} \
 {aug} {drop_imo} {lr0}_{lr_decay_rate}_{lr_decay_epochs} {bnd} {optimizer} \
-{filters0}\n\n'.format(
+{filters0} {shortcut}\n\n'.format(
         model_name=res+str(dnc['resnet_size'])+dnc['model_flag'],
         use_bias=str(dnc['use_bias']),
         bs=dnc['batch_size'],
@@ -226,7 +185,8 @@ bnd optimizer filters0\n'
         lr_decay_epochs=dnc['lr_decay_epochs'],
         bnd=dnc['batch_norm_decay0'],
         optimizer=dnc['optimizer'],
-        filters0=dnc['num_filters0'])
+        filters0=dnc['num_filters0'],
+        shortcut=dnc['shortcut'])
 
       self.key_paras_str = key_para_names + key_paras_str
       self.model_log_f.write(self.key_paras_str)
@@ -235,7 +195,7 @@ bnd optimizer filters0\n'
         'feed_data', 'xyz_elements', 'points', 'global_step','global_stride',\
         'sub_block_stride_candis', 'sub_block_step_candis','optimizer',\
         'learning_rate0', 'lr_decay_rate', 'batch_norm_decay0', 'lr_vals', \
-        'bndecay_vals', 'use_bias', \
+        'bndecay_vals', 'use_bias', 'shortcut',\
         'weight_decay', 'num_filters0','resnet_size', 'block_kernels', \
         'block_strides', 'block_paddings', 'data_dir']
       for item in items_to_write:
@@ -304,13 +264,25 @@ bnd optimizer filters0\n'
     self.log('block layers num:{}\nconv2d num:{}\nconv3d num:{}\n'.format(
                   self._block_layers_num, self._conv2d_num, self._conv3d_num))
 
-  def conv2d3d_fixed_padding(self, inputs, filters,
-                              kernel_size, strides, padding_s1):
+  def get_feature_shape(self, net):
+    if len(net.shape)==4:
+      if self.data_format == 'channels_last':
+        shape = net.shape.as_list()[1:3]
+    elif len(net.shape)==5:
+      if self.data_format == 'channels_last':
+        shape = net.shape.as_list()[1:4]
+    return np.array(shape)
+
+  def get_feature_channels(self, net):
+    if self.data_format == 'channels_last':
+      return net.shape[-1].value
+    elif self.data_format == 'channels_first':
+      return net.shape[1].value
+
+  def conv2d3d(self, inputs, filters, kernels, strides, padding_s1):
     """Strided 2-D or 3-D convolution with explicit padding.
       padding_s1:  only used when strides==1
     """
-    # The padding is consistent and is based only on `kernel_size`, not on the
-    # dimensions of `inputs` (as opposed to using `tf.layers.conv2d` alone).
     if len(inputs.shape)==5:
       conv_fn = tf.layers.conv3d
       self._conv3d_num += 1
@@ -318,20 +290,7 @@ bnd optimizer filters0\n'
       conv_fn = tf.layers.conv2d
       self._conv2d_num += 1
 
-
-    if strides > 1:
-      inputs = fixed_padding(inputs, kernel_size, self.data_format)
-      padding = 'VALID'
-    else:
-      # only used when strides==1
-      if padding_s1=='s':
-        padding = 'SAME'
-        in_shape = get_feature_shape(inputs, self.data_format)
-        assert (in_shape>=kernel_size).all(),\
-          "kernel too large, too waste, inputs: %s, kernel:%d"%(in_shape, kernel_size)
-      else:
-        assert padding_s1=='v'
-        padding = 'VALID'
+    inputs, padding = self.padding2d3d(inputs, kernels, strides, padding_s1)
 
     if USE_CHARLES:
       kernel_initializer = tf.contrib.layers.xavier_initializer()   # charles
@@ -339,10 +298,91 @@ bnd optimizer filters0\n'
       kernel_initializer = tf.variance_scaling_initializer()       # res official
 
     outputs = conv_fn(
-        inputs=inputs, filters=filters, kernel_size=kernel_size, strides=strides,
+        inputs=inputs, filters=filters, kernel_size=kernels, strides=strides,
         padding=padding, use_bias=self.use_bias,
         kernel_initializer=kernel_initializer,
         data_format=self.data_format)
+    return outputs
+
+  def fixed_padding_2d3d(self, inputs, kernel_size):
+    """Pads the input along the spatial dimensions independently of input size.
+
+    Args:
+      inputs: A tensor of size [batch, channels, height_in, width_in] or
+        [batch, height_in, width_in, channels] depending on data_format.
+      kernel_size: The kernel to be used in the conv2d or max_pool2d operation.
+                  Should be a positive integer.
+      data_format: The input format ('channels_last' or 'channels_first').
+
+    Returns:
+      A tensor with the same format as the input with the data either intact
+      (if kernel_size == 1) or padded (if kernel_size > 1).
+    """
+    pad_total = kernel_size - 1
+    pad_beg = pad_total // 2
+    pad_end = pad_total - pad_beg
+    if self.data_format == 'channels_first':
+      if len(inputs.shape)==4:
+        padded_inputs = tf.pad(inputs, [[0, 0], [0, 0],
+                                        [pad_beg, pad_end], [pad_beg, pad_end]])
+      elif len(inputs.shape)==5:
+        padded_inputs = tf.pad(inputs, [[0, 0], [0, 0],
+                      [pad_beg, pad_end], [pad_beg, pad_end], [pad_beg, pad_end]])
+    else:
+      if len(inputs.shape)==4:
+        padded_inputs = tf.pad(inputs, [[0, 0], [pad_beg, pad_end],
+                                        [pad_beg, pad_end], [0, 0]])
+      elif len(inputs.shape)==5:
+        padded_inputs = tf.pad(inputs, [[0, 0], [pad_beg, pad_end],
+                              [pad_beg, pad_end], [pad_beg, pad_end], [0, 0]])
+    return padded_inputs
+
+  def padding_channel(self, inputs, pad_total):
+    assert pad_total > 0
+    pad_beg = pad_total // 2
+    pad_end = pad_total - pad_beg
+    if self.data_format == 'channels_first' and len(inputs.shape)==4:
+      padded_inputs = tf.pad(inputs, [[0,0],[pad_beg,pad_end],[0,0],[0,0]])
+
+    elif self.data_format == 'channels_first' and len(inputs.shape)==5:
+      padded_inputs = tf.pad(inputs, [[0,0],[pad_beg,pad_end],[0,0],[0,0],[0,0]])
+
+    elif self.data_format == 'channels_last' and len(inputs.shape)==4:
+      padded_inputs = tf.pad(inputs, [[0,0],[0,0],[0,0],[pad_beg,pad_end]])
+
+    elif self.data_format == 'channels_last' and len(inputs.shape)==5:
+      padded_inputs = tf.pad(inputs, [[0,0],[0,0],[0,0],[0,0],[pad_beg,pad_end]])
+    return padded_inputs
+
+  def padding2d3d(self, inputs, kernels, strides, padding_s1):
+    '''
+    When strides==1, padding = 'v' is used to reduce feature map,
+    When strides>1, fixed padding is used to keep reduce rate equal to strides.
+    '''
+    padding = self._padding[padding_s1]
+    if strides > 1:
+      assert padding == 'valid'
+      inputs = self.fixed_padding_2d3d(inputs, kernels, self.data_format)
+    if padding == 'same':
+      in_shape = self.get_feature_shape(inputs)
+      assert (in_shape>=kernels).all(),\
+        "kernel too large, too waste, inputs: %s, kernel:%d"%(in_shape, kernels)
+    return inputs, padding
+
+  def pool2d3d(self, inputs, pool, kernels, strides, padding_s1):
+    if len(inputs.shape)==5:
+      if pool == 'max':
+        pool_fn = tf.layers.max_pooling3d
+      elif pool == 'ave':
+        pool_fn = tf.layers.average_pooling3d
+    elif len(inputs.shape) == 4:
+      if pool == 'max':
+        pool_fn = tf.layers.max_pooling2d
+      elif pool == 'ave':
+        pool_fn = tf.layers.average_pooling2d
+
+    inputs, padding = self.padding2d3d(inputs, kernels, strides, padding_s1)
+    outputs = pool_fn(inputs, kernels, strides, padding, self.data_format)
     return outputs
 
   def building_block_v2(self, inputs, filters, training, projection_shortcut,
@@ -390,9 +430,7 @@ bnd optimizer filters0\n'
       shortcut = projection_shortcut(inputs)
 
     with tf.variable_scope('conv0'):
-      inputs = self.conv2d3d_fixed_padding(
-          inputs=inputs, filters=filters, kernel_size=kernels, strides=strides,
-          padding_s1=padding_s1)
+      inputs = self.conv2d3d(inputs, filters, kernels, strides, padding_s1)
       if self.IsShowModel:
         self.add_activation_size(inputs)
         self.log( tensor_info(inputs, '%s k,s,p=%d,%d,%s'%
@@ -404,9 +442,7 @@ bnd optimizer filters0\n'
     if self.IsShowModel:  self.log('%38s'%('BN RELU'))
 
     with tf.variable_scope('conv1'):
-      inputs = self.conv2d3d_fixed_padding(
-          inputs=inputs, filters=filters, kernel_size=kernels, strides=1,
-          padding_s1='s')
+      inputs = self.conv2d3d(inputs, filters, kernels, 1, 's')
       if self.IsShowModel:
         self.add_activation_size(inputs)
         self.log( tensor_info(inputs, '%s k,s,p=%d,%d,%s'%
@@ -465,9 +501,7 @@ bnd optimizer filters0\n'
       shortcut = projection_shortcut(inputs)
 
     with tf.variable_scope('c0'):
-      inputs = self.conv2d3d_fixed_padding(
-          inputs=inputs, filters=filters, kernel_size=1, strides=1,
-          padding_s1='s')
+      inputs = self.conv2d3d(inputs, filters, 1, 1, 's')
       self.log_tensor_c(inputs, 1, 1, 's', tf.get_variable_scope().name)
 
     inputs = self.batch_norm(inputs, training)
@@ -475,9 +509,7 @@ bnd optimizer filters0\n'
     if self.IsShowModel:  self.log('%38s'%('BN RELU'))
 
     with tf.variable_scope('c1'):
-      inputs = self.conv2d3d_fixed_padding(
-          inputs=inputs, filters=filters, kernel_size=kernels,
-          strides=strides, padding_s1=padding_s1)
+      inputs = self.conv2d3d(inputs, filters, kernels, strides, padding_s1)
       self.log_tensor_c(inputs, kernels, strides, padding_s1, tf.get_variable_scope().name)
 
     inputs = self.batch_norm(inputs, training)
@@ -485,9 +517,7 @@ bnd optimizer filters0\n'
     if self.IsShowModel:  self.log('%38s'%('BN RELU'))
 
     with tf.variable_scope('c2'):
-      inputs = self.conv2d3d_fixed_padding(
-          inputs=inputs, filters=4 * filters, kernel_size=1, strides=1,
-          padding_s1='s')
+      inputs = self.conv2d3d(inputs, 4 * filters, 1, 1, 's')
       self.log_tensor_c(inputs, 1, 1, 's', tf.get_variable_scope().name)
 
     if self.residual:
@@ -506,7 +536,7 @@ bnd optimizer filters0\n'
           ['max'/'ave',kernel_size,strides]
     '''
     if op[0] == 'conv':
-      net = self.conv2d3d_fixed_padding(net, op[1], op[2], op[3])
+      net = self.conv2d3d(net, op[1], op[2], op[3])
     import pdb; pdb.set_trace()  # XXX BREAKPOINT
     return net
   def inception_block_v2(self, inputs, filters, training, projection_shortcut,
@@ -563,18 +593,14 @@ bnd optimizer filters0\n'
       shortcut = projection_shortcut(inputs)
 
     with tf.variable_scope('conv0'):
-      inputs = self.conv2d3d_fixed_padding(
-          inputs=inputs, filters=filters, kernel_size=kernels, strides=strides,
-          padding_s1=padding_s1)
+      inputs = self.conv2d3d(inputs, filters, kernels, strides, padding_s1)
 
     inputs = self.batch_norm(inputs, training)
     inputs = tf.nn.relu(inputs)
     if self.IsShowModel:  self.log('%38s'%('BN RELU'))
 
     with tf.variable_scope('conv1'):
-      inputs = self.conv2d3d_fixed_padding(
-          inputs=inputs, filters=filters, kernel_size=kernels, strides=1,
-          padding_s1='s')
+      inputs = self.conv2d3d(inputs, filters, kernels, 1, 's')
 
     if self.residual:
       assert inputs.shape == shortcut.shape
@@ -587,28 +613,46 @@ bnd optimizer filters0\n'
     (1) Four methods for reducing feature map size:
       (a) Conv+Padding (b) Pool+Padding  => Kernel > 1, Padding='v'
       (c) Conv+Stride (d) Pool+Stride    => Stride > 1
-      Stride>1 is not used here, because feature map is too small. Focus on a,b
+      Stride>1 is commonly used by 2D, but not used here, because feature map
+      is too small. Focus on a,b
     (2) Tow methos for increasing channels:
       (i) conv (j) zero padding
-    (3) shortcut_method:
+    (3) shortcut: C, MC, AC, MZ, AZ
       Candidate procedure for reducing feature map and increasing channels:
       ['C'] Conv(kernel>1) + Padding('v') #Large model
-      ['PC'] Pool(Kernle>1) + Padding('v') => 1x1 Conv # Small weight
-      ['PZ'] Pool(Kernel>1) + Padding('v') => Channel zero padding # No weight
+      ['MC'/'AC'] Max/Ave Pool(Kernle>1) + Padding('v') => 1x1 Conv # Small weight
+      ['MZ'/'AZ'] Max/Ave Pool(Kernel>1) + Padding('v') => Channel zero padding # No weight
     '''
-    if self.shortcut_method == 'C':
-      # 2d resenet use strides>1 to reduce feature map and create shortcut.
-      # Here we use kernel>1 and padding_s1='VALID'
-      # Use kernel>1 in shortcut may somewhat impede the identity forward, try
-      # to optimize later.
-
+    scm = self.shortcut_method
+    # In offical resnet, kernel_sc is always 1, because strides>1 reduces map.
+    # But kernel_sc>1 here to reduce map, and strides is always 1.
+    kernel_sc = kernels if padding_s1=='v' else 1
+    if scm == 'C':
       # padding_s1=='v: feature map size have to be reduced => kernels
       with tf.variable_scope('sc_C'):
-        kernel_shortcut = kernels if padding_s1=='v' else 1
-        shortcut = self.conv2d3d_fixed_padding(inputs, filters_out,
-                        kernel_shortcut, strides, padding_s1)
-        self.log_tensor_c(shortcut, kernel_shortcut, strides,
+        shortcut = self.conv2d3d(inputs, filters_out, kernel_sc, strides,
+                                 padding_s1)
+        self.log_tensor_c(shortcut, kernel_sc, strides,
                         padding_s1, tf.get_variable_scope().name)
+
+    elif scm == 'MC' or scm == 'AC' or scm == 'MZ' or scm == 'AZ':
+      with tf.variable_scope('sc_'+scm):
+        pool = 'max' if scm[0]=='M' else 'ave'
+        shortcut = self.pool2d3d(inputs, pool, kernel_sc, strides, padding_s1)
+        layer_name = '/'.join(tf.get_variable_scope().name.split('/')[2:])
+        self.log_tensor_p(shortcut, pool, layer_name)
+
+        channels_dif = filters_out - self.get_feature_channels(shortcut)
+        if channels_dif != 0:
+          if scm[1] == 'C':
+            shortcut = self.conv2d3d(shortcut, filters_out, 1, 1, 's')
+            self.log_tensor_c(shortcut, 1, 1, 's', tf.get_variable_scope().name)
+          else:
+            shortcut = self.padding_channel(shortcut, channels_dif)
+            self.log_tensor_p(shortcut, 'padding', layer_name)
+
+    else:
+      raise NotImplementedError, scm
     return shortcut
 
   def block_layer(self, inputs, filters, block_fn, blocks, kernels,
@@ -969,8 +1013,8 @@ class Model(ResConvOps):
 
   def initial_layer(self, inputs, scope_ini='initial'):
     with tf.variable_scope(scope_ini):
-      inputs = self.conv2d3d_fixed_padding(
-          inputs=inputs, filters=self.num_filters, kernel_size=1,
+      inputs = self.conv2d3d(
+          inputs=inputs, filters=self.num_filters, kernels=1,
           strides=1, padding_s1='s')
       inputs = tf.identity(inputs, 'initial_conv')
       self.log_tensor_c(inputs, 1, 1, 's', tf.get_variable_scope().name)
@@ -1247,122 +1291,5 @@ class Model(ResConvOps):
       voxel_points = tf.transpose(voxel_points, [0, 4, 1, 2, 3])
     self.log_tensor_p(voxel_points, 'voxel', 'cas%d'%(cascade_id))
     return voxel_points
-
-
-
-
-
-
-
-
-
-
-
-
-
-################################################################################
-# ResNet block definitions.
-################################################################################
-def _building_block_v1(inputs, filters, training, projection_shortcut, strides,
-                       data_format):
-  """A single block for ResNet v1, without a bottleneck.
-
-  Convolution then batch normalization then ReLU as described by:
-    Deep Residual Learning for Image Recognition
-    https://arxiv.org/pdf/1512.03385.pdf
-    by Kaiming He, Xiangyu Zhang, Shaoqing Ren, and Jian Sun, Dec 2015.
-
-  Args:
-    inputs: A tensor of size [batch, channels, height_in, width_in] or
-      [batch, height_in, width_in, channels] depending on data_format.
-    filters: The number of filters for the convolutions.
-    training: A Boolean for whether the model is in training or inference
-      mode. Needed for batch normalization.
-    projection_shortcut: The function to use for projection shortcuts
-      (typically a 1x1 convolution when downsampling the input).
-    strides: The block's stride. If greater than 1, this block will ultimately
-      downsample the input.
-    data_format: The input format ('channels_last' or 'channels_first').
-
-  Returns:
-    The output tensor of the block; shape should match inputs.
-  """
-  shortcut = inputs
-
-  if projection_shortcut is not None:
-    shortcut = projection_shortcut(inputs)
-    shortcut = batch_norm(inputs=shortcut, training=training,
-                          data_format=data_format)
-
-  inputs = conv2d3d_fixed_padding(
-      inputs=inputs, filters=filters, kernel_size=3, strides=strides,
-      data_format=data_format)
-  inputs = batch_norm(inputs, training, data_format)
-  inputs = tf.nn.relu(inputs)
-
-  inputs = conv2d3d_fixed_padding(
-      inputs=inputs, filters=filters, kernel_size=3, strides=1,
-      data_format=data_format)
-  inputs = batch_norm(inputs, training, data_format)
-  inputs += shortcut
-  inputs = tf.nn.relu(inputs)
-
-  return inputs
-
-
-
-def _bottleneck_block_v1(inputs, filters, training, projection_shortcut,
-                         strides, data_format):
-  """A single block for ResNet v1, with a bottleneck.
-
-  Similar to _building_block_v1(), except using the "bottleneck" blocks
-  described in:
-    Convolution then batch normalization then ReLU as described by:
-      Deep Residual Learning for Image Recognition
-      https://arxiv.org/pdf/1512.03385.pdf
-      by Kaiming He, Xiangyu Zhang, Shaoqing Ren, and Jian Sun, Dec 2015.
-
-  Args:
-    inputs: A tensor of size [batch, channels, height_in, width_in] or
-      [batch, height_in, width_in, channels] depending on data_format.
-    filters: The number of filters for the convolutions.
-    training: A Boolean for whether the model is in training or inference
-      mode. Needed for batch normalization.
-    projection_shortcut: The function to use for projection shortcuts
-      (typically a 1x1 convolution when downsampling the input).
-    strides: The block's stride. If greater than 1, this block will ultimately
-      downsample the input.
-    data_format: The input format ('channels_last' or 'channels_first').
-
-  Returns:
-    The output tensor of the block; shape should match inputs.
-  """
-  shortcut = inputs
-
-  if projection_shortcut is not None:
-    shortcut = projection_shortcut(inputs)
-    shortcut = batch_norm(inputs=shortcut, training=training,
-                          data_format=data_format)
-
-  inputs = conv2d3d_fixed_padding(
-      inputs=inputs, filters=filters, kernel_size=1, strides=1,
-      data_format=data_format)
-  inputs = batch_norm(inputs, training, data_format)
-  inputs = tf.nn.relu(inputs)
-
-  inputs = conv2d3d_fixed_padding(
-      inputs=inputs, filters=filters, kernel_size=3, strides=strides,
-      data_format=data_format)
-  inputs = batch_norm(inputs, training, data_format)
-  inputs = tf.nn.relu(inputs)
-
-  inputs = conv2d3d_fixed_padding(
-      inputs=inputs, filters=4 * filters, kernel_size=1, strides=1,
-      data_format=data_format)
-  inputs = batch_norm(inputs, training, data_format)
-  inputs += shortcut
-  inputs = tf.nn.relu(inputs)
-
-  return inputs
 
 

@@ -279,6 +279,7 @@ def define_net_configs(flags_obj):
   if DEFAULTS['num_gpus']==1:
     assert flags_obj.num_gpus == 1
   _DATA_PARAS['residual'] = flags_obj.residual == 1
+  _DATA_PARAS['shortcut'] = flags_obj.shortcut
   _DATA_PARAS['use_bias'] = flags_obj.use_bias == 1
   _DATA_PARAS['block_style'] = flags_obj.block_style
   _DATA_PARAS['optimizer'] = flags_obj.optimizer
@@ -373,6 +374,7 @@ def define_model_dir():
 
   if flags.FLAGS.residual == 1:
     logname = 'R'
+    logname += flags.FLAGS.shortcut
   else:
     logname = 'P'
   logname += flags.FLAGS.block_style[0]
@@ -421,6 +423,7 @@ def define_modelnet_flags():
 
   _DATA_PARAS = {}
   flags.DEFINE_integer('residual', DEFAULTS['residual'], '')
+  flags.DEFINE_string('shortcut', DEFAULTS['shortcut'], 'C,PC,PZ')
   flags.DEFINE_integer('use_bias', DEFAULTS['use_bias'], '')
   flags.DEFINE_string('block_style', DEFAULTS['block_style'], \
                       'Regular,Bottleneck,Inception')
