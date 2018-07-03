@@ -434,13 +434,10 @@ bnd optimizer filters0 shortcut\n'
     if projection_shortcut is not None:
       shortcut = projection_shortcut(inputs)
 
-    with tf.variable_scope('conv0'):
+    with tf.variable_scope('c0'):
       inputs = self.conv2d3d(inputs, filters, kernels, strides, padding_s1)
-      if self.IsShowModel:
-        self.add_activation_size(inputs)
-        self.log( tensor_info(inputs, '%s k,s,p=%d,%d,%s'%
-                      (conv_str,kernels,strides,padding_s1), 'block_v2',
-                      self.train_w_bytes(tf.get_variable_scope().name)) )
+      self.log_tensor_c(inputs, kernels, strides, padding_s1,
+                        tf.get_variable_scope().name)
 
     inputs = self.batch_norm(inputs, training)
     inputs = tf.nn.relu(inputs)
@@ -448,12 +445,8 @@ bnd optimizer filters0 shortcut\n'
 
     with tf.variable_scope('conv1'):
       inputs = self.conv2d3d(inputs, filters, kernels, 1, 's')
-      if self.IsShowModel:
-        self.add_activation_size(inputs)
-        self.log( tensor_info(inputs, '%s k,s,p=%d,%d,%s'%
-                  (conv_str,kernels,strides,padding_s1), 'block_v2',
-                  self.train_w_bytes(tf.get_variable_scope().name))
-                  +'\n')
+      self.log_tensor_c(inputs, kernels, 1, 's',
+                        tf.get_variable_scope().name)
 
     if self.residual:
       assert inputs.shape == shortcut.shape
@@ -515,7 +508,8 @@ bnd optimizer filters0 shortcut\n'
 
     with tf.variable_scope('c1'):
       inputs = self.conv2d3d(inputs, filters, kernels, strides, padding_s1)
-      self.log_tensor_c(inputs, kernels, strides, padding_s1, tf.get_variable_scope().name)
+      self.log_tensor_c(inputs, kernels, strides, padding_s1,
+                        tf.get_variable_scope().name)
 
     inputs = self.batch_norm(inputs, training)
     inputs = tf.nn.relu(inputs)
@@ -537,13 +531,21 @@ bnd optimizer filters0 shortcut\n'
     ''' general operation entry
 
     Args:
-      op: ['conv',filters,kernel_size,strides,padding_s1,data_format]
-          ['max'/'ave',kernel_size,strides]
+      op: ['conv',filters,kernels,strides,padding_s1]
+          ['max'/'ave',kernel_size,strides,padding_s1]
     '''
+    var_scope = tf.get_variable_scope().name
     if op[0] == 'conv':
-      net = self.conv2d3d(net, op[1], op[2], op[3])
-    import pdb; pdb.set_trace()  # XXX BREAKPOINT
+      net = self.conv2d3d(net, op[1], op[2], op[3], op[4])
+      self.log_tensor_c(net, op[2], op[3], op[4], var_scope)
+    elif op[0] == 'max':
+      net = self.pool2d3d(net, 'max', op[1], op[2], op[3])
+      layer_name = '/'.join(var_scope.split('/')[2:])
+      self.log_tensor_p(net, 'max', layer_name)
+    else:
+      raise NotImplementedError
     return net
+
   def inception_block_v2(self, inputs, filters, training, projection_shortcut,
                           kernels, strides, padding_s1):
     """A single block for ResNet v2, with inception structure
@@ -568,14 +570,21 @@ bnd optimizer filters0 shortcut\n'
     net = self.batch_norm(inputs, training)
     net = tf.nn.relu(net)
 
-    ops = [[['conv',32,1]],
-                         [['conv',32,1],['conv',32,3]],
-                         [['conv',32,1],['conv',48,3],['conv',64,3]],
-                         ['max',3,1] ]
-    with tf.variable_scope('inception_block_v2'):
-      for b, op in enumerate(ops):
-        with tf.variable_scope('Branch_%d'%(b)):
-          net = self.operation(op, net)
+    ops_block = [
+        [['conv',32,1,1,'s']],
+        [['conv',32,1,1,'s'],['conv',32,3,1,'s']],
+        [['conv',32,1,1,'s'],['conv',48,3,1,'s'],['conv',64,1,1,'s']],
+        [['max',3,1,'s']] ]
+    net_branches = []
+    for b, ops_branch in enumerate(ops_block):
+      for l,op in enumerate(ops_branch):
+        with tf.variable_scope('b%d_l%d'%(b,l)):
+          net_b = self.operation(op, net)
+      net_branches.append(net_b)
+    c_axis = -1 if self.data_format == 'channels_last' else 1
+    net = tf.concat(net_branches, c_axis)
+    layer_name = '/'.join(tf.get_variable_scope().name.split('/')[2:])
+    self.log_tensor_p(net, 'inception', layer_name)
 
 
     import pdb; pdb.set_trace()  # XXX BREAKPOINT
@@ -604,7 +613,7 @@ bnd optimizer filters0 shortcut\n'
     inputs = tf.nn.relu(inputs)
     if self.IsShowModel:  self.log('%38s'%('BN RELU'))
 
-    with tf.variable_scope('conv1'):
+    with tf.variable_scope('c1'):
       inputs = self.conv2d3d(inputs, filters, kernels, 1, 's')
 
     if self.residual:
@@ -700,12 +709,12 @@ bnd optimizer filters0 shortcut\n'
         projection_shortcut_0 = 'FirstResUnit'
     else:
       projection_shortcut_0 = shortcut_projection
-    with tf.variable_scope('l0'):
+    with tf.variable_scope('L0'):
       inputs = block_fn(inputs, filters, training, projection_shortcut_0,
                         kernels, strides, padding_s1)
 
     for j in range(1, blocks):
-      with tf.variable_scope('l%d'%(j)):
+      with tf.variable_scope('L%d'%(j)):
         inputs = block_fn(inputs, filters, training, None, kernels, 1, 's')
 
     self._block_layers_num += 1
@@ -723,7 +732,7 @@ class Model(ResConvOps):
 
     Args:
       resnet_size: A single integer for the size of the ResNet model.
-      block_style: regular, bottleneck, inception
+      block_style: Regular, Bottleneck, Inception
       num_classes: The number of classes used as labels.
       num_filters: The number of filters to use for the first block layer
         of the model. This number is then doubled for each subsequent block
@@ -1051,7 +1060,7 @@ class Model(ResConvOps):
         num_filters = self.num_filters * (2**(self.block_num_count-cascade_id))
         max_filters = 1024 if self.block_style == 'Regular' else 512
         num_filters = min(num_filters, max_filters)
-        with tf.variable_scope('b%d'%(i)):
+        with tf.variable_scope('B%d'%(i)):
           block_fn = self.block_fn if cascade_id!=0 else self.building_block_v2
           inputs = self.block_layer(
               inputs=inputs, filters=num_filters,

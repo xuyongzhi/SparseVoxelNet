@@ -13,12 +13,12 @@ import numpy as np
 
 DEFAULTS = {}
 DEFAULTS['data_path'] = 'MODELNET40H5F/Merged_tfrecord/6_mgs1_gs2_2-mbf-neg_fmn14_mvp1-1024_240_1-64_27_256-0d2_0d4-0d1_0d2-pd3-2M2pp'
-DEFAULTS['data_path'] = 'MODELNET40H5F/Merged_tfrecord/6_mgs1_gs2_2-neg_fmn14_mvp1-1024_240_1-64_27_256-0d2_0d4-0d1_0d2-pd3-2M2pp'
+#DEFAULTS['data_path'] = 'MODELNET40H5F/Merged_tfrecord/6_mgs1_gs2_2-neg_fmn14_mvp1-1024_240_1-64_27_256-0d2_0d4-0d1_0d2-pd3-2M2pp'
 
 DEFAULTS['residual'] = 1
 DEFAULTS['shortcut'] = 'MC' #C, MC, AC, MZ, AZ
 DEFAULTS['use_bias'] = 1
-DEFAULTS['block_style'] = 'Bottleneck' # 'Inception'
+DEFAULTS['block_style'] = 'Inception' # Regular, Bottleneck, Inception
 DEFAULTS['optimizer'] = 'momentum'
 DEFAULTS['learning_rate0'] = 0.001
 DEFAULTS['lr_decay_rate'] = 0.7
