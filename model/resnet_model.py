@@ -252,14 +252,18 @@ bnd optimizer filters0 shortcut\n'
       self.add_activation_size(inputs)
       conv_str = 'conv2d' if len(inputs.shape)==4 else 'conv3d'
       layer_name = '/'.join(var_scope.split('/')[2:])
-      self.log( tensor_info(inputs, '%s k,s,p=%d,%d,%s'%
-                    (conv_str,kernels,strides,padding_s1), layer_name,
+      self.log( tensor_info(inputs, '%s (%d,%d,%s)'%
+                    (conv_str, kernels, strides, padding_s1), layer_name,
                     self.train_w_bytes(var_scope)) )
 
-  def log_tensor_p(self, inputs, pool_op_name, layer_name):
+  def log_tensor_p(self, inputs, pool_op_name, layer_name,
+                   kernels=None, strides=None, paddings=None):
       if not self.IsShowModel: return
       self.add_activation_size(inputs)
-      self.log(tensor_info(inputs, pool_op_name, layer_name))
+      pool_str = pool_op_name
+      if kernels!=None:
+        pool_str += ' (%d,%d,%s)'%(kernels, strides, paddings)
+      self.log(tensor_info(inputs, pool_str, layer_name))
 
   def show_layers_num_summary(self):
     self.log('block layers num:{}\nconv2d num:{}\nconv3d num:{}\n'.format(
@@ -638,10 +642,13 @@ bnd optimizer filters0 shortcut\n'
 
     elif scm == 'MC' or scm == 'AC' or scm == 'MZ' or scm == 'AZ':
       with tf.variable_scope('sc_'+scm):
-        pool = 'max' if scm[0]=='M' else 'ave'
-        shortcut = self.pool2d3d(inputs, pool, kernel_sc, strides, padding_s1)
-        layer_name = '/'.join(tf.get_variable_scope().name.split('/')[2:])
-        self.log_tensor_p(shortcut, pool, layer_name)
+        if kernel_sc!=1:
+          pool = 'max' if scm[0]=='M' else 'ave'
+          shortcut = self.pool2d3d(inputs, pool, kernel_sc, strides, padding_s1)
+          layer_name = '/'.join(tf.get_variable_scope().name.split('/')[2:])
+          self.log_tensor_p(shortcut, pool, layer_name, kernel_sc, strides, padding_s1)
+        else:
+          shortcut = inputs
 
         channels_dif = filters_out - self.get_feature_channels(shortcut)
         if channels_dif != 0:
@@ -702,6 +709,7 @@ bnd optimizer filters0 shortcut\n'
 
     self._block_layers_num += 1
     return tf.identity(inputs, name)
+
 
 class Model(ResConvOps):
   """Base class for building the Resnet Model."""

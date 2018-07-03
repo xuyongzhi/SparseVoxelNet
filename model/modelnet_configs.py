@@ -28,8 +28,8 @@ DEFAULTS['batch_norm_decay0'] = 0.7
 
 DEFAULTS['model_flag'] = 'V'
 DEFAULTS['resnet_size'] = 28
-DEFAULTS['num_filters0'] = 32
-DEFAULTS['feed_data'] = 'xyzs'
+DEFAULTS['num_filters0'] = 16
+DEFAULTS['feed_data'] = 'xyzs-nxnynz'
 DEFAULTS['aug_types'] = 'N' # 'rpsfj-360_0_0'
 DEFAULTS['drop_imo'] = '0_0_5'
 DEFAULTS['batch_size'] = 16
@@ -47,10 +47,10 @@ def get_block_paras(resnet_size, model_flag):
   block_paddings = {}   # only used when strides == 1
 
   rs = 28
-  block_sizes[rs]    = [[2,2], [1,2], [2,2,1]]
-  block_kernels[rs]  = [[1,1], [3,1], [3,3,1]]
-  block_strides[rs]  = [[1,1], [1,1], [1,1,1]]
-  block_paddings[rs] = [['s','s'], ['v','s'], ['v','v','v']]
+  block_sizes[rs]    = [[1,1,1], [1,2], [2,2,1]]
+  block_kernels[rs]  = [[1,1,1], [3,1], [3,3,1]]
+  block_strides[rs]  = [[1,1,1], [1,1], [1,1,1]]
+  block_paddings[rs] = [['s','s','s'], ['v','s'], ['v','v','v']]
 
   rs = 34
   block_sizes[rs]    = [[4], [3,1], [2,2,2]]
