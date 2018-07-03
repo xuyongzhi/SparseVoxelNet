@@ -157,6 +157,7 @@ class ResConvOps(object):
     tf.summary.scalar('batch_norm_decay', self.batch_norm_decay)
     self.use_bias = data_net_configs['use_bias']
     self.shortcut_method = data_net_configs['shortcut'] #'C' 'PC' 'PZ'
+    self.res_scale = 0.3
 
     model_dir = data_net_configs['model_dir']
     if ResConvOps._epoch==0:
@@ -452,7 +453,7 @@ bnd optimizer filters0 shortcut\n'
 
     if self.residual:
       assert inputs.shape == shortcut.shape
-      return inputs + shortcut
+      return inputs * self.res_scale + shortcut
     else:
       return inputs
 
@@ -524,7 +525,7 @@ bnd optimizer filters0 shortcut\n'
       if not inputs.shape == shortcut.shape:
         import pdb; pdb.set_trace()  # XXX BREAKPOINT
 
-      return inputs + shortcut
+      return inputs * self.res_scale + shortcut
     else:
       return inputs
 
