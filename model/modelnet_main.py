@@ -339,7 +339,7 @@ def _get_block_paras():
   global _DATA_PARAS
   resnet_size = _DATA_PARAS['resnet_size']
   _DATA_PARAS['block_params'] = get_block_paras(_DATA_PARAS['resnet_size'],
-                                               _DATA_PARAS['model_flag'])
+                        _DATA_PARAS['model_flag'], _DATA_PARAS['block_style'])
 
 def ls_str(ls_in_ls):
   ls_str = [str(e) for ls in ls_in_ls for e in ls]
@@ -357,11 +357,16 @@ def define_model_dir():
   def get_model_configs_fused():
     block_params = _DATA_PARAS['block_params']
     block_size_sum = sum( [e  for bs in block_params['block_sizes'] for e in bs] )
-    block_kernels_sum =  sum( [e  for bs in block_params['kernels'] for e in bs] )
-    block_paddings_sum =  sum( [e=='s'  for bs in block_params['padding_s1'] for e in bs] )
-    model_str = '-b%dk%dp%d'%(  block_size_sum,
+    if _DATA_PARAS['block_style'] != 'Inception':
+      block_kernels_sum =  sum( [e  for bs in block_params['kernels'] for e in bs] )
+      block_paddings_sum =  sum( [e=='s'  for bs in block_params['padding_s1'] for e in bs] )
+      model_str = '-b%dk%dp%d'%(  block_size_sum,
                                   block_kernels_sum,
                                   block_paddings_sum )
+    else:
+      block_flags_ls =  ''.join( [e  for bs in block_params['icp_flags'] for e in bs] )
+      model_str = '-b%d%s'%(  block_size_sum,
+                                  block_flags_ls )
     return model_str
 
   if flags.FLAGS.residual == 1:

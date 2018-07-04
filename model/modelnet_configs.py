@@ -19,7 +19,7 @@ DEFAULTS['residual'] = 1
 DEFAULTS['shortcut'] = 'MC' #C, MC, AC, MZ, AZ
 DEFAULTS['use_bias'] = 1
 DEFAULTS['block_style'] = 'Bottleneck' # Regular, Bottleneck, Inception
-DEFAULTS['block_style'] = 'Regular' # Regular, Bottleneck, Inception
+DEFAULTS['block_style'] = 'Inception' # Regular, Bottleneck, Inception
 DEFAULTS['optimizer'] = 'momentum'
 DEFAULTS['learning_rate0'] = 0.001
 DEFAULTS['lr_decay_rate'] = 0.7
@@ -41,17 +41,57 @@ DEFAULTS['data_format'] = 'channels_last'
 
 DEFAULTS['weight_decay'] = 0.0  # res official is 1e-4, charles is 0.0
 
-def get_block_paras(resnet_size, model_flag):
+def get_block_paras(resnet_size, model_flag, block_style):
+  if block_style == 'Bottleneck' or block_style == 'Regular':
+    return get_block_paras_bottleneck(resnet_size, model_flag)
+  elif block_style == 'Inception':
+    return get_block_paras_inception(resnet_size, model_flag)
+
+def icp_block(flag):
+  def icp_by_mapsize(map_size):
+    if flag == 'A':
+      if map_size >= 6: kernel = 3
+      elif map_size >=3: kernel = 2
+      elif map_size == 1: kernel = 1
+      ICP = [
+            [['conv',32,1,1,'s']],
+            [['conv',32,1,1,'s'], ['conv',64,kernel,1,'s']],
+            [['max',kernel,1,'s'], ['conv',48,1,1,'s']] ]
+    elif flag == 'a':
+      if map_size >= 3: kernel = 3
+      elif map_size == 2: kernel = 2
+      elif map_size == 1: kernel = 1
+      ICP = [
+            [['conv',32,1,1,'s'], ['conv',64,kernel,1,'v']],
+            [['max',kernel,1,'v'], ['conv',48,1,1,'s']] ]
+    return ICP
+  return icp_by_mapsize
+
+
+def get_block_paras_inception(resnet_size, model_flag):
+  block_sizes = {}
+  block_flag = {}
+  rs = 36
+  block_sizes[rs] = [[2,1], [1,2], [2,2,1]]
+  block_flag[rs]  = [[],  ['a','A'],['a','a','a']]
+
+  block_params = {}
+  block_params['block_sizes'] = block_sizes[rs]
+  block_params['icp_flags'] = block_flag[rs]
+  block_params['icp_block_ops'] = [ [icp_block(flag) for flag in cascade] for cascade in block_flag[rs] ]
+  return block_params
+
+def get_block_paras_bottleneck(resnet_size, model_flag):
   block_sizes = {}
   block_kernels = {}
   block_strides = {}
   block_paddings = {}   # only used when strides == 1
 
   rs = 36
-  block_sizes[rs]    = [[2,1,0], [1,2], [2,2,1]]
-  block_kernels[rs]  = [[1,1,1], [3,1], [3,3,1]]
-  block_strides[rs]  = [[1,1,1], [1,1], [1,1,1]]
-  block_paddings[rs] = [['s','s','s'], ['v','s'], ['v','v','v']]
+  block_sizes[rs]    = [[2,1], [1,2], [2,2,1]]
+  block_kernels[rs]  = [[], [3,1], [3,2,1]]
+  block_strides[rs]  = [[], [1,1], [1,1,1]]
+  block_paddings[rs] = [[], ['v','s'], ['v','v','v']]
 
 
   if 'V' not in model_flag:
@@ -79,7 +119,5 @@ def get_block_paras(resnet_size, model_flag):
   block_params['padding_s1'] = block_paddings[rs]
   block_params['block_sizes'] = block_sizes[rs]
   return block_params
-
-
 
 

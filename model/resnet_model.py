@@ -49,6 +49,7 @@ ALLOWED_TYPES = (DEFAULT_DTYPE,) + CASTABLE_TYPES
 #ALLOWED_TYPES = (DEFAULT_DTYPE,)
 
 USE_CHARLES = True
+NoRes_InceptionReduction = True
 
 
 def tensor_info(tensor_ls, tensor_name_ls=None, layer_name=None,
@@ -298,6 +299,7 @@ bnd optimizer filters0 shortcut\n'
     """Strided 2-D or 3-D convolution with explicit padding.
       padding_s1:  only used when strides==1
     """
+    assert strides == 1 # temporaly
     if len(inputs.shape)==5:
       conv_fn = tf.layers.conv3d
       self._conv3d_num += 1
@@ -380,7 +382,8 @@ bnd optimizer filters0 shortcut\n'
       inputs = self.fixed_padding_2d3d(inputs, kernels, self.data_format)
     if padding == 'same':
       in_shape = self.get_feature_shape(inputs)
-      assert (in_shape>=kernels).all(),\
+      padding_rates = (kernels-1.0) / in_shape
+      assert (padding_rates < 0.3).all(),\
         "kernel too large, too waste, inputs: %s, kernel:%d"%(in_shape, kernels)
     return inputs, padding
 
@@ -560,7 +563,7 @@ bnd optimizer filters0 shortcut\n'
       raise NotImplementedError
     return net
 
-  def inception_block_v2(self, inputs, inception_block_ops, training,
+  def inception_block_v2(self, inputs, block_params, training,
                          projection_shortcut):
     """A single block for ResNet v2, with inception structure
 
@@ -590,36 +593,40 @@ bnd optimizer filters0 shortcut\n'
     if projection_shortcut is not None:
       shortcut = projection_shortcut(inputs)
 
-    ops_block = [
-        [['conv',32,1,1,'s']],
-        [['conv',32,1,1,'s'],['conv',32,3,1,'s']],
-        [['conv',32,1,1,'s'],['conv',48,3,1,'s'],['conv',64,1,1,'s']],
-        [['max',3,1,'s']] ]
+    icp_block_ops = block_params['icp_block_ops'](self.get_feature_shape(inputs)[0])
     inputs_branches = []
-    for b, ops_branch in enumerate(ops_block):
+    for b, ops_branch in enumerate(icp_block_ops):
       for l,op in enumerate(ops_branch):
         with tf.variable_scope('b%d_l%d'%(b,l)):
           pre_indent = '  ' if l==len(ops_branch)-1 else '    '
-          if l>0:
-            inputs = self.batch_norm(inputs, training)
-            inputs = tf.nn.relu(inputs)
+          if l==0:
+            inputs_b = inputs
+          else:
+            inputs_b = self.batch_norm(inputs_b, training)
+            inputs_b = tf.nn.relu(inputs_b)
             if self.IsShowModel:  self.log('%38s'%('BN RELU'))
-          inputs_b = self.operation(op, inputs, pre_indent)
+          inputs_b = self.operation(op, inputs_b, pre_indent)
       inputs_branches.append(inputs_b)
     c_axis = -1 if self.data_format == 'channels_last' else 1
     inputs = tf.concat(inputs_branches, c_axis)
     layer_name = '/'.join(tf.get_variable_scope().name.split('/')[2:])
     self.log_tensor_p(inputs, 'inception concat', layer_name)
 
+    inputs = self.conv2d3d(inputs, block_params['filters'], 1, 1, 's')
+    self.log_tensor_c(inputs, 1, 1, 's', tf.get_variable_scope().name)
+
     if self.residual:
       if not inputs.shape == shortcut.shape:
-        import pdb; pdb.set_trace()  # XXX BREAKPOINT
-
-      return inputs * self.res_scale + shortcut
+        if NoRes_InceptionReduction:
+          return inputs
+        else:
+          import pdb; pdb.set_trace()  # XXX BREAKPOINT
+      else:
+        return inputs * self.res_scale + shortcut
     else:
       return inputs
 
-  def shortcut_fn(self, inputs, filters_out, kernels, strides, padding_s1):
+  def shortcut_fn(self, inputs, block_params):
     ''' shortcut functions when feature map size decrease or channel increase
     (1) Four methods for reducing feature map size:
       (a) Conv+Padding (b) Pool+Padding  => Kernel > 1, Padding='v'
@@ -635,6 +642,10 @@ bnd optimizer filters0 shortcut\n'
       ['MZ'/'AZ'] Max/Ave Pool(Kernel>1) + Padding('v') => Channel zero padding # No weight
     '''
     scm = self.shortcut_method
+    filters_out = block_params['filters']
+    kernels = block_params['kernels']
+    strides = block_params['strides']
+    padding_s1 = block_params['padding_s1']
     # In offical resnet, kernel_sc is always 1, because strides>1 reduces map.
     # But kernel_sc>1 here to reduce map, and strides is always 1.
     kernel_sc = kernels if padding_s1=='v' else 1
@@ -669,7 +680,7 @@ bnd optimizer filters0 shortcut\n'
       raise NotImplementedError, scm
     return shortcut
 
-  def block_layer(self, inputs, block_params, block_fn, training, name):
+  def block_layer(self, cascade_id, inputs, block_params, block_fn, training, name):
     """Creates one layer of block_size for the ResNet model.
 
     Args:
@@ -691,9 +702,6 @@ bnd optimizer filters0 shortcut\n'
     """
     block_size = block_params['block_sizes']
     filters = block_params['filters']
-    kernels = block_params['kernels']
-    strides = block_params['strides']
-    padding_s1 = block_params['padding_s1']
 
     if block_size==0: return inputs
     # Bottleneck block_size end with 4x the number of filters as they start with
@@ -701,16 +709,19 @@ bnd optimizer filters0 shortcut\n'
     filters_out = filters * 4 if bottleneck else filters
 
     def shortcut_projection(inputs):
-      return self.shortcut_fn(inputs, filters_out, kernels, strides, padding_s1)
+      block_params_sc = block_params.copy()
+      block_params_sc['filters'] = filters_out
+      return self.shortcut_fn(inputs, block_params_sc)
 
-    # Only the first block per block_layer uses projection_shortcut and strides
+    # (1) Only the first block per block_layer uses projection_shortcut and strides
     # and padding_s1
-    if (kernels==1 and strides==1 and inputs.shape[-1].value==filters_out):
-      projection_shortcut_0 = None
-      if self._block_layers_num == 0:
+    # (2) No need to change map size and channels in first unit if Pointnet
+    if self._block_layers_num == 0:
         projection_shortcut_0 = 'FirstResUnit'
     else:
       projection_shortcut_0 = shortcut_projection
+      if cascade_id!=0 and self.block_style == 'Inception' and NoRes_InceptionReduction:
+        projection_shortcut_0 = None
     with tf.variable_scope('L0'):
       inputs = block_fn(inputs, block_params, training, projection_shortcut_0)
 
@@ -1062,12 +1073,20 @@ class Model(ResConvOps):
 
         block_params = {}
         block_params['filters'] = num_filters
-        for ele in ['kernels', 'strides', 'padding_s1', 'block_sizes']:
-          block_params[ele] = self.block_params[ele][cascade_id][i]
+        if cascade_id == 0:
+          # point net is special
+          block_params['kernels'] = block_params['strides'] = 1
+          block_params['padding_s1'] = 's'
+          block_params['block_sizes'] = self.block_params['block_sizes'][cascade_id][i]
+        else:
+          for ele in ['kernels', 'strides', 'padding_s1', 'block_sizes',
+                      'icp_block_ops']:
+            if ele in self.block_params:
+              block_params[ele] = self.block_params[ele][cascade_id][i]
 
         with tf.variable_scope('B%d'%(i)):
           block_fn = self.block_fn if cascade_id!=0 else self.building_block_v2
-          inputs = self.block_layer(inputs, block_params, block_fn,
+          inputs = self.block_layer(cascade_id, inputs, block_params, block_fn,
                     self.is_training, 'block_layer{}'.format(i + 1))
         self.block_num_count += 1
       return inputs

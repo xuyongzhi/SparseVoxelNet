@@ -15,6 +15,8 @@
 - [ ] Use kernel>1 in shortcut may somewhat impede the identity forward, try optimize later
 - [ ] Try low resolution firstly. Andrew has achieved 0.95 with 32*32*32 resolution.
 - [ ] Use bottleneck in shortcut MC to reduce model size
+- [ ] Make shortcut inception as well. And remove NoRes_InceptionReduction
+- [ ] Remove USE_CHARLES
 
 
 # Training notes
