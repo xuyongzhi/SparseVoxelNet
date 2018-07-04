@@ -213,11 +213,7 @@ class ModelnetModel(resnet_model.Model):
         resnet_size=resnet_size,
         block_style=data_net_configs['block_style'],
         num_classes=num_classes,
-        num_filters=data_net_configs['num_filters0'],
-        block_sizes=data_net_configs['block_sizes'],
-        block_kernels=data_net_configs['block_kernels'],
-        block_strides=data_net_configs['block_strides'],
-        block_paddings=data_net_configs['block_paddings'],
+        block_params=data_net_configs['block_params'],
         resnet_version=resnet_version,
         data_format=data_format,
         dtype=dtype,
@@ -293,9 +289,9 @@ def define_net_configs(flags_obj):
   _DATA_PARAS['weight_decay'] = flags_obj.weight_decay
   _DATA_PARAS['resnet_size'] = flags_obj.resnet_size
   _DATA_PARAS['batch_size'] = flags_obj.batch_size
-  _DATA_PARAS['num_filters0'] = flags_obj.num_filters0
   _DATA_PARAS['model_flag'] = flags_obj.model_flag
   _get_block_paras()
+  _DATA_PARAS['block_params']['num_filters0'] = flags_obj.num_filters0
 
   feed_data_eles = flags_obj.feed_data
   feed_data = flags_obj.feed_data.split('-')
@@ -342,13 +338,8 @@ def _get_block_paras():
   """
   global _DATA_PARAS
   resnet_size = _DATA_PARAS['resnet_size']
-  block_sizes, block_kernels, block_strides, block_paddings = \
-              get_block_paras(_DATA_PARAS['resnet_size'],
+  _DATA_PARAS['block_params'] = get_block_paras(_DATA_PARAS['resnet_size'],
                                                _DATA_PARAS['model_flag'])
-  _DATA_PARAS['block_sizes'] = block_sizes[resnet_size]
-  _DATA_PARAS['block_kernels'] = block_kernels[resnet_size]
-  _DATA_PARAS['block_strides'] = block_strides[resnet_size]
-  _DATA_PARAS['block_paddings'] = block_paddings[resnet_size]
 
 def ls_str(ls_in_ls):
   ls_str = [str(e) for ls in ls_in_ls for e in ls]
@@ -364,9 +355,10 @@ def define_model_dir():
                                 block_kernels_str, block_paddings_str)
     return model_str
   def get_model_configs_fused():
-    block_size_sum = sum( [e  for bs in _DATA_PARAS['block_sizes'] for e in bs] )
-    block_kernels_sum =  sum( [e  for bs in _DATA_PARAS['block_kernels'] for e in bs] )
-    block_paddings_sum =  sum( [e=='s'  for bs in _DATA_PARAS['block_paddings'] for e in bs] )
+    block_params = _DATA_PARAS['block_params']
+    block_size_sum = sum( [e  for bs in block_params['block_sizes'] for e in bs] )
+    block_kernels_sum =  sum( [e  for bs in block_params['kernels'] for e in bs] )
+    block_paddings_sum =  sum( [e=='s'  for bs in block_params['padding_s1'] for e in bs] )
     model_str = '-b%dk%dp%d'%(  block_size_sum,
                                   block_kernels_sum,
                                   block_paddings_sum )

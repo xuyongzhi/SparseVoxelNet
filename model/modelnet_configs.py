@@ -18,7 +18,8 @@ DEFAULTS['data_path'] = 'MODELNET40H5F/Merged_tfrecord/6_mgs1_gs2_2-mbf-neg_fmn1
 DEFAULTS['residual'] = 1
 DEFAULTS['shortcut'] = 'MC' #C, MC, AC, MZ, AZ
 DEFAULTS['use_bias'] = 1
-DEFAULTS['block_style'] = 'Inception' # Regular, Bottleneck, Inception
+DEFAULTS['block_style'] = 'Bottleneck' # Regular, Bottleneck, Inception
+DEFAULTS['block_style'] = 'Regular' # Regular, Bottleneck, Inception
 DEFAULTS['optimizer'] = 'momentum'
 DEFAULTS['learning_rate0'] = 0.001
 DEFAULTS['lr_decay_rate'] = 0.7
@@ -72,4 +73,13 @@ def get_block_paras(resnet_size, model_flag):
     assert (np.array(block_kernels[k][0])==1).all()
     assert (np.array(block_strides[k][0])==1).all()
 
-  return block_sizes, block_kernels, block_strides, block_paddings
+  block_params = {}
+  block_params['kernels'] = block_kernels[rs]
+  block_params['strides'] = block_strides[rs]
+  block_params['padding_s1'] = block_paddings[rs]
+  block_params['block_sizes'] = block_sizes[rs]
+  return block_params
+
+
+
+

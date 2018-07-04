@@ -186,7 +186,7 @@ bnd optimizer filters0 shortcut\n'
         lr_decay_epochs=dnc['lr_decay_epochs'],
         bnd=dnc['batch_norm_decay0'],
         optimizer=dnc['optimizer'],
-        filters0=dnc['num_filters0'],
+        filters0=dnc['block_params']['num_filters0'],
         shortcut=dnc['shortcut'])
 
       self.key_paras_str = key_para_names + key_paras_str
@@ -197,13 +197,22 @@ bnd optimizer filters0 shortcut\n'
         'sub_block_stride_candis', 'sub_block_step_candis','optimizer',\
         'learning_rate0', 'lr_decay_rate', 'batch_norm_decay0', 'lr_vals', \
         'bndecay_vals', 'use_bias', 'shortcut',\
-        'weight_decay', 'num_filters0','resnet_size', 'block_kernels', \
-        'block_strides', 'block_paddings', 'data_dir']
+        'weight_decay', 'resnet_size', 'data_dir']
       for item in items_to_write:
         str_i = '%s:%s\n'%(item, data_net_configs[item])
         self.model_log_f.write(str_i)
         if self.IsShowModel:
           print(str_i)
+
+      # write block params
+      self.model_log_f.write('\nBlock parameters:\n')
+      block_params = data_net_configs['block_params']
+      for ele in block_params:
+        str_i ='%s:%s\n'%(ele,block_params[ele])
+        self.model_log_f.write(str_i)
+        if self.IsShowModel:
+          print(str_i)
+
       self.model_log_f.write('\n')
       self.model_log_f.flush()
     ResConvOps._epoch += 1
@@ -247,11 +256,12 @@ bnd optimizer filters0 shortcut\n'
     self.model_log_f.flush()
     print(log_str)
 
-  def log_tensor_c(self, inputs, kernels, strides, padding_s1, var_scope):
+  def log_tensor_c(self, inputs, kernels, strides, padding_s1, var_scope,
+                   pre_indent=''):
       if not self.IsShowModel: return
       self.add_activation_size(inputs)
       conv_str = 'conv2d' if len(inputs.shape)==4 else 'conv3d'
-      layer_name = '/'.join(var_scope.split('/')[2:])
+      layer_name = pre_indent+'/'.join(var_scope.split('/')[2:])
       self.log( tensor_info(inputs, '%s (%d,%d,%s)'%
                     (conv_str, kernels, strides, padding_s1), layer_name,
                     self.train_w_bytes(var_scope)) )
@@ -390,8 +400,7 @@ bnd optimizer filters0 shortcut\n'
     outputs = pool_fn(inputs, kernels, strides, padding, self.data_format)
     return outputs
 
-  def building_block_v2(self, inputs, filters, training, projection_shortcut,
-                          kernels, strides, padding_s1):
+  def building_block_v2(self, inputs, block_params, training, projection_shortcut):
     """A single block for ResNet v2, without a bottleneck.
 
     Batch normalization then ReLu then convolution as described by:
@@ -414,6 +423,11 @@ bnd optimizer filters0 shortcut\n'
     Returns:
       The output tensor of the block; shape should match inputs.
     """
+    filters = block_params['filters']
+    kernels = block_params['kernels']
+    strides = block_params['strides']
+    padding_s1 = block_params['padding_s1']
+
     shortcut = inputs
     inputs = self.batch_norm(inputs, training)
     inputs = tf.nn.relu(inputs)
@@ -426,8 +440,6 @@ bnd optimizer filters0 shortcut\n'
       projection_shortcut = None
       if self.IsShowModel:  self.log(
             'shortcut after activation identity for pointnet first res unit')
-
-    conv_str = 'conv2d' if len(inputs.shape)==4 else 'conv3d'
 
     # The projection shortcut should come after the first batch norm and ReLU
     # since it performs a 1x1 convolution.
@@ -454,8 +466,7 @@ bnd optimizer filters0 shortcut\n'
     else:
       return inputs
 
-  def bottleneck_block_v2(self, inputs, filters, training, projection_shortcut,
-                          kernels, strides, padding_s1):
+  def bottleneck_block_v2(self, inputs, block_params, training, projection_shortcut):
     """A single block for ResNet v2, with a bottleneck.
 
     Similar to building_block_v2(), except using the "bottleneck" blocks
@@ -486,12 +497,15 @@ bnd optimizer filters0 shortcut\n'
     Returns:
       The output tensor of the block; shape should match inputs.
     """
+    filters = block_params['filters']
+    kernels = block_params['kernels']
+    strides = block_params['strides']
+    padding_s1 = block_params['padding_s1']
+
     shortcut = inputs
     inputs = self.batch_norm(inputs, training)
     inputs = tf.nn.relu(inputs)
     if self.IsShowModel:  self.log('%38s'%('BN RELU'))
-
-    conv_str = 'conv2d' if len(inputs.shape)==4 else 'conv3d'
 
     # The projection shortcut should come after the first batch norm and ReLU
     # since it performs a 1x1 convolution.
@@ -527,7 +541,7 @@ bnd optimizer filters0 shortcut\n'
     else:
       return inputs
 
-  def operation(self, op, net):
+  def operation(self, op, net, pre_indent):
     ''' general operation entry
 
     Args:
@@ -537,17 +551,17 @@ bnd optimizer filters0 shortcut\n'
     var_scope = tf.get_variable_scope().name
     if op[0] == 'conv':
       net = self.conv2d3d(net, op[1], op[2], op[3], op[4])
-      self.log_tensor_c(net, op[2], op[3], op[4], var_scope)
+      self.log_tensor_c(net, op[2], op[3], op[4], var_scope, pre_indent)
     elif op[0] == 'max':
       net = self.pool2d3d(net, 'max', op[1], op[2], op[3])
-      layer_name = '/'.join(var_scope.split('/')[2:])
+      layer_name = pre_indent+'/'.join(var_scope.split('/')[2:])
       self.log_tensor_p(net, 'max', layer_name)
     else:
       raise NotImplementedError
     return net
 
-  def inception_block_v2(self, inputs, filters, training, projection_shortcut,
-                          kernels, strides, padding_s1):
+  def inception_block_v2(self, inputs, inception_block_ops, training,
+                         projection_shortcut):
     """A single block for ResNet v2, with inception structure
 
 
@@ -567,58 +581,41 @@ bnd optimizer filters0 shortcut\n'
       The output tensor of the block; shape should match inputs.
     """
     shortcut = inputs
-    net = self.batch_norm(inputs, training)
-    net = tf.nn.relu(net)
-
-    ops_block = [
-        [['conv',32,1,1,'s']],
-        [['conv',32,1,1,'s'],['conv',32,3,1,'s']],
-        [['conv',32,1,1,'s'],['conv',48,3,1,'s'],['conv',64,1,1,'s']],
-        [['max',3,1,'s']] ]
-    net_branches = []
-    for b, ops_branch in enumerate(ops_block):
-      for l,op in enumerate(ops_branch):
-        with tf.variable_scope('b%d_l%d'%(b,l)):
-          net_b = self.operation(op, net)
-      net_branches.append(net_b)
-    c_axis = -1 if self.data_format == 'channels_last' else 1
-    net = tf.concat(net_branches, c_axis)
-    layer_name = '/'.join(tf.get_variable_scope().name.split('/')[2:])
-    self.log_tensor_p(net, 'inception', layer_name)
-
-
-    import pdb; pdb.set_trace()  # XXX BREAKPOINT
-    pass
-
-    if projection_shortcut == 'FirstResUnit':
-      # For pointnet, projection shortcut is not needed at the First ResUnit.
-      # However, BN and Activation is still required at the First ResUnit for
-      # pre-activation.
-      shortcut = inputs
-      projection_shortcut = None
-      if self.IsShowModel:  self.log(
-            'shortcut after activation identity for pointnet first res unit')
-
-    conv_str = 'conv2d' if len(inputs.shape)==4 else 'conv3d'
+    inputs = self.batch_norm(inputs, training)
+    inputs = tf.nn.relu(inputs)
+    if self.IsShowModel:  self.log('%38s'%('BN RELU'))
 
     # The projection shortcut should come after the first batch norm and ReLU
     # since it performs a 1x1 convolution.
     if projection_shortcut is not None:
       shortcut = projection_shortcut(inputs)
 
-    with tf.variable_scope('conv0'):
-      inputs = self.conv2d3d(inputs, filters, kernels, strides, padding_s1)
-
-    inputs = self.batch_norm(inputs, training)
-    inputs = tf.nn.relu(inputs)
-    if self.IsShowModel:  self.log('%38s'%('BN RELU'))
-
-    with tf.variable_scope('c1'):
-      inputs = self.conv2d3d(inputs, filters, kernels, 1, 's')
+    ops_block = [
+        [['conv',32,1,1,'s']],
+        [['conv',32,1,1,'s'],['conv',32,3,1,'s']],
+        [['conv',32,1,1,'s'],['conv',48,3,1,'s'],['conv',64,1,1,'s']],
+        [['max',3,1,'s']] ]
+    inputs_branches = []
+    for b, ops_branch in enumerate(ops_block):
+      for l,op in enumerate(ops_branch):
+        with tf.variable_scope('b%d_l%d'%(b,l)):
+          pre_indent = '  ' if l==len(ops_branch)-1 else '    '
+          if l>0:
+            inputs = self.batch_norm(inputs, training)
+            inputs = tf.nn.relu(inputs)
+            if self.IsShowModel:  self.log('%38s'%('BN RELU'))
+          inputs_b = self.operation(op, inputs, pre_indent)
+      inputs_branches.append(inputs_b)
+    c_axis = -1 if self.data_format == 'channels_last' else 1
+    inputs = tf.concat(inputs_branches, c_axis)
+    layer_name = '/'.join(tf.get_variable_scope().name.split('/')[2:])
+    self.log_tensor_p(inputs, 'inception concat', layer_name)
 
     if self.residual:
-      assert inputs.shape == shortcut.shape
-      return inputs + shortcut
+      if not inputs.shape == shortcut.shape:
+        import pdb; pdb.set_trace()  # XXX BREAKPOINT
+
+      return inputs * self.res_scale + shortcut
     else:
       return inputs
 
@@ -672,9 +669,8 @@ bnd optimizer filters0 shortcut\n'
       raise NotImplementedError, scm
     return shortcut
 
-  def block_layer(self, inputs, filters, block_fn, blocks, kernels,
-                  strides, padding_s1, training, name):
-    """Creates one layer of blocks for the ResNet model.
+  def block_layer(self, inputs, block_params, block_fn, training, name):
+    """Creates one layer of block_size for the ResNet model.
 
     Args:
       inputs: A tensor of size [batch, channels, height_in, width_in] or
@@ -682,7 +678,7 @@ bnd optimizer filters0 shortcut\n'
       filters: The number of filters for the first convolution of the layer.
       block_fn: The block to use within the model, either `building_block` or
         `bottleneck_block`.
-      blocks: The number of blocks contained in the layer.
+      block_size: The number of block_size contained in the layer.
       strides: The stride to use for the first convolution of the layer. If
         greater than 1, this layer will ultimately downsample the input.
       training: Either True or False, whether we are currently training the
@@ -693,8 +689,14 @@ bnd optimizer filters0 shortcut\n'
     Returns:
       The output tensor of the block layer.
     """
-    if blocks==0: return inputs
-    # Bottleneck blocks end with 4x the number of filters as they start with
+    block_size = block_params['block_sizes']
+    filters = block_params['filters']
+    kernels = block_params['kernels']
+    strides = block_params['strides']
+    padding_s1 = block_params['padding_s1']
+
+    if block_size==0: return inputs
+    # Bottleneck block_size end with 4x the number of filters as they start with
     bottleneck = block_fn == self.bottleneck_block_v2
     filters_out = filters * 4 if bottleneck else filters
 
@@ -710,12 +712,13 @@ bnd optimizer filters0 shortcut\n'
     else:
       projection_shortcut_0 = shortcut_projection
     with tf.variable_scope('L0'):
-      inputs = block_fn(inputs, filters, training, projection_shortcut_0,
-                        kernels, strides, padding_s1)
+      inputs = block_fn(inputs, block_params, training, projection_shortcut_0)
 
-    for j in range(1, blocks):
+    block_params['strides'] = 1
+    block_params['padding_s1'] = 's'
+    for j in range(1, block_size):
       with tf.variable_scope('L%d'%(j)):
-        inputs = block_fn(inputs, filters, training, None, kernels, 1, 's')
+        inputs = block_fn(inputs, block_params, training, None)
 
     self._block_layers_num += 1
     return tf.identity(inputs, name)
@@ -724,10 +727,9 @@ bnd optimizer filters0 shortcut\n'
 class Model(ResConvOps):
   """Base class for building the Resnet Model."""
 
-  def __init__(self, model_flag, resnet_size, block_style, num_classes, num_filters,
-               block_sizes, block_kernels, block_strides, block_paddings,
-               resnet_version=DEFAULT_VERSION, data_format=None,
-               dtype=DEFAULT_DTYPE, data_net_configs={}):
+  def __init__(self, model_flag, resnet_size, block_style, num_classes,
+               block_params, resnet_version=DEFAULT_VERSION,
+               data_format=None, dtype=DEFAULT_DTYPE, data_net_configs={}):
     """Creates a model for classifying an image.
 
     Args:
@@ -788,11 +790,8 @@ class Model(ResConvOps):
       raise ValueError('dtype must be one of: {}'.format(ALLOWED_TYPES))
 
     self.num_classes = num_classes
-    self.num_filters = num_filters
-    self.block_sizes = block_sizes
-    self.block_kernels = block_kernels
-    self.block_strides = block_strides
-    self.block_paddings = block_paddings
+    self.block_params = block_params
+    self.num_filters0 = block_params['num_filters0']
     self.dtype = dtype
     self.pre_activation = resnet_version == 2
     self.data_net_configs = data_net_configs
@@ -808,7 +807,7 @@ class Model(ResConvOps):
         self.num_neighbors= None
     self.global_numpoint = self.data_net_configs['points'][0]
     #self.cascade_num = int(self.model_flag[0])
-    self.cascade_num = len(self.data_net_configs['block_sizes'])
+    self.cascade_num = len(self.data_net_configs['block_params']['block_sizes'])
     assert self.cascade_num <= self.data_net_configs['sg_bm_extract_idx'].shape[0]-1
     #self.log('cascade_num:{}'.format(self.cascade_num))
     self.IsOnlineGlobal = self.model_flag[-1] == 'G'
@@ -1033,7 +1032,7 @@ class Model(ResConvOps):
   def initial_layer(self, inputs, scope_ini='initial'):
     with tf.variable_scope(scope_ini):
       inputs = self.conv2d3d(
-          inputs=inputs, filters=self.num_filters, kernels=1,
+          inputs=inputs, filters=self.num_filters0, kernels=1,
           strides=1, padding_s1='s')
       inputs = tf.identity(inputs, 'initial_conv')
       self.log_tensor_c(inputs, 1, 1, 's', tf.get_variable_scope().name)
@@ -1052,24 +1051,24 @@ class Model(ResConvOps):
 
   def res_sa_model(self, cascade_id, inputs, grouped_xyz,
                    valid_mask, block_bottom_center_mm):
-      for i, num_blocks in enumerate(self.block_sizes[cascade_id]):
+      for i, block_size in enumerate(self.block_params['block_sizes'][cascade_id]):
         if self.IsShowModel:
           self.log('-------------------cascade_id %d, block %d---------------------'%(cascade_id, i))
         # Keep the same dimension between the end of cascade i and begin of
         # cascades i+1
-        num_filters = self.num_filters * (2**(self.block_num_count-cascade_id))
+        num_filters = self.num_filters0 * (2**(self.block_num_count-cascade_id))
         max_filters = 1024 if self.block_style == 'Regular' else 512
         num_filters = min(num_filters, max_filters)
+
+        block_params = {}
+        block_params['filters'] = num_filters
+        for ele in ['kernels', 'strides', 'padding_s1', 'block_sizes']:
+          block_params[ele] = self.block_params[ele][cascade_id][i]
+
         with tf.variable_scope('B%d'%(i)):
           block_fn = self.block_fn if cascade_id!=0 else self.building_block_v2
-          inputs = self.block_layer(
-              inputs=inputs, filters=num_filters,
-              block_fn=block_fn, blocks=num_blocks,
-              kernels=self.block_kernels[cascade_id][i],
-              strides=self.block_strides[cascade_id][i],
-              padding_s1=self.block_paddings[cascade_id][i],
-              training=self.is_training,
-              name='block_layer{}'.format(i + 1))
+          inputs = self.block_layer(inputs, block_params, block_fn,
+                    self.is_training, 'block_layer{}'.format(i + 1))
         self.block_num_count += 1
       return inputs
 
