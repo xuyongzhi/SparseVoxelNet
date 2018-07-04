@@ -142,6 +142,7 @@ class ResConvOps(object):
   _block_layers_num = 0
   _conv2d_num = 0
   _conv3d_num = 0
+  _inception_block_layer = 0
   IsShowModel = False
   _epoch = 0
   _trainable_num = 0
@@ -279,6 +280,8 @@ bnd optimizer filters0 shortcut\n'
   def show_layers_num_summary(self):
     self.log('block layers num:{}\nconv2d num:{}\nconv3d num:{}\n'.format(
                   self._block_layers_num, self._conv2d_num, self._conv3d_num))
+    if self._inception_block_layer > 0:
+      self.log('inception block layer:{}\n'.format(self._inception_block_layer))
 
   def get_feature_shape(self, net):
     if len(net.shape)==4:
@@ -593,7 +596,9 @@ bnd optimizer filters0 shortcut\n'
     if projection_shortcut is not None:
       shortcut = projection_shortcut(inputs)
 
-    icp_block_ops = block_params['icp_block_ops'](self.get_feature_shape(inputs)[0])
+    icp_block_ops = block_params['icp_block_ops'](
+      self.get_feature_shape(inputs)[0], self.get_feature_channels(inputs),
+      block_params['filters'])
     inputs_branches = []
     for b, ops_branch in enumerate(icp_block_ops):
       for l,op in enumerate(ops_branch):
@@ -607,6 +612,8 @@ bnd optimizer filters0 shortcut\n'
             if self.IsShowModel:  self.log('%38s'%('BN RELU'))
           inputs_b = self.operation(op, inputs_b, pre_indent)
       inputs_branches.append(inputs_b)
+    self._inception_block_layer += max([len(ops_branch) for ops_branch in icp_block_ops])
+
     c_axis = -1 if self.data_format == 'channels_last' else 1
     inputs = tf.concat(inputs_branches, c_axis)
     layer_name = '/'.join(tf.get_variable_scope().name.split('/')[2:])
@@ -1068,7 +1075,7 @@ class Model(ResConvOps):
         # Keep the same dimension between the end of cascade i and begin of
         # cascades i+1
         num_filters = self.num_filters0 * (2**(self.block_num_count-cascade_id))
-        max_filters = 1024 if self.block_style == 'Regular' else 512
+        max_filters = 512 if self.block_style == 'Bottleneck' else 1024
         num_filters = min(num_filters, max_filters)
 
         block_params = {}
