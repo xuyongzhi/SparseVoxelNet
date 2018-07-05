@@ -28,7 +28,7 @@ DEFAULTS['lr_warmup'] = 1
 DEFAULTS['batch_norm_decay0'] = 0.7
 
 DEFAULTS['model_flag'] = 'V'
-DEFAULTS['resnet_size'] = 27
+DEFAULTS['resnet_size'] = 30
 DEFAULTS['feed_data'] = 'xyzs-nxnynz'
 DEFAULTS['aug_types'] = 'N' # 'rpsfj-360_0_0'
 DEFAULTS['drop_imo'] = '0_0_5'
@@ -61,7 +61,7 @@ def icp_block(flag):
     if flag == 'A':
       if map_size >= 6: kernel = 3
       elif map_size >=3: kernel = 2
-      elif map_size == 1: kernel = 1
+      else: kernel = 1
       ICP = [
             [['conv',f1,1,1,'s']],
             [['conv',f0,1,1,'s'], ['conv',f1*2,kernel,1,'s']],
@@ -75,6 +75,25 @@ def icp_block(flag):
       ICP = [
             [['conv',f0,1,1,'s'], ['conv',f1*2,kernel,1,'v']],
             [['max',kernel,1,'v'], ['conv',f1*1,1,1,'s']] ]
+
+    elif flag == 'B':
+      if map_size >= 6: kernel = 3
+      elif map_size >=3: kernel = 2
+      else: kernel = 1
+      ICP = [
+            [['conv',f1,1,1,'s']],
+            [['conv',f0,1,1,'s'], ['conv',f1*2,kernel,1,'s']],
+            [['max',kernel,1,'s'], ['conv',f1,1,1,'s']] ]
+
+    #---------- Reduce feature map size  -------------
+    elif flag == 'b':
+      if map_size >= 4: kernel = 3
+      elif map_size >= 2: kernel = 2
+      elif map_size == 1: kernel = 1
+      ICP = [
+            [['conv',f0,1,1,'s'], ['conv',f1*2,kernel,1,'v']],
+            [['max',kernel,1,'v'], ['conv',f1*1,1,1,'s']] ]
+
     return ICP
   return icp_by_mapsize
 
@@ -83,15 +102,25 @@ def get_block_paras_inception(resnet_size, model_flag):
   num_filters0s = {}
   block_sizes = {}
   block_flag = {}
+  block_filters = {}
 
   rs = 27
-  num_filters0s[rs] = 32
-  block_sizes[rs] = [[2,1], [1,3], [2,2,1]]
-  block_flag[rs]  = [[],  ['a','A'],['A','a','a']]
+  if model_flag == 'Va':
+    num_filters0s[rs] = 32
+    block_sizes[rs]   = [[2,1], [1,1,2], [2,2,1]]
+    block_filters[rs] = [[32,64], [128,256,384], [384,512,1024]]
+    block_flag[rs]    = [[],  ['A','a','A'],['a','A','a']]
+
+  if model_flag == 'Vb':
+    num_filters0s[rs] = 32
+    block_sizes[rs]   = [[2,1], [1,2,1], [2,2,1]]
+    block_filters[rs] = [[32,64], [128,256,384], [384,512,1024]]
+    block_flag[rs]    = [[],  ['B','b','B'],['a','A','a']]
 
   block_params = {}
   block_params['num_filters0'] = num_filters0s[resnet_size]
   block_params['block_sizes'] = block_sizes[resnet_size]
+  block_params['filters'] = block_filters[resnet_size]
   block_params['icp_flags'] = block_flag[resnet_size]
   block_params['icp_block_ops'] = [ [icp_block(flag) for flag in cascade] for cascade in block_flag[resnet_size] ]
   return block_params

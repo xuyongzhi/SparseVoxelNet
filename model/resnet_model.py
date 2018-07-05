@@ -393,8 +393,9 @@ bnd optimizer block_config\n'
       inputs = self.fixed_padding_2d3d(inputs, kernels, self.data_format)
     if padding == 'same':
       in_shape = self.get_feature_shape(inputs)
-      padding_rates = (kernels-1.0) / in_shape
-      assert (padding_rates < 0.3).all(),\
+      pad_waste = kernels-1
+      pad_waste_r = pad_waste / in_shape
+      assert (pad_waste <= 1 and (pad_waste_r < 0.4).all()) or ((pad_waste_r < 0.3).all() and pad_waste>1),\
         "kernel too large, too waste, inputs: %s, kernel:%d"%(in_shape, kernels)
     return inputs, padding
 
@@ -670,7 +671,7 @@ bnd optimizer block_config\n'
       ['MZ'/'AZ'] Max/Ave Pool(Kernel>1) + Padding('v') => Channel zero padding # No weight
     '''
     scm = self.shortcut_method
-    filters_out = block_params['filters']
+    filters_out_sc = block_params['filters']
     kernels = block_params['kernels']
     strides = block_params['strides']
     padding_s1 = block_params['padding_s1']
@@ -680,7 +681,7 @@ bnd optimizer block_config\n'
     if scm == 'C':
       # padding_s1=='v: feature map size have to be reduced => kernels
       with tf.variable_scope('sc_C'):
-        shortcut = self.conv2d3d(inputs, filters_out, kernel_sc, strides,
+        shortcut = self.conv2d3d(inputs, filters_out_sc, kernel_sc, strides,
                                  padding_s1)
         self.log_tensor_c(shortcut, kernel_sc, strides,
                         padding_s1, tf.get_variable_scope().name)
@@ -695,10 +696,10 @@ bnd optimizer block_config\n'
         else:
           shortcut = inputs
 
-        channels_dif = filters_out - self.get_feature_channels(shortcut)
+        channels_dif = filters_out_sc - self.get_feature_channels(shortcut)
         if channels_dif != 0:
           if scm[1] == 'C':
-            shortcut = self.conv2d3d(shortcut, filters_out, 1, 1, 's')
+            shortcut = self.conv2d3d(shortcut, filters_out_sc, 1, 1, 's')
             self.log_tensor_c(shortcut, 1, 1, 's', tf.get_variable_scope().name)
           else:
             shortcut = self.padding_channel(shortcut, channels_dif)
@@ -734,11 +735,11 @@ bnd optimizer block_config\n'
     if block_size==0: return inputs
     # Bottleneck block_size end with 4x the number of filters as they start with
     bottleneck = block_fn == self.bottleneck_block_v2
-    filters_out = filters * 4 if bottleneck else filters
+    filters_out_sc = filters * 4 if bottleneck else filters
 
     def shortcut_projection(inputs):
       block_params_sc = block_params.copy()
-      block_params_sc['filters'] = filters_out
+      block_params_sc['filters'] = filters_out_sc
       return self.shortcut_fn(inputs, block_params_sc)
 
     # (1) Only the first block per block_layer uses projection_shortcut and strides
@@ -1105,7 +1106,7 @@ class Model(ResConvOps):
         num_filters = min(num_filters, max_filters)
 
         block_params = {}
-        block_params['filters'] = num_filters
+        block_params['filters'] = self.block_params['filters'][cascade_id][i]
         if cascade_id == 0:
           # point net is special
           block_params['kernels'] = block_params['strides'] = 1

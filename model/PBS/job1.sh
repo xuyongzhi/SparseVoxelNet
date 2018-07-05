@@ -19,8 +19,8 @@ module list
  
 
 #------------------------------------------------------------------------
-batch_size=32
-model_flag='V'
+batch_size=64
+model_flag='Va'
 learning_rate0=0.001
 lr_decay_epochs=10
 lr_decay_rate=0.7
