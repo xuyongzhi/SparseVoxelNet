@@ -1,0 +1,46 @@
+\documentclass[,table,dvipsnames]{article}
+\usepackage[usenames, dvipsnames]{color}
+\usepackage{graphicx}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{hyperref}
+\usepackage{longtable}
+\usepackage{float}
+\usepackage{tikz}
+\usetikzlibrary{shapes.geometric, arrows}
+\usepackage{xcolor}
+
+\graphicspath{ {images/} {images/mat60_1AG/} }
+\title{Sparse voxel net on MODELNET40}
+\author{xyz}
+\date{July 2018}
+
+
+\begin{document}
+\noindent
+\begin{titlepage}
+	\maketitle
+\end{titlepage}	
+
+\tableofcontents{}
+
+\section{Residual Bottleneck}
+\subsection{New Shortcut}
+\noindent\begin{tabular}{|p{10cm}|p{5cm}| }	
+	\hline
+	\multicolumn{2}{|p{15cm}|}{Merged\_tfrecord/6\_mgs1\_gs2\_2-mbf-neg\_fmn14\_mvp1-1024\_240\_1-64\_27\_256-0d2\_0d4-0d1\_0d2-pd3-2M2pp}\\
+	\hline
+	model use\_bias bs feed aug drop\_imo lr0\_drate\_depoch bnd optimizer filters0 shortcut & train/eval \\
+	
+	\rowcolor{yellow!20}
+	rs36V True 32 xyzs-nxnynz N 0\_0\_5 0.001\_0.7\_10 0.7 momentum 32 MC& 10 0.291/0.604--0.916/0.847\par 35 0.039/0.575--0.994/0.872\par 60 0.020/0.597--0.995/0.868\\
+	
+	\rowcolor{blue!20}
+	rs36V True 32 xyzs-nxnynz N 0\_0\_5 0.001\_0.7\_10 0.7 momentum 64 MC& 10 0.306/0.608--0.916/0.854\par 35 0.040/0.517--0.992/0.876\par 60 0.027/0.529--0.996/0.873\\
+	
+	\hline 
+\end{tabular}
+
+\section{Residual Inception}
+
+\end{document}

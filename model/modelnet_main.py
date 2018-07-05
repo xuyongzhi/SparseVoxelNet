@@ -347,40 +347,45 @@ def ls_str(ls_in_ls):
   return ls_str
 
 def define_model_dir():
-  def get_model_configs_detailed():
+  def get_block_configs_detailed():
     block_sizes_str = ls_str(_DATA_PARAS['block_sizes'])
     block_kernels_str = ls_str(_DATA_PARAS['block_kernels'])
     block_paddings_str = ls_str(_DATA_PARAS['block_paddings'])
-    model_str = '-b%s-k%s-p%s'%( block_sizes_str,
+    block_config_str = '-b%s-k%s-p%s'%( block_sizes_str,
                                 block_kernels_str, block_paddings_str)
-    return model_str
-  def get_model_configs_fused():
+    return block_config_str
+  def get_block_configs_fused():
     block_params = _DATA_PARAS['block_params']
     block_size_sum = sum( [e  for bs in block_params['block_sizes'] for e in bs] )
     if _DATA_PARAS['block_style'] != 'Inception':
       block_kernels_sum =  sum( [e  for bs in block_params['kernels'] for e in bs] )
       block_paddings_sum =  sum( [e=='s'  for bs in block_params['padding_s1'] for e in bs] )
-      model_str = '-b%dk%dp%d'%(  block_size_sum,
+      block_config_str = '-b%dk%dp%d'%(  block_size_sum,
                                   block_kernels_sum,
                                   block_paddings_sum )
     else:
-      block_flags_ls =  ''.join( [e  for bs in block_params['icp_flags'] for e in bs] )
-      model_str = '-b%d%s'%(  block_size_sum,
-                                  block_flags_ls )
-    return model_str
+      block_size_sum = [np.sum([e  for e in bs]) for bs in block_params['block_sizes']  ]
+      block_flags_ls =  [''.join( [e  for e in bs] )  for bs in block_params['icp_flags'] ]
+      block_str = [str(block_size_sum[i])+block_flags_ls[i] for i in range(len(block_size_sum))]
+      block_config_str = '_'.join(block_str)
+    return block_config_str
 
-  if flags.FLAGS.residual == 1:
-    logname = 'R'
-    logname += flags.FLAGS.shortcut
-  else:
-    logname = 'P'
-  logname += flags.FLAGS.block_style[0]
-  if flags.FLAGS.use_bias == 1:
-    logname += 'b'
-  model_str = get_model_configs_fused()
-  logname += str(flags.FLAGS.resnet_size) + '-' + flags.FLAGS.model_flag
-  logname += model_str
-  logname += '-Fn0_'+str(flags.FLAGS.num_filters0)
+  def model_name():
+    if flags.FLAGS.residual == 1:
+      modelname = 'R'
+      modelname += flags.FLAGS.shortcut
+    else:
+      modelname = 'P'
+    modelname += '_'+flags.FLAGS.block_style[0]
+    modelname += str(flags.FLAGS.resnet_size) + flags.FLAGS.model_flag
+    if flags.FLAGS.use_bias == 0:
+      logname += '_Nb'
+    modelname += '_' + str(flags.FLAGS.num_filters0)
+    return modelname
+
+  logname = _DATA_PARAS['model_name'] =  model_name()
+
+  block_config_str = _DATA_PARAS['block_config_str'] = get_block_configs_fused()
 
   logname += '-'+flags.FLAGS.feed_data + '-Aug_' + flags.FLAGS.aug_types
   logname += '-Drop'+flags.FLAGS.drop_imo
@@ -392,6 +397,7 @@ def define_model_dir():
   if flags.FLAGS.lr_warmup == 1:
     logname += 'w'
   logname += '-Bnd'+str(int(flags.FLAGS.batch_norm_decay0*100))
+  logname += '-BLOCK-'+block_config_str
 
   model_dir = os.path.join(ROOT_DIR, 'results/object_detection_result', logname)
   if not os.path.exists(model_dir):

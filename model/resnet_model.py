@@ -171,30 +171,29 @@ class ResConvOps(object):
 
 
       dnc = data_net_configs
-      res = 'rs' if self.residual else 'pl'
-      key_para_names = 'model use_bias bs feed aug drop_imo lr0_drate_depoch \
-bnd optimizer filters0 shortcut\n'
-      key_paras_str = '{model_name} {use_bias} {bs} {feed_data_eles} \
-{aug} {drop_imo} {lr0}_{lr_decay_rate}_{lr_decay_epochs} {bnd} {optimizer} \
-{filters0} {shortcut}\n\n'.format(
-        model_name=res+str(dnc['resnet_size'])+dnc['model_flag'],
-        use_bias=str(dnc['use_bias']),
+      res = 'R' if self.residual else 'P'
+      key_para_names = 'model bs aug feed drop_imo lr0_drate_depoch \
+bnd optimizer block_config\n'
+      key_paras_str = '{model_name} {bs} {aug} {feed_data_eles} \
+{drop_imo} {lr0}_{lr_decay_rate}_{lr_decay_epochs} {bnd} {optimizer} {block_config}\
+\n\n'.format(
+        model_name=dnc['model_name'],
         bs=dnc['batch_size'],
-        feed_data_eles=dnc['feed_data_eles'],
+        feed_data_eles=dnc['feed_data_eles'].replace('nxnynz','n'),
         aug=dnc['aug_types'],
         drop_imo=dnc['drop_imo_str'],
         lr0=dnc['learning_rate0'],
         lr_decay_rate=dnc['lr_decay_rate'],
         lr_decay_epochs=dnc['lr_decay_epochs'],
         bnd=dnc['batch_norm_decay0'],
-        optimizer=dnc['optimizer'],
-        filters0=dnc['block_params']['num_filters0'],
-        shortcut=dnc['shortcut'])
+        optimizer=dnc['optimizer'][0:3],
+        block_config=dnc['block_config_str'],
+        )
 
       self.key_paras_str = key_para_names + key_paras_str
       self.model_log_f.write(self.key_paras_str)
 
-      items_to_write = ['model_flag', 'dataset_name', 'aug_types', 'drop_imo', \
+      items_to_write = ['model_flag', 'block_config_str', 'dataset_name', 'aug_types', 'drop_imo', \
         'feed_data', 'xyz_elements', 'points', 'global_step','global_stride',\
         'sub_block_stride_candis', 'sub_block_step_candis','optimizer',\
         'learning_rate0', 'lr_decay_rate', 'batch_norm_decay0', 'lr_vals', \
@@ -1041,7 +1040,7 @@ class Model(ResConvOps):
         else:
           root_point_features = None
         assert len(outputs.shape)==4
-        outputs = self.feature_uncompress_block(outputs, 2, 2)
+        outputs = self.feature_uncompress_block(outputs, 2, 1)
         outputs = tf.reduce_max(outputs, axis=2 if self.data_format=='channels_last' else 3)
         self.log_tensor_p(outputs, 'max', 'cas%d'%(cascade_id))
       else:
