@@ -398,6 +398,8 @@ def define_model_dir():
   if flags.FLAGS.lr_warmup == 1:
     logname += 'w'
   logname += '-Bnd'+str(int(flags.FLAGS.batch_norm_decay0*100))
+  data_flag = np.sum([ord(e) for e in DEFAULTS['data_path']]) % 1000
+  logname += '-D'+str(data_flag)
   logname += '-BLOCK-'+block_config_str
 
   model_dir = os.path.join(ROOT_DIR, 'results/object_detection_result', logname)
