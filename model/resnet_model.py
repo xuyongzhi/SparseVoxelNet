@@ -290,6 +290,9 @@ bnd optimizer filters0 shortcut\n'
     elif len(net.shape)==5:
       if self.data_format == 'channels_last':
         shape = net.shape.as_list()[1:4]
+    else:
+      import pdb; pdb.set_trace()  # XXX BREAKPOINT
+      pass
     return np.array(shape)
 
   def get_feature_channels(self, net):
@@ -406,6 +409,16 @@ bnd optimizer filters0 shortcut\n'
     outputs = pool_fn(inputs, kernels, strides, padding, self.data_format)
     return outputs
 
+  def feature_uncompress_block(self, inputs, feature_rate, uncompress_times):
+    assert self.data_format == 'channels_last'
+    with tf.variable_scope('fu'):
+      for i in range(uncompress_times):
+        filters_i = int(self.get_feature_channels(inputs)*2)
+        inputs = self.conv2d3d(inputs, filters_i, 1,1,'s')
+        self.log_tensor_c(inputs, 1,1,'s', tf.get_variable_scope().name)
+    self.block_num_count += 1
+    return inputs
+
   def building_block_v2(self, inputs, block_params, training, projection_shortcut):
     """A single block for ResNet v2, without a bottleneck.
 
@@ -468,6 +481,7 @@ bnd optimizer filters0 shortcut\n'
 
     if self.residual:
       assert inputs.shape == shortcut.shape
+      if self.IsShowModel: self.log('Add shortcut*%0.1f'%(self.res_scale))
       return inputs * self.res_scale + shortcut
     else:
       return inputs
@@ -543,6 +557,7 @@ bnd optimizer filters0 shortcut\n'
       if not inputs.shape == shortcut.shape:
         import pdb; pdb.set_trace()  # XXX BREAKPOINT
 
+      if self.IsShowModel: self.log('Add shortcut*%0.1f'%(self.res_scale))
       return inputs * self.res_scale + shortcut
     else:
       return inputs
@@ -629,6 +644,7 @@ bnd optimizer filters0 shortcut\n'
         else:
           import pdb; pdb.set_trace()  # XXX BREAKPOINT
       else:
+        if self.IsShowModel: self.log('Add shortcut*%0.1f'%(self.res_scale))
         return inputs * self.res_scale + shortcut
     else:
       return inputs
@@ -792,6 +808,7 @@ class Model(ResConvOps):
           'Resnet version should be 1 or 2. See README for citations.')
 
     self.block_style = block_style
+    self.max_filters = {'Regular':1024, 'Bottleneck':512, 'Inception':1024}
     if resnet_version == 1:
         raise NotImplementedError
     else:
@@ -1024,6 +1041,7 @@ class Model(ResConvOps):
         else:
           root_point_features = None
         assert len(outputs.shape)==4
+        outputs = self.feature_uncompress_block(outputs, 2, 2)
         outputs = tf.reduce_max(outputs, axis=2 if self.data_format=='channels_last' else 3)
         self.log_tensor_p(outputs, 'max', 'cas%d'%(cascade_id))
       else:
@@ -1075,7 +1093,7 @@ class Model(ResConvOps):
         # Keep the same dimension between the end of cascade i and begin of
         # cascades i+1
         num_filters = self.num_filters0 * (2**(self.block_num_count-cascade_id))
-        max_filters = 512 if self.block_style == 'Bottleneck' else 1024
+        max_filters = self.max_filters[self.block_style]
         num_filters = min(num_filters, max_filters)
 
         block_params = {}

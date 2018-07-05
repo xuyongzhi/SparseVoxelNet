@@ -14,6 +14,9 @@ use_bias=1
 
 ./modelnet.sh   $aug_types  $batch_size $model_flag $learning_rate0 $num_gpus $feed_data $drop_imo $num_filters0 $optimizer $use_bias $lr_decay_epochs $lr_decay_rate
 
+num_filters0=32
+./modelnet.sh   $aug_types  $batch_size $model_flag $learning_rate0 $num_gpus $feed_data $drop_imo $num_filters0 $optimizer $use_bias $lr_decay_epochs $lr_decay_rate
+
 
 #----------------------------------------
 #aug_types='rpsfj-360_0_0'

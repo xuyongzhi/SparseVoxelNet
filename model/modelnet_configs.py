@@ -29,7 +29,7 @@ DEFAULTS['batch_norm_decay0'] = 0.7
 
 DEFAULTS['model_flag'] = 'V'
 DEFAULTS['resnet_size'] = 36
-DEFAULTS['num_filters0'] = 32
+DEFAULTS['num_filters0'] = 16
 DEFAULTS['feed_data'] = 'xyzs-nxnynz'
 DEFAULTS['aug_types'] = 'N' # 'rpsfj-360_0_0'
 DEFAULTS['drop_imo'] = '0_0_5'
@@ -49,15 +49,22 @@ def get_block_paras(resnet_size, model_flag, block_style):
 
 def icp_block(flag):
   def icp_by_mapsize(map_size, filters_in, filters_out):
+    if map_size == 1:
+      ICP = [[['conv',filters_in,1,1,'s'], ['conv',filters_out,1,1,'s']]]
+      return ICP
+
     #---------- Keep feature map size  -------------
+    def compress_rate(base_filters):
+      return max(base_filters//8, 32)
+    f0 = compress_rate(filters_in)
+    f1 = compress_rate(filters_out)
+
     if flag == 'A':
       if map_size >= 6: kernel = 3
       elif map_size >=3: kernel = 2
       elif map_size == 1: kernel = 1
-      f0 = (filters_in // 4)
-      f1 = (filters_out // 4)
       ICP = [
-            [['conv',f0,1,1,'s']],
+            [['conv',f1,1,1,'s']],
             [['conv',f0,1,1,'s'], ['conv',f1*2,kernel,1,'s']],
             [['max',kernel,1,'s'], ['conv',f1,1,1,'s']] ]
 
@@ -66,8 +73,6 @@ def icp_block(flag):
       if map_size >= 3: kernel = 3
       elif map_size == 2: kernel = 2
       elif map_size == 1: kernel = 1
-      f0 = (filters_in // 4)
-      f1 = (filters_out // 4)
       ICP = [
             [['conv',f0,1,1,'s'], ['conv',f1*2,kernel,1,'v']],
             [['max',kernel,1,'v'], ['conv',f1*1,1,1,'s']] ]
@@ -79,8 +84,8 @@ def get_block_paras_inception(resnet_size, model_flag):
   block_sizes = {}
   block_flag = {}
   rs = 36
-  block_sizes[rs] = [[2,1], [1,2,1], [2,3,1]]
-  block_flag[rs]  = [[],  ['a','A','A'],['a','A','a']]
+  block_sizes[rs] = [[1,2,1], [1,3], [1,1,3,1]]
+  block_flag[rs]  = [[],  ['a','A'],['a','a','A','a']]
 
   block_params = {}
   block_params['block_sizes'] = block_sizes[rs]
