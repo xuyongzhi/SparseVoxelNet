@@ -12,8 +12,8 @@ import numpy as np
 '''
 
 DEFAULTS = {}
-DEFAULTS['data_path'] = 'MODELNET40H5F/Merged_tfrecord/6_mgs1_gs2_2-mbf-neg_fmn14_mvp1-1024_240_1-64_27_256-0d2_0d4-0d1_0d2-pd3-2M2pp'
-#DEFAULTS['data_path'] = 'MODELNET40H5F/Merged_tfrecord/6_mgs1_gs2_2-neg_fmn14_mvp1-1024_240_1-64_27_256-0d2_0d4-0d1_0d2-pd3-2M2pp'
+#DEFAULTS['data_path'] = 'MODELNET40H5F/Merged_tfrecord/6_mgs1_gs2_2-mbf-neg_fmn14_mvp1-1024_240_1-64_27_256-0d2_0d4-0d1_0d2-pd3-2M2pp'
+DEFAULTS['data_path'] = 'MODELNET40H5F/Merged_tfrecord/6_mgs1_gs2_2-neg_fmn14_mvp1-1024_240_1-64_27_256-0d2_0d4-0d1_0d2-pd3-2M2pp'
 
 DEFAULTS['residual'] = 1
 DEFAULTS['shortcut'] = 'MC' #C, MC, AC, MZ, AZ
@@ -42,7 +42,7 @@ DEFAULTS['weight_decay'] = 0.0  # res official is 1e-4, charles is 0.0
 
 def get_block_paras(resnet_size, model_flag, block_style):
   if block_style == 'Bottleneck' or block_style == 'Regular':
-    return get_block_paras_bottleneck(resnet_size, model_flag)
+    return get_block_paras_bottle_regu(resnet_size, model_flag, block_style)
   elif block_style == 'Inception':
     return get_block_paras_inception(resnet_size, model_flag)
 
@@ -118,6 +118,7 @@ def get_block_paras_inception(resnet_size, model_flag):
     block_filters[rs] = [[32,64], [128,256,384], [384,512,1024]]
     block_flag[rs]    = [[],  ['B','b','B'],['a','A','a']]
 
+
   block_params = {}
   block_params['num_filters0'] = num_filters0s[resnet_size]
   block_params['block_sizes'] = block_sizes[resnet_size]
@@ -126,17 +127,51 @@ def get_block_paras_inception(resnet_size, model_flag):
   block_params['icp_block_ops'] = [ [icp_block(flag) for flag in cascade] for cascade in block_flag[resnet_size] ]
   return block_params
 
-def get_block_paras_bottleneck(resnet_size, model_flag):
+
+
+def get_block_paras_bottle_regu(resnet_size, model_flag, block_style):
+  num_filters0s = {}
   block_sizes = {}
   block_kernels = {}
   block_strides = {}
   block_paddings = {}   # only used when strides == 1
+  block_filters = {}
 
-  rs = 36
-  block_sizes[rs]    = [[2,1], [1,2], [2,2,1]]
-  block_kernels[rs]  = [[], [3,1], [3,2,1]]
-  block_strides[rs]  = [[], [1,1], [1,1,1]]
-  block_paddings[rs] = [[], ['v','s'], ['v','v','v']]
+  if block_style == 'Bottleneck':
+    #------------------------------ Bottleneck ---------------------------------
+    rs = 36
+    num_filters0s[rs] = 32
+    block_sizes[rs]    = [[2,1], [1,1,2], [2,2,1]]
+    block_filters[rs] = [[32,64], [256,256,512], [512,1024,2048]]
+    block_kernels[rs]  = [[], [1,3,1], [3,2,1]]
+    block_strides[rs]  = [[], [1,1,1], [1,1,1]]
+    block_paddings[rs] = [[], ['s','v','s'], ['v','v','v']]
+
+    rs = 37
+    num_filters0s[rs] = 32
+    block_sizes[rs]    = [[1,1,1], [1,1,1], [1,1,1]]
+    block_filters[rs] = [[32,64,128], [256,256,512], [512,512,1024]]
+    block_kernels[rs]  = [[], [1,3,1], [3,2,1]]
+    block_strides[rs]  = [[], [1,1,1], [1,1,1]]
+    block_paddings[rs] = [[], ['s','v','s'], ['v','v','v']]
+
+  elif block_style == 'Regular':
+    #------------------------------- Regular -----------------------------------
+    rs = 36
+    num_filters0s[rs] = 32
+    block_sizes[rs]    = [[2,1], [1,2], [2,2,1]]
+    block_filters[rs] = [[32,64], [128,256], [256,512,1024]]
+    block_kernels[rs]  = [[], [3,1], [3,2,1]]
+    block_strides[rs]  = [[], [1,1], [1,1,1]]
+    block_paddings[rs] = [[], ['v','s'], ['v','v','v']]
+
+    rs = 37
+    num_filters0s[rs] = 32
+    block_sizes[rs]    = [[2,1,1], [1,2], [2,2,1]]
+    block_filters[rs] = [[32,64,128], [128,256], [256,512,1024]]
+    block_kernels[rs]  = [[], [3,1], [3,2,1]]
+    block_strides[rs]  = [[], [1,1], [1,1,1]]
+    block_paddings[rs] = [[], ['v','s'], ['v','v','v']]
 
 
   if 'V' not in model_flag:
@@ -159,10 +194,12 @@ def get_block_paras_bottleneck(resnet_size, model_flag):
     assert (np.array(block_strides[k][0])==1).all()
 
   block_params = {}
-  block_params['kernels'] = block_kernels[rs]
-  block_params['strides'] = block_strides[rs]
-  block_params['padding_s1'] = block_paddings[rs]
-  block_params['block_sizes'] = block_sizes[rs]
+  block_params['num_filters0'] = num_filters0s[resnet_size]
+  block_params['kernels'] = block_kernels[resnet_size]
+  block_params['strides'] = block_strides[resnet_size]
+  block_params['filters'] = block_filters[resnet_size]
+  block_params['padding_s1'] = block_paddings[resnet_size]
+  block_params['block_sizes'] = block_sizes[resnet_size]
   return block_params
 
 

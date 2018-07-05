@@ -481,6 +481,8 @@ bnd optimizer block_config\n'
     if self.IsShowModel:  self.log('%38s'%('BN RELU'))
 
     with tf.variable_scope('conv1'):
+      if self.get_feature_shape(inputs)[0] == 1:
+        kernels=1
       inputs = self.conv2d3d(inputs, filters, kernels, 1, 's')
       self.log_tensor_c(inputs, kernels, 1, 's',
                         tf.get_variable_scope().name)
@@ -539,7 +541,7 @@ bnd optimizer block_config\n'
       shortcut = projection_shortcut(inputs)
 
     with tf.variable_scope('c0'):
-      inputs = self.conv2d3d(inputs, filters, 1, 1, 's')
+      inputs = self.conv2d3d(inputs, filters//4, 1, 1, 's')
       self.log_tensor_c(inputs, 1, 1, 's', tf.get_variable_scope().name)
 
     inputs = self.batch_norm(inputs, training)
@@ -547,7 +549,7 @@ bnd optimizer block_config\n'
     if self.IsShowModel:  self.log('%38s'%('BN RELU'))
 
     with tf.variable_scope('c1'):
-      inputs = self.conv2d3d(inputs, filters, kernels, strides, padding_s1)
+      inputs = self.conv2d3d(inputs, filters//4, kernels, strides, padding_s1)
       self.log_tensor_c(inputs, kernels, strides, padding_s1,
                         tf.get_variable_scope().name)
 
@@ -556,7 +558,7 @@ bnd optimizer block_config\n'
     if self.IsShowModel:  self.log('%38s'%('BN RELU'))
 
     with tf.variable_scope('c2'):
-      inputs = self.conv2d3d(inputs, 4 * filters, 1, 1, 's')
+      inputs = self.conv2d3d(inputs, filters, 1, 1, 's')
       self.log_tensor_c(inputs, 1, 1, 's', tf.get_variable_scope().name)
 
     if self.residual:
@@ -735,12 +737,12 @@ bnd optimizer block_config\n'
     if block_size==0: return inputs
     # Bottleneck block_size end with 4x the number of filters as they start with
     bottleneck = block_fn == self.bottleneck_block_v2
-    filters_out_sc = filters * 4 if bottleneck else filters
+    #filters_out_sc = filters * 4 if bottleneck else filters
 
     def shortcut_projection(inputs):
-      block_params_sc = block_params.copy()
-      block_params_sc['filters'] = filters_out_sc
-      return self.shortcut_fn(inputs, block_params_sc)
+      #block_params_sc = block_params.copy()
+      #block_params_sc['filters'] = filters_out_sc
+      return self.shortcut_fn(inputs, block_params)
 
     # (1) Only the first block per block_layer uses projection_shortcut and strides
     # and padding_s1
