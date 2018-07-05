@@ -12,8 +12,8 @@ import numpy as np
 '''
 
 DEFAULTS = {}
-#DEFAULTS['data_path'] = 'MODELNET40H5F/Merged_tfrecord/6_mgs1_gs2_2-mbf-neg_fmn14_mvp1-1024_240_1-64_27_256-0d2_0d4-0d1_0d2-pd3-2M2pp'
-DEFAULTS['data_path'] = 'MODELNET40H5F/Merged_tfrecord/6_mgs1_gs2_2-neg_fmn14_mvp1-1024_240_1-64_27_256-0d2_0d4-0d1_0d2-pd3-2M2pp'
+DEFAULTS['data_path'] = 'MODELNET40H5F/Merged_tfrecord/6_mgs1_gs2_2-mbf-neg_fmn14_mvp1-1024_240_1-64_27_256-0d2_0d4-0d1_0d2-pd3-2M2pp'
+#DEFAULTS['data_path'] = 'MODELNET40H5F/Merged_tfrecord/6_mgs1_gs2_2-neg_fmn14_mvp1-1024_240_1-64_27_256-0d2_0d4-0d1_0d2-pd3-2M2pp'
 
 DEFAULTS['residual'] = 1
 DEFAULTS['shortcut'] = 'MC' #C, MC, AC, MZ, AZ
@@ -99,6 +99,7 @@ def icp_block(flag):
 
 
 def get_block_paras_inception(resnet_size, model_flag):
+  model_flag = model_flag[0:2]
   num_filters0s = {}
   block_sizes = {}
   block_flag = {}
@@ -111,7 +112,7 @@ def get_block_paras_inception(resnet_size, model_flag):
     block_filters[rs] = [[32,64], [128,256,384], [384,512,1024]]
     block_flag[rs]    = [[],  ['A','a','A'],['a','A','a']]
 
-  if model_flag == 'Vb':
+  elif model_flag == 'Vb':
     num_filters0s[rs] = 32
     block_sizes[rs]   = [[2,1], [1,2,1], [2,2,1]]
     block_filters[rs] = [[32,64], [128,256,384], [384,512,1024]]
