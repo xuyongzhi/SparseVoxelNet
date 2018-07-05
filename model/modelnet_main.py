@@ -381,7 +381,7 @@ def define_model_dir():
     modelname += '_'+flags.FLAGS.block_style[0]
     modelname += str(flags.FLAGS.resnet_size) + flags.FLAGS.model_flag
     if flags.FLAGS.use_bias == 0:
-      logname += '_Nb'
+      modelname += '_Nb'
     return modelname
 
   logname = _DATA_PARAS['model_name'] =  model_name()
