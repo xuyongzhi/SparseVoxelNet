@@ -22,10 +22,8 @@ module load  tensorflow/1.8-cudnn7.1-python2.7
 module list
  
 
-
 #------------------------------------------------------------------------
-
-batch_size=32
+batch_size=64
 model_flag='V'
 learning_rate0=0.001
 lr_decay_epochs=10
@@ -33,9 +31,8 @@ lr_decay_rate=0.7
 num_gpus=2
 feed_data='xyzs-nxnynz'
 drop_imo='0_0_5'
-num_filters0=32
 optimizer='momentum'
 aug_types='N'
 use_bias=1
 
-./modelnet.sh   $aug_types  $batch_size $model_flag $learning_rate0 $num_gpus $feed_data $drop_imo $num_filters0 $optimizer $use_bias $lr_decay_epochs $lr_decay_rate
+./modelnet.sh   $aug_types  $batch_size $model_flag $learning_rate0 $num_gpus $feed_data $drop_imo  $optimizer $use_bias $lr_decay_epochs $lr_decay_rate

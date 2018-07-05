@@ -152,6 +152,7 @@ class ResConvOps(object):
 
   def __init__(self, data_net_configs, data_format):
     self.data_format = data_format
+    self.data_net_configs= data_net_configs
     self.residual = data_net_configs['residual']
     self.voxel3d = 'V' in data_net_configs['model_flag']
     global_step = tf.train.get_or_create_global_step()
@@ -161,6 +162,7 @@ class ResConvOps(object):
     self.shortcut_method = data_net_configs['shortcut'] #'C' 'PC' 'PZ'
     self.res_scale = 0.3
 
+    self.final_filters_each_scale = []
     model_dir = data_net_configs['model_dir']
     if ResConvOps._epoch==0:
       self.IsShowModel = True
@@ -169,14 +171,16 @@ class ResConvOps(object):
       self.model_log_fn = os.path.join(model_dir, 'log_model.txt')
       self.model_log_f = open(self.model_log_fn, 'w')
 
+    ResConvOps._epoch += 1
 
-      dnc = data_net_configs
+  def log_model_summary(self):
+      dnc = self.data_net_configs
       res = 'R' if self.residual else 'P'
       key_para_names = 'model bs aug feed drop_imo lr0_drate_depoch \
 bnd optimizer block_config\n'
-      key_paras_str = '{model_name} {bs} {aug} {feed_data_eles} \
-{drop_imo} {lr0}_{lr_decay_rate}_{lr_decay_epochs} {bnd} {optimizer} {block_config}\
-\n\n'.format(
+      key_paras_str = '\n\n{model_name} {bs} {aug} {feed_data_eles} \
+{drop_imo} {lr0}_{lr_decay_rate}_{lr_decay_epochs} {bnd} {optimizer} \n\
+{block_config} {final_filters}\n'.format(
         model_name=dnc['model_name'],
         bs=dnc['batch_size'],
         feed_data_eles=dnc['feed_data_eles'].replace('nxnynz','n'),
@@ -188,10 +192,10 @@ bnd optimizer block_config\n'
         bnd=dnc['batch_norm_decay0'],
         optimizer=dnc['optimizer'][0:3],
         block_config=dnc['block_config_str'],
+        final_filters='_'.join([str(f) for f in self.final_filters_each_scale])
         )
 
       self.key_paras_str = key_para_names + key_paras_str
-      self.model_log_f.write(self.key_paras_str)
 
       items_to_write = ['model_flag', 'block_config_str', 'dataset_name', 'aug_types', 'drop_imo', \
         'feed_data', 'xyz_elements', 'points', 'global_step','global_stride',\
@@ -200,23 +204,25 @@ bnd optimizer block_config\n'
         'bndecay_vals', 'use_bias', 'shortcut',\
         'weight_decay', 'resnet_size', 'data_dir']
       for item in items_to_write:
-        str_i = '%s:%s\n'%(item, data_net_configs[item])
+        str_i = '%s:%s\n'%(item, dnc[item])
         self.model_log_f.write(str_i)
         if self.IsShowModel:
           print(str_i)
 
       # write block params
       self.model_log_f.write('\nBlock parameters:\n')
-      block_params = data_net_configs['block_params']
+      block_params = dnc['block_params']
       for ele in block_params:
+        if ele == 'icp_block_ops': continue
         str_i ='%s:%s\n'%(ele,block_params[ele])
         self.model_log_f.write(str_i)
         if self.IsShowModel:
           print(str_i)
 
-      self.model_log_f.write('\n')
+      self.model_log_f.write('\n--------------------------------------------\n')
+      self.model_log_f.write(self.key_paras_str)
+
       self.model_log_f.flush()
-    ResConvOps._epoch += 1
 
   def train_w_bytes(self, scope=None):
     trainable_variables = tf.trainable_variables(scope)
@@ -1014,7 +1020,8 @@ class Model(ResConvOps):
           self._trainable_bytes/pow(1024.0,2)))
         self.log('Total activation size:%0.1fM'%\
                  (self._activation_size/pow(1024.0,2)))
-        self.log('------------------------------------------------------------')
+        self.log('------------------------------------------------------------\n\n')
+        self.log_model_summary()
         self.model_log_f.close()
 
       return inputs
@@ -1061,6 +1068,8 @@ class Model(ResConvOps):
             outputs = tf.reshape(outputs, [batch_size,-1,outputs.shape[-1].value])
           else:
             outputs = tf.reshape(outputs, [batch_size,outputs.shape[1].value,-1])
+
+        self.final_filters_each_scale.append(self.get_feature_channels(outputs))
 
       return new_xyz, outputs, root_point_features
 

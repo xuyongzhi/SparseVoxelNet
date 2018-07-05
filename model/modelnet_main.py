@@ -291,7 +291,6 @@ def define_net_configs(flags_obj):
   _DATA_PARAS['batch_size'] = flags_obj.batch_size
   _DATA_PARAS['model_flag'] = flags_obj.model_flag
   _get_block_paras()
-  _DATA_PARAS['block_params']['num_filters0'] = flags_obj.num_filters0
 
   feed_data_eles = flags_obj.feed_data
   feed_data = flags_obj.feed_data.split('-')
@@ -353,7 +352,9 @@ def define_model_dir():
     block_paddings_str = ls_str(_DATA_PARAS['block_paddings'])
     block_config_str = '-b%s-k%s-p%s'%( block_sizes_str,
                                 block_kernels_str, block_paddings_str)
+    block_config_str = str(block_params['num_filters0'])+'_'+block_config_str
     return block_config_str
+
   def get_block_configs_fused():
     block_params = _DATA_PARAS['block_params']
     block_size_sum = sum( [e  for bs in block_params['block_sizes'] for e in bs] )
@@ -368,6 +369,7 @@ def define_model_dir():
       block_flags_ls =  [''.join( [e  for e in bs] )  for bs in block_params['icp_flags'] ]
       block_str = [str(block_size_sum[i])+block_flags_ls[i] for i in range(len(block_size_sum))]
       block_config_str = '_'.join(block_str)
+    block_config_str = str(block_params['num_filters0'])+'_'+block_config_str
     return block_config_str
 
   def model_name():
@@ -380,7 +382,6 @@ def define_model_dir():
     modelname += str(flags.FLAGS.resnet_size) + flags.FLAGS.model_flag
     if flags.FLAGS.use_bias == 0:
       logname += '_Nb'
-    modelname += '_' + str(flags.FLAGS.num_filters0)
     return modelname
 
   logname = _DATA_PARAS['model_name'] =  model_name()
@@ -439,7 +440,6 @@ def define_modelnet_flags():
   flags.DEFINE_float('weight_decay', DEFAULTS['weight_decay'],'')
   flags.DEFINE_string('model_flag', DEFAULTS['model_flag'], '')
   flags.DEFINE_integer('resnet_size',DEFAULTS['resnet_size'],'resnet_size')
-  flags.DEFINE_integer('num_filters0',DEFAULTS['num_filters0'],'')
   flags.DEFINE_string('feed_data',DEFAULTS['feed_data'],'xyzrsg-nxnynz-color')
   flags.DEFINE_string('aug_types',DEFAULTS['aug_types'],'rsfj-360_0_0')
   flags.DEFINE_string('drop_imo',DEFAULTS['drop_imo'],'0_0_5')

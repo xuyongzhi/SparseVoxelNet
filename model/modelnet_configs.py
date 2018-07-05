@@ -28,8 +28,7 @@ DEFAULTS['lr_warmup'] = 1
 DEFAULTS['batch_norm_decay0'] = 0.7
 
 DEFAULTS['model_flag'] = 'V'
-DEFAULTS['resnet_size'] = 36
-DEFAULTS['num_filters0'] = 16
+DEFAULTS['resnet_size'] = 27
 DEFAULTS['feed_data'] = 'xyzs-nxnynz'
 DEFAULTS['aug_types'] = 'N' # 'rpsfj-360_0_0'
 DEFAULTS['drop_imo'] = '0_0_5'
@@ -55,7 +54,7 @@ def icp_block(flag):
 
     #---------- Keep feature map size  -------------
     def compress_rate(base_filters):
-      return max(base_filters//8, 32)
+      return max(base_filters//4, 32)
     f0 = compress_rate(filters_in)
     f1 = compress_rate(filters_out)
 
@@ -81,16 +80,20 @@ def icp_block(flag):
 
 
 def get_block_paras_inception(resnet_size, model_flag):
+  num_filters0s = {}
   block_sizes = {}
   block_flag = {}
-  rs = 36
-  block_sizes[rs] = [[1,2,1], [1,3], [1,1,3,1]]
-  block_flag[rs]  = [[],  ['a','A'],['a','a','A','a']]
+
+  rs = 27
+  num_filters0s[rs] = 32
+  block_sizes[rs] = [[2,1], [1,3], [2,2,1]]
+  block_flag[rs]  = [[],  ['a','A'],['A','a','a']]
 
   block_params = {}
-  block_params['block_sizes'] = block_sizes[rs]
-  block_params['icp_flags'] = block_flag[rs]
-  block_params['icp_block_ops'] = [ [icp_block(flag) for flag in cascade] for cascade in block_flag[rs] ]
+  block_params['num_filters0'] = num_filters0s[resnet_size]
+  block_params['block_sizes'] = block_sizes[resnet_size]
+  block_params['icp_flags'] = block_flag[resnet_size]
+  block_params['icp_block_ops'] = [ [icp_block(flag) for flag in cascade] for cascade in block_flag[resnet_size] ]
   return block_params
 
 def get_block_paras_bottleneck(resnet_size, model_flag):
