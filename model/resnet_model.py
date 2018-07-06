@@ -432,7 +432,7 @@ bnd optimizer block_config\n'
     assert self.data_format == 'channels_last'
     with tf.variable_scope('fu'):
       for i in range(uncompress_times):
-        filters_i = int(self.get_feature_channels(inputs)*2)
+        filters_i = int(self.get_feature_channels(inputs)*2) - 3*self.use_xyz
         inputs = self.conv2d3d(inputs, filters_i, 1,1,'s')
         self.log_tensor_c(inputs, 1,1,'s', tf.get_variable_scope().name)
     self.block_num_count += 1
@@ -690,6 +690,10 @@ bnd optimizer block_config\n'
     kernels = block_params['kernels']
     strides = block_params['strides']
     padding_s1 = block_params['padding_s1']
+
+    assert  self.get_feature_channels(inputs) != filters_out_sc or\
+            (padding_s1=='v' and kernels>1) or\
+            strides>1
     # In offical resnet, kernel_sc is always 1, because strides>1 reduces map.
     # But kernel_sc>1 here to reduce map, and strides is always 1.
     kernel_sc = kernels if padding_s1=='v' else 1
@@ -703,10 +707,10 @@ bnd optimizer block_config\n'
 
     elif scm == 'MC' or scm == 'AC' or scm == 'MZ' or scm == 'AZ':
       with tf.variable_scope('sc_'+scm):
+        layer_name = '/'.join(tf.get_variable_scope().name.split('/')[2:])
         if kernel_sc!=1:
           pool = 'max' if scm[0]=='M' else 'ave'
           shortcut = self.pool2d3d(inputs, pool, kernel_sc, strides, padding_s1)
-          layer_name = '/'.join(tf.get_variable_scope().name.split('/')[2:])
           self.log_tensor_p(shortcut, pool, layer_name, kernel_sc, strides, padding_s1)
         else:
           shortcut = inputs
@@ -717,6 +721,9 @@ bnd optimizer block_config\n'
             shortcut = self.conv2d3d(shortcut, filters_out_sc, 1, 1, 's')
             self.log_tensor_c(shortcut, 1, 1, 's', tf.get_variable_scope().name)
           else:
+            if channels_dif<0:
+              import pdb; pdb.set_trace()  # XXX BREAKPOINT
+              pass
             shortcut = self.padding_channel(shortcut, channels_dif)
             self.log_tensor_p(shortcut, 'padding', layer_name)
 
@@ -750,11 +757,8 @@ bnd optimizer block_config\n'
     if block_size==0: return inputs
     # Bottleneck block_size end with 4x the number of filters as they start with
     bottleneck = block_fn == self.bottleneck_block_v2
-    #filters_out_sc = filters * 4 if bottleneck else filters
 
     def shortcut_projection(inputs):
-      #block_params_sc = block_params.copy()
-      #block_params_sc['filters'] = filters_out_sc
       return self.shortcut_fn(inputs, block_params)
 
     # (1) Only the first block per block_layer uses projection_shortcut and strides
@@ -1118,14 +1122,9 @@ class Model(ResConvOps):
       for i, block_size in enumerate(self.block_params['block_sizes'][cascade_id]):
         if self.IsShowModel:
           self.log('-------------------cascade_id %d, block %d---------------------'%(cascade_id, i))
-        # Keep the same dimension between the end of cascade i and begin of
-        # cascades i+1
-        num_filters = self.num_filters0 * (2**(self.block_num_count-cascade_id))
-        max_filters = self.max_filters[self.block_style]
-        num_filters = min(num_filters, max_filters)
-
         block_params = {}
         block_params['filters'] = self.block_params['filters'][cascade_id][i]
+
         if cascade_id == 0:
           # point net is special
           block_params['kernels'] = block_params['strides'] = 1
@@ -1225,6 +1224,10 @@ class Model(ResConvOps):
     else:
       if self.use_xyz and (not cascade_id==self.cascade_num-1):
           grouped_points = tf.concat([grouped_xyz_feed, grouped_points],axis=-1)
+          ## use_xyz add 3 three channels, if only this make shortcut not identiy,
+          ## it is a bit waste
+          ## just make the shortcut identity if possible, nothing special
+          #self.block_params['filters'][cascade_id] =[e+3 for e in self.block_params['filters'][cascade_id]]
 
     if self.IsShowModel:
       sc = 'grouping %d'%(cascade_id)
