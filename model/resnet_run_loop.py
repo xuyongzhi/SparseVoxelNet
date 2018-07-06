@@ -235,7 +235,7 @@ def resnet_model_fn(model_flag, features, labels, mode, model_class,
     # Return the predictions and the specification for serving a SavedModel
     return tf.estimator.EstimatorSpec(
         mode=mode,
-        predictions=-predictions,
+        predictions=predictions,
         export_outputs={
             'predict': tf.estimator.export.PredictOutput(predictions)
         })
@@ -311,7 +311,6 @@ def resnet_model_fn(model_flag, features, labels, mode, model_class,
     # Metrics are currently not compatible with distribution strategies during
     # training. This does not affect the overall performance of the model.
     accuracy = (tf.no_op(), tf.constant(0))
-
   metrics = {'accuracy': accuracy}
 
   # Create a tensor named train_accuracy for logging purposes
@@ -470,8 +469,7 @@ def resnet_main(
       tf.logging.info('Starting to evaluate train data.')
       t0 = time.time()
       eval_train_steps = 80
-      train_eval_results = classifier.evaluate(input_fn=input_fn_train,
-                                        steps=eval_train_steps)
+      train_eval_results = classifier.evaluate(input_fn=input_fn_train)
       eval_train_t = time.time() - t0
 
     t0 = time.time()

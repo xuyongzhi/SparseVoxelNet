@@ -19,6 +19,7 @@ module list
  
 
 #------------------------------------------------------------------------
+residual=1
 batch_size=64
 model_flag='V'
 learning_rate0=0.001
@@ -29,9 +30,9 @@ feed_data='xyzs-nxnynz'
 drop_imo='0_0_5'
 optimizer='momentum'
 aug_types='N'
-use_bias=1
+use_bias=0
 
-##--------------------------------
+#--------------------------------
 #resnet_size=37
 #block_style='Bottleneck'
 #batch_size=48
@@ -40,13 +41,13 @@ use_bias=1
 #block_style='Bottleneck'
 #batch_size=64
 #--------------------------------
-resnet_size=36
-block_style='Regular'
-batch_size=64
+#resnet_size=36
+#block_style='Regular'
+#batch_size=64
 #--------------------------------
 resnet_size=37
 block_style='Regular'
-batch_size=32
+batch_size=48
+residual=0
 
-./modelnet.sh   $aug_types  $batch_size $model_flag $learning_rate0 $num_gpus $feed_data $drop_imo  $optimizer $use_bias $lr_decay_epochs $lr_decay_rate $resnet_size $block_style
-
+./modelnet.sh   $aug_types  $batch_size $model_flag $learning_rate0 $num_gpus $feed_data $drop_imo  $optimizer $use_bias $lr_decay_epochs $lr_decay_rate $resnet_size $block_style $residual

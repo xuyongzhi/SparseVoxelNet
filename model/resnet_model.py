@@ -119,7 +119,6 @@ def unique_nd( inputs, axis=-1, unit=3 ):
 
 
 
-
 def conv3d_fixed_padding(inputs, filters, kernel_size, strides, padding, data_format):
   """Strided 3-D convolution with explicit padding."""
   # The padding is consistent and is based only on `kernel_size`, not on the
@@ -179,7 +178,7 @@ class ResConvOps(object):
       key_para_names = 'model bs aug feed drop_imo lr0_drate_depoch \
 bnd optimizer block_config\n'
       key_paras_str = '\n\n{model_name} {bs} {aug} {feed_data_eles} \
-{drop_imo} {lr0}_{lr_decay_rate}_{lr_decay_epochs} {bnd} {optimizer} \n\
+{drop_imo} {lr0}_{lr_decay_rate}_{lr_decay_epochs} {bnd} {optimizer} \par \
 {block_config} {final_filters}\n'.format(
         model_name=dnc['model_name'],
         bs=dnc['batch_size'],

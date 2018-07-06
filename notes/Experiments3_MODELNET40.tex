@@ -30,13 +30,10 @@
 	\hline
 	\multicolumn{2}{|p{15cm}|}{Merged\_tfrecord/6\_mgs1\_gs2\_2-mbf-neg\_fmn14\_mvp1-1024\_240\_1-64\_27\_256-0d2\_0d4-0d1\_0d2-pd3-2M2pp}\\
 	\hline
-	model use\_bias bs feed aug drop\_imo lr0\_drate\_depoch bnd optimizer filters0 shortcut & train/eval \\
-	
-	\rowcolor{yellow!20}
-	rs36V True 32 xyzs-nxnynz N 0\_0\_5 0.001\_0.7\_10 0.7 momentum 32 MC& 10 0.291/0.604--0.916/0.847\par 35 0.039/0.575--0.994/0.872\par 60 0.020/0.597--0.995/0.868\\
+	model bs aug feed drop\_imo lr0\_drate\_depoch bnd optimizer block\_config & train/eval \\
 	
 	\rowcolor{blue!20}
-	rs36V True 32 xyzs-nxnynz N 0\_0\_5 0.001\_0.7\_10 0.7 momentum 64 MC& 10 0.306/0.608--0.916/0.854\par 35 0.040/0.517--0.992/0.876\par 60 0.027/0.529--0.996/0.873\\
+	RMC\_R37V\_Nb 32 N xyzs-n 0\_0\_5 0.001\_0.7\_10 0.7 mom\par 32\_-b12k10p1 256\_1024\par 138M& 10 0.332/0.546--0.907/0.833\par 40 0.017/0.497--0.997/0.873\par 60 0.008/0.528--0.998/0.879\\
 	
 	\hline 
 \end{tabular}
