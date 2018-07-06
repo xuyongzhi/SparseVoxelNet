@@ -691,9 +691,11 @@ bnd optimizer block_config\n'
     strides = block_params['strides']
     padding_s1 = block_params['padding_s1']
 
-    assert  self.get_feature_channels(inputs) != filters_out_sc or\
-            (padding_s1=='v' and kernels>1) or\
-            strides>1
+    need_projection = self.get_feature_channels(inputs) != filters_out_sc or\
+          (padding_s1=='v' and kernels>1) or strides>1
+    if not need_projection:
+      return inputs
+
     # In offical resnet, kernel_sc is always 1, because strides>1 reduces map.
     # But kernel_sc>1 here to reduce map, and strides is always 1.
     kernel_sc = kernels if padding_s1=='v' else 1
