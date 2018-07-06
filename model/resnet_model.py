@@ -294,9 +294,11 @@ bnd optimizer block_config\n'
     elif len(net.shape)==5:
       if self.data_format == 'channels_last':
         shape = net.shape.as_list()[1:4]
+    elif len(net.shape)==3:
+      if self.data_format == 'channels_last':
+        shape = net.shape.as_list()[1]
     else:
-      import pdb; pdb.set_trace()  # XXX BREAKPOINT
-      pass
+      raise NotImplementedError
     return np.array(shape)
 
   def get_feature_channels(self, net):
@@ -391,12 +393,24 @@ bnd optimizer block_config\n'
       assert padding == 'valid'
       inputs = self.fixed_padding_2d3d(inputs, kernels, self.data_format)
     if padding == 'same':
-      in_shape = self.get_feature_shape(inputs)
-      pad_waste = kernels-1
-      pad_waste_r = pad_waste / in_shape
-      assert (pad_waste <= 2 and (pad_waste_r <= 0.4).all()) or ((pad_waste_r < 0.3).all() and pad_waste>1),\
-        "kernel too large, too waste, inputs: %s, kernel:%d"%(in_shape, kernels)
+      self.check_kernel_waste(inputs, kernels, True)
     return inputs, padding
+
+  def check_kernel_waste(self, inputs, kernels, warning=False):
+    # padding == 'same'
+    if kernels==1:
+      return False
+    in_shape = self.get_feature_shape(inputs)
+    pad_waste = kernels-1
+    pad_waste_r = pad_waste / in_shape
+    is_waste =  (kernels == 2 and (in_shape < 3).any())  or\
+                (kernels == 3 and (in_shape < 5).any())  or \
+                (kernels >= 4 and (pad_waste_r > 0.3).any())
+    info = 'kernel waste:%s, inputs shape:%s kernels:%d'%(is_waste, in_shape, kernels)
+    if is_waste:
+      if warning:
+        assert False, info
+    return is_waste
 
   def pool2d3d(self, inputs, pool, kernels, strides, padding_s1):
     if len(inputs.shape)==5:
@@ -480,8 +494,8 @@ bnd optimizer block_config\n'
     if self.IsShowModel:  self.log('%38s'%('BN RELU'))
 
     with tf.variable_scope('conv1'):
-      if self.get_feature_shape(inputs)[0] == 1:
-        kernels=1
+      if self.check_kernel_waste(inputs, kernels):
+        kernels = 1
       inputs = self.conv2d3d(inputs, filters, kernels, 1, 's')
       self.log_tensor_c(inputs, kernels, 1, 's',
                         tf.get_variable_scope().name)
@@ -1003,7 +1017,10 @@ class Model(ResConvOps):
       if self.IsShowModel: self.log( tensor_info(new_points, 'end', 'res blocks') )
       inputs = new_points
       axes = [2] if self.data_format == 'channels_first' else [1]
-      inputs = tf.reduce_mean(inputs, axes)
+      if self.get_feature_shape(inputs)!=1:
+        inputs = tf.reduce_mean(inputs, axes)
+      else:
+        inputs = tf.squeeze(inputs)
       inputs = tf.identity(inputs, 'final_reduce_mean')
       if self.IsShowModel: self.log( tensor_info(inputs, 'reduce_mean', 'final') )
       out_drop_rate=self.data_net_configs['drop_imo']['output']
@@ -1140,8 +1157,7 @@ class Model(ResConvOps):
     assert len(xyz.shape) == 3
     if not ( len(xyz.shape) == len(points.shape) == len(bidmap.shape) == \
             len(block_bottom_center_mm.shape) == 3 ):
-      import pdb; pdb.set_trace()  # XXX BREAKPOINT
-      pass
+      assert False, "grouping"
 
     if bidmap==None:
         grouped_xyz = tf.expand_dims( xyz, 1 )
