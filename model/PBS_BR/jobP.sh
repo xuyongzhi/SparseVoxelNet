@@ -30,7 +30,7 @@ feed_data='xyzs-nxnynz'
 drop_imo='0_0_5'
 optimizer='momentum'
 aug_types='N'
-use_bias=0
+use_bias=1
 
 #--------------------------------
 #resnet_size=37
@@ -47,7 +47,7 @@ use_bias=0
 #--------------------------------
 resnet_size=37
 block_style='Regular'
-batch_size=48
+batch_size=32
 residual=0
 
 ./modelnet.sh   $aug_types  $batch_size $model_flag $learning_rate0 $num_gpus $feed_data $drop_imo  $optimizer $use_bias $lr_decay_epochs $lr_decay_rate $resnet_size $block_style $residual

@@ -394,7 +394,7 @@ bnd optimizer block_config\n'
       in_shape = self.get_feature_shape(inputs)
       pad_waste = kernels-1
       pad_waste_r = pad_waste / in_shape
-      assert (pad_waste <= 1 and (pad_waste_r < 0.4).all()) or ((pad_waste_r < 0.3).all() and pad_waste>1),\
+      assert (pad_waste <= 2 and (pad_waste_r <= 0.4).all()) or ((pad_waste_r < 0.3).all() and pad_waste>1),\
         "kernel too large, too waste, inputs: %s, kernel:%d"%(in_shape, kernels)
     return inputs, padding
 
@@ -1006,14 +1006,15 @@ class Model(ResConvOps):
       inputs = tf.reduce_mean(inputs, axes)
       inputs = tf.identity(inputs, 'final_reduce_mean')
       if self.IsShowModel: self.log( tensor_info(inputs, 'reduce_mean', 'final') )
-      inputs = tf.layers.dropout(inputs,
-                              rate=self.data_net_configs['drop_imo']['output'],
-                              training=is_training)
-
+      out_drop_rate=self.data_net_configs['drop_imo']['output']
+      inputs = tf.layers.dropout(inputs, out_drop_rate, is_training)
+      inputs = tf.layers.dense(inputs=inputs, units=256)
+      if self.IsShowModel: self.log( tensor_info(inputs, 'dense', 'final0'))
+      inputs = tf.layers.dropout(inputs, out_drop_rate, is_training)
       inputs = tf.layers.dense(inputs=inputs, units=self.num_classes)
       inputs = tf.identity(inputs, 'final_dense')
       if self.IsShowModel:
-        self.log( tensor_info(inputs, 'dense', 'final') +'\n\n' )
+        self.log( tensor_info(inputs, 'dense', 'final1') +'\n\n' )
         self.show_layers_num_summary()
 
         total_w_num, total_w_bytes, train_w_shapes = self.train_w_bytes()
