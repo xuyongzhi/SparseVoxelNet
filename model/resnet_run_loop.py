@@ -469,7 +469,7 @@ def resnet_main(
       tf.logging.info('Starting to evaluate train data.')
       t0 = time.time()
       eval_train_steps = 80
-      train_eval_results = classifier.evaluate(input_fn=input_fn_train)
+      train_eval_results = classifier.evaluate(input_fn=input_fn_train,name='train')
       eval_train_t = time.time() - t0
 
     t0 = time.time()
@@ -489,7 +489,8 @@ def resnet_main(
       # global_step count.
       t0 = time.time()
       eval_results = classifier.evaluate(input_fn=input_fn_eval,
-                                        steps=flags_obj.max_train_steps)
+                                         steps=flags_obj.max_train_steps,
+                                         name='test')
       eval_t = time.time() - t0
 
       benchmark_logger.log_evaluation_result(eval_results)
