@@ -159,6 +159,22 @@ def get_block_paras_bottle_regu(resnet_size, model_flag, block_style):
 
   elif block_style == 'Regular':
     #------------------------------- Regular -----------------------------------
+    rs = 16
+    num_filters0s[rs] = 32
+    block_sizes[rs]    = [[1,1], [1,1], [1,1,1]]
+    block_filters[rs] = [[32,64], [128,128], [128,256,512]]
+    block_kernels[rs]  = [[], [3,1], [3,3,3]]
+    block_strides[rs]  = [[], [1,1], [1,1,1]]
+    block_paddings[rs] = [[], ['v','s'], ['v','v','v']]
+
+    rs = 24
+    num_filters0s[rs] = 32
+    block_sizes[rs]    = [[2,1], [1,2], [2,2,1]]
+    block_filters[rs] = [[32,64], [128,128], [128,256,512]]
+    block_kernels[rs]  = [[], [3,1], [3,3,3]]
+    block_strides[rs]  = [[], [1,1], [1,1,1]]
+    block_paddings[rs] = [[], ['v','s'], ['v','v','v']]
+
     rs = 36
     num_filters0s[rs] = 32
     block_sizes[rs]    = [[2,1], [1,2], [2,2,1]]
@@ -186,6 +202,7 @@ def get_block_paras_bottle_regu(resnet_size, model_flag, block_style):
 
   if 'V' not in model_flag:
     for i in range(len(block_sizes[resnet_size])):
+      if i==0: continue
       for j in range(len(block_sizes[resnet_size][i])):
         block_kernels[resnet_size][i][j] = 1
         block_strides[resnet_size][i][j] = 1

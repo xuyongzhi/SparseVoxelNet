@@ -42,7 +42,7 @@
 	P\_R38V 32 N xyzs-n 0\_0\_5 0.001\_0.7\_5 0.7 mom \par 32\_-b12k17p1& 10 0.091/0.678--0.973/0.825\par 60 0.004/0.706--0.999/0.850\\
 	
 	\rowcolor{blue!20}
-	\_R37V 32 N xyzs-n 0\_0\_5 0.001\_0.7\_10 0.7 mom \par 32\_-b12k15p1& 10 0.222/0.609--0.928/0.831\par 20 0.030/0.676--0.991/0.864\par 60 0.006/0.766--0.998/0.860\\
+	P\_R37V 32 N xyzs-n 0\_0\_5 0.001\_0.7\_10 0.7 mom \par 32\_-b12k15p1& 10 0.222/0.609--0.928/0.831\par 20 0.030/0.676--0.991/0.864\par 60 0.006/0.766--0.998/0.860\\
 	
 	\hline 
 \end{tabular}
@@ -60,7 +60,14 @@
 	
 	\rowcolor{blue!20}
 	RC\_R38V 32 N xyzs-n 0\_0\_5 0.001\_0.7\_10 0.7 mom \par 32\_-b12k17p1 256\_1024& 10 0.037/0.638--0.990/0.843\par 60 0.003/0.672--0.999/0.839\\
-	\hline 
+	
+	\rowcolor{green!20}
+	RC\_R38V 32 N xyzs-n 0\_0\_5 0.001\_0.7\_10 0.7 ada \par 32\_-b12k17p1& 10 0.436/0.938--0.871/0.748\par 40 0.031/0.991--0.989/0.862\par 55 0.013/1.257--0.997/0.846\\
+	
+	\rowcolor{yellow!20}
+	RC\_R38V 32 N xyzs-n 0\_0\_5 0.01\_0.7\_10 0.7 mom \par 32\_-b12k17p1\par 384M& 10 0.211/0.782--0.929/0.804\par 40 0.006/0.989--0.998/0.866\\
+	
+	\hline 	
 \end{tabular}
 
 \subsection{RMC\_R No mbf}
@@ -82,11 +89,6 @@
 	\rowcolor{yellow!20}
 	RMC\_R37V 32 N xyzs-n 0\_0\_5 0.001\_0.7\_10 0.7 mom \par 32\_-b12k15p1 256\_1024\par 273M& 10 0.118/0.544--0.966/0.845\par 25 0.015/0.588--0.997/0.863\par 60 0.007/0.650--0.999/0.859\\
 	
-	\rowcolor{green!20}
-	RC\_R38V 32 N xyzs-n 0\_0\_5 0.001\_0.7\_10 0.7 ada \par 32\_-b12k17p1& 10 0.436/0.938--0.871/0.748\par 40 0.031/0.991--0.989/0.862\par 55 0.013/1.257--0.997/0.846\\
-	
-	\rowcolor{yellow!20}
-	RC\_R38V 32 N xyzs-n 0\_0\_5 0.01\_0.7\_10 0.7 mom \par 32\_-b12k17p1& 10 0.211/0.782--0.929/0.804\par 40 0.006/0.989--0.998/0.866\\
 	
 	\rowcolor{blue!20}
 	RMC\_R38V 32 N xyzs-n 0\_0\_5 0.001\_0.7\_10 0.7 mom \par 32\_-b12k17p1 256\_1024\par 235M& 
@@ -106,6 +108,7 @@
 	\hline 
 \end{tabular}
 
+
 \section{Residual Bottleneck}
 \subsection{RMC\_B36 - No mbf}
 \noindent\begin{tabular}{|p{10cm}|p{5cm}| }	
@@ -119,6 +122,15 @@
 	
 	\hline 
 \end{tabular}
+
+\section{Conclusion}
+\subsection{Regular shortcut conclusion}
+\begin{itemize}
+	\item Residual much better than Plaint
+	\item $MZ(0.889) \geq MC(0.888) > C(0.866)$
+	\item R38V is faster than R36V and R37V
+	\item R37V 138M is better than 235M. The final feature map does not need to be reduced to 1. Use ave pool can make use of the final rich features.
+\end{itemize}	
 
 \section{Residual Inception}
 \subsection{RMC\_I27V-mbf}

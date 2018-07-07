@@ -722,6 +722,7 @@ bnd optimizer block_config\n'
             shortcut = self.conv2d3d(shortcut, filters_out_sc, 1, 1, 's')
             self.log_tensor_c(shortcut, 1, 1, 's', tf.get_variable_scope().name)
           else:
+            #assert channels_dif>0
             if channels_dif<0:
               import pdb; pdb.set_trace()  # XXX BREAKPOINT
               pass
@@ -1072,7 +1073,8 @@ class Model(ResConvOps):
         else:
           root_point_features = None
         assert len(outputs.shape)==4
-        outputs = self.feature_uncompress_block(outputs, 2, 1)
+        if cascade_id==0:
+          outputs = self.feature_uncompress_block(outputs, 2, 1)
         outputs = tf.reduce_max(outputs, axis=2 if self.data_format=='channels_last' else 3)
         self.log_tensor_p(outputs, 'max', 'cas%d'%(cascade_id))
       else:

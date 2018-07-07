@@ -17,6 +17,7 @@
 - [ ] Use bottleneck in shortcut MC to reduce model size
 - [ ] Make shortcut inception as well. And remove NoRes_InceptionReduction
 - [ ] Remove USE_CHARLES
+- [ ] Try remove self.feature_uncompress_block
 
 
 # Training notes
