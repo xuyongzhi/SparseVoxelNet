@@ -346,30 +346,20 @@ def ls_str(ls_in_ls):
   return ls_str
 
 def define_model_dir():
-  def get_block_configs_detailed():
-    block_sizes_str = ls_str(_DATA_PARAS['block_sizes'])
-    block_kernels_str = ls_str(_DATA_PARAS['block_kernels'])
-    block_paddings_str = ls_str(_DATA_PARAS['block_paddings'])
-    block_config_str = '-b%s-k%s-p%s'%( block_sizes_str,
-                                block_kernels_str, block_paddings_str)
-    block_config_str = str(block_params['num_filters0'])+'_'+block_config_str
-    return block_config_str
-
   def get_block_configs_fused():
     block_params = _DATA_PARAS['block_params']
-    block_size_sum = sum( [e  for bs in block_params['block_sizes'] for e in bs] )
+    sizes = [''.join([str(e)  for e in bs]) for bs in block_params['block_sizes']]
     if _DATA_PARAS['block_style'] != 'Inception':
-      block_kernels_sum =  sum( [e  for bs in block_params['kernels'] for e in bs] )
-      block_paddings_sum =  sum( [e=='s'  for bs in block_params['padding_s1'] for e in bs] )
-      block_config_str = '-b%dk%dp%d'%(  block_size_sum,
-                                  block_kernels_sum,
-                                  block_paddings_sum )
+      kernels =  [''.join([str(e)  for e in bs]) for bs in block_params['kernels']]
+      paddings =  [''.join([e  for e in bs]) for bs in block_params['padding_s1']]
+      last_filters = [str(fs[-1]) for fs in block_params['filters']]
+      configs = [sizes[i]+'_K'+kernels[i]+'_P'+paddings[i]+'_F'+last_filters[i] for i in range(len(sizes))]
+      block_config_str = '+'.join(configs)
     else:
-      block_size_sum = [np.sum([e  for e in bs]) for bs in block_params['block_sizes']  ]
-      block_flags_ls =  [''.join( [e  for e in bs] )  for bs in block_params['icp_flags'] ]
-      block_str = [str(block_size_sum[i])+block_flags_ls[i] for i in range(len(block_size_sum))]
-      block_config_str = '_'.join(block_str)
-    block_config_str = str(block_params['num_filters0'])+'_'+block_config_str
+      flags =  [''.join([e  for e in bs]) for bs in block_params['icp_flags']]
+      configs = [sizes[i]+flags[i] for i in range(len(sizes))]
+      block_config_str = '+'.join(configs)
+    block_config_str = str(block_params['num_filters0'])+'+'+block_config_str
     return block_config_str
 
   def model_name():

@@ -20,6 +20,7 @@ DEFAULTS['shortcut'] = 'MC' #C, MC, AC, MZ, AZ
 DEFAULTS['use_bias'] = 1
 DEFAULTS['block_style'] = 'Bottleneck' # Regular, Bottleneck, Inception
 DEFAULTS['block_style'] = 'Inception' # Regular, Bottleneck, Inception
+#DEFAULTS['block_style'] = 'Regular'
 DEFAULTS['optimizer'] = 'momentum'
 DEFAULTS['learning_rate0'] = 0.001
 DEFAULTS['lr_decay_rate'] = 0.7
@@ -27,8 +28,8 @@ DEFAULTS['lr_decay_epochs'] = 15
 DEFAULTS['lr_warmup'] = 1
 DEFAULTS['batch_norm_decay0'] = 0.7
 
-DEFAULTS['model_flag'] = 'V'
-DEFAULTS['resnet_size'] = 30
+DEFAULTS['model_flag'] = 'Va'
+DEFAULTS['resnet_size'] = 27
 DEFAULTS['feed_data'] = 'xyzs-nxnynz'
 DEFAULTS['aug_types'] = 'N' # 'rpsfj-360_0_0'
 DEFAULTS['drop_imo'] = '0_0_5'
@@ -117,7 +118,8 @@ def get_block_paras_inception(resnet_size, model_flag):
     block_sizes[rs]   = [[2,1], [1,2,1], [2,2,1]]
     block_filters[rs] = [[32,64], [128,256,384], [384,512,1024]]
     block_flag[rs]    = [[],  ['B','b','B'],['a','A','a']]
-
+  else:
+    raise NotImplementedError
 
   block_params = {}
   block_params['num_filters0'] = num_filters0s[resnet_size]

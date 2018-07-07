@@ -159,7 +159,7 @@ class ResConvOps(object):
     tf.summary.scalar('batch_norm_decay', self.batch_norm_decay)
     self.use_bias = data_net_configs['use_bias']
     self.shortcut_method = data_net_configs['shortcut'] #'C' 'PC' 'PZ'
-    self.res_scale = 0.3
+    self.res_scale = 1.0
 
     self.final_filters_each_scale = []
     model_dir = data_net_configs['model_dir']
@@ -178,8 +178,8 @@ class ResConvOps(object):
       key_para_names = 'model bs aug feed drop_imo lr0_drate_depoch \
 bnd optimizer block_config\n'
       key_paras_str = '\n\n{model_name} {bs} {aug} {feed_data_eles} \
-{drop_imo} {lr0}_{lr_decay_rate}_{lr_decay_epochs} {bnd} {optimizer} \par \
-{block_config} {final_filters}\n'.format(
+{drop_imo} {lr0}_{lr_decay_rate}_{lr_decay_epochs} {bnd} {optimizer} par \
+{block_config}\n'.format(
         model_name=dnc['model_name'],
         bs=dnc['batch_size'],
         feed_data_eles=dnc['feed_data_eles'].replace('nxnynz','n'),
@@ -190,8 +190,7 @@ bnd optimizer block_config\n'
         lr_decay_epochs=dnc['lr_decay_epochs'],
         bnd=dnc['batch_norm_decay0'],
         optimizer=dnc['optimizer'][0:3],
-        block_config=dnc['block_config_str'],
-        final_filters='_'.join([str(f) for f in self.final_filters_each_scale])
+        block_config=dnc['block_config_str']
         )
 
       self.key_paras_str = key_para_names + key_paras_str
