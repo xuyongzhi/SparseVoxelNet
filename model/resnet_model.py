@@ -175,16 +175,17 @@ class ResConvOps(object):
   def log_model_summary(self):
       dnc = self.data_net_configs
       res = 'R' if self.residual else 'P'
-      key_para_names = 'model bs aug feed drop_imo lr0_drate_depoch \
+      key_para_names = 'model bs aug feed drop_imo loss_weight lr0_drate_depoch \
 bnd optimizer block_config\n'
       key_paras_str = '\n\n{model_name} {bs} {aug} {feed_data_eles} \
-{drop_imo} {lr0}_{lr_decay_rate}_{lr_decay_epochs} {bnd} {optimizer} par \
+{drop_imo} {loss_weight} {lr0}_{lr_decay_rate}_{lr_decay_epochs} {bnd} {optimizer} par \
 {block_config}\n'.format(
         model_name=dnc['model_name'],
         bs=dnc['batch_size'],
         feed_data_eles=dnc['feed_data_eles'].replace('nxnynz','n'),
         aug=dnc['aug_types'],
         drop_imo=dnc['drop_imo_str'],
+        loss_weight=dnc['loss_weight'],
         lr0=dnc['learning_rate0'],
         lr_decay_rate=dnc['lr_decay_rate'],
         lr_decay_epochs=dnc['lr_decay_epochs'],
@@ -200,7 +201,7 @@ bnd optimizer block_config\n'
         'sub_block_stride_candis', 'sub_block_step_candis','optimizer',\
         'learning_rate0', 'lr_decay_rate', 'batch_norm_decay0', 'lr_vals', \
         'bndecay_vals', 'use_bias', 'shortcut',\
-        'weight_decay', 'resnet_size', 'data_dir']
+        'weight_decay', 'resnet_size', 'data_dir', 'label_num_weights']
       for item in items_to_write:
         str_i = '%s:%s\n'%(item, dnc[item])
         self.model_log_f.write(str_i)

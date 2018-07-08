@@ -54,6 +54,7 @@ class Net_Provider():
                  only_evaluate,feed_data_elements, feed_label_elements, num_point_block = None, \
                  train_num_block_rate=1,eval_num_block_rate=1 ):
         t_init0 = time.time()
+        import pdb; pdb.set_trace()  # XXX BREAKPOINT
         self.net_configs = net_configs
         self.all_filename_globs = all_filename_globs
         self.bxmh5_folder_name = bxmh5_folder_name

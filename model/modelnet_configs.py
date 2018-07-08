@@ -18,6 +18,7 @@ DEFAULTS['data_path'] = 'MODELNET40H5F/Merged_tfrecord/6_mgs1_gs2_2-neg_fmn14_mv
 DEFAULTS['residual'] = 1
 DEFAULTS['shortcut'] = 'MC' #C, MC, AC, MZ, AZ
 DEFAULTS['use_bias'] = 1
+DEFAULTS['loss_weight'] = 'N'
 DEFAULTS['block_style'] = 'Bottleneck' # Regular, Bottleneck, Inception
 DEFAULTS['block_style'] = 'Inception' # Regular, Bottleneck, Inception
 #DEFAULTS['block_style'] = 'Regular'

@@ -33,7 +33,7 @@ import resnet_run_loop
 import os, glob, sys
 import numpy as np
 from modelnet_configs import get_block_paras, DEFAULTS
-from dataset_utils import parse_pl_record
+from dataset_utils import parse_pl_record, get_dataset_summary
 
 _DATA_PARAS = None
 
@@ -119,6 +119,12 @@ def get_data_shapes_from_tfrecord(data_dir):
       points_raw = features['points'][0]
       print('\n\nget shape from tfrecord OK:\n %s\n\n'%(_DATA_PARAS))
       #print('points', features['points'][0,0:5,:])
+
+  # read summary
+  dataset_summary = get_dataset_summary(DATASET_NAME, data_dir)
+  _DATA_PARAS['label_num_weights'] = dataset_summary['label_num_weights']
+  #print('{}'.format(dataset_summary['label_num_weights']))
+
 
 def check_data():
   from ply_util import create_ply_dset
@@ -277,6 +283,7 @@ def define_net_configs(flags_obj):
   _DATA_PARAS['residual'] = flags_obj.residual == 1
   _DATA_PARAS['shortcut'] = flags_obj.shortcut
   _DATA_PARAS['use_bias'] = flags_obj.use_bias == 1
+  _DATA_PARAS['loss_weight'] = flags_obj.loss_weight
   _DATA_PARAS['block_style'] = flags_obj.block_style
   _DATA_PARAS['optimizer'] = flags_obj.optimizer
   _DATA_PARAS['learning_rate0'] = flags_obj.learning_rate0
@@ -380,6 +387,8 @@ def define_model_dir():
 
   logname += '-'+flags.FLAGS.feed_data + '-Aug_' + flags.FLAGS.aug_types
   logname += '-Drop'+flags.FLAGS.drop_imo
+  if flags.FLAGS.loss_weight!='E':
+    logname += '-Lw'+flags.FLAGS.loss_weight
   logname +='-Bs'+str(flags.FLAGS.batch_size)
   logname += '-'+flags.FLAGS.optimizer
   logname += '-Lr'+str(int(flags.FLAGS.learning_rate0*1000)) +\
@@ -421,6 +430,7 @@ def define_modelnet_flags():
   flags.DEFINE_integer('residual', DEFAULTS['residual'], '')
   flags.DEFINE_string('shortcut', DEFAULTS['shortcut'], 'C,PC,PZ')
   flags.DEFINE_integer('use_bias', DEFAULTS['use_bias'], '')
+  flags.DEFINE_string('loss_weight', DEFAULTS['loss_weight'], 'E,N')
   flags.DEFINE_string('block_style', DEFAULTS['block_style'], \
                       'Regular,Bottleneck,Inception')
   flags.DEFINE_string('optimizer', DEFAULTS['optimizer'], 'adam, momentum')
@@ -449,8 +459,8 @@ def define_modelnet_flags():
   flags.DEFINE_integer('gpu_id',DEFAULTS['gpu_id'],'')
   flags.DEFINE_float('steps_per_epoch',
                      _NUM_IMAGES['train']/DEFAULTS['batch_size'],'')
-  get_data_shapes_from_tfrecord(data_dir)
   get_data_meta_from_hdf5(data_dir)
+  get_data_shapes_from_tfrecord(data_dir)
 
 
 def run_modelnet(flags_obj):

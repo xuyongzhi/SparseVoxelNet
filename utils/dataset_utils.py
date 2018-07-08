@@ -24,6 +24,7 @@ import numpy as np
 
 from six.moves import urllib
 import tensorflow as tf
+import matplotlib.pyplot as plt
 
 LABELS_FILENAME = 'labels.txt'
 
@@ -223,19 +224,27 @@ def extract_sg_bidxmap(sg_all_bidxmaps, sg_bm_extract_idx):
     b_bottom_centers_mm[k] = block_bottom_center_mm
   return sg_bidxmaps, b_bottom_centers_mm
 
-def read_tfrecord():
-  import ply_util
-  path = '/home/z/Research/dynamic_pointnet/data/MODELNET40H5F/Merged_tfrecord/6_mgs1_gs2_2-mbf-neg_fmn14_mvp1-1024_240_1-64_27_256-0d2_0d4-0d1_0d2-pd3-2M2pp'
+def get_dataset_summary(DATASET_NAME, path):
+  dataset_summary = read_dataset_summary(path)
+  if dataset_summary['intact']:
+    print('dataset_summary intact, no need to read')
+    get_label_num_weights(dataset_summary)
+    return dataset_summary
+
   filenames = glob.glob(os.path.join(path,'*.tfrecord'))
   assert len(filenames) > 0
+
+  from datasets.all_datasets_meta.datasets_meta import DatasetsMeta
+  DatasetsMeta = DatasetsMeta(DATASET_NAME)
+  num_classes = DatasetsMeta.num_classes
 
   with tf.Graph().as_default():
     dataset = tf.data.TFRecordDataset(filenames,
                                       compression_type="",
                                       buffer_size=1024*100,
-                                      num_parallel_reads=5)
+                                      num_parallel_reads=1)
 
-    batch_size = 10
+    batch_size = 50
     is_training = False
 
     dataset = dataset.prefetch(buffer_size=batch_size)
@@ -244,18 +253,76 @@ def read_tfrecord():
         lambda value: parse_pl_record(value, is_training),
         batch_size=batch_size,
         num_parallel_batches=1,
-        drop_remainder=True))
+        drop_remainder=False))
     dataset = dataset.prefetch(buffer_size=tf.contrib.data.AUTOTUNE)
+    get_next = dataset.make_one_shot_iterator().get_next()
 
     with tf.Session() as sess:
-      features, object_label = sess.run(dataset.make_one_shot_iterator().get_next())
-      print(features['points'][0])
-      print(object_label)
-      import pdb; pdb.set_trace()  # XXX BREAKPOINT
-      for i in range(batch_size):
-        plyfn = '/tmp/tfrecord_%d.ply'%(i)
-        ply_util.create_ply(features['points'][i], plyfn)
+      m = 0
+      n = 0
+      label_hist = np.zeros(num_classes)
+      try:
+        print('start reading all the dataset to get summary')
+        while(True):
+          features, object_label = sess.run(get_next)
+          label_hist += np.histogram(object_label, range(num_classes+1))[0]
+          if m%10==0:
+            print('%d  %d'%(m,n))
+          m += 1
+          n += object_label.size
+          #if n==batch_size:
+          #  print(features['points'][0])
+          #  print(object_label)
+          #  #for i in range(batch_size):
+          #  #  plyfn = '/tmp/tfrecord_%d.ply'%(i)
+          #     import ply_util
+          #  #  ply_util.create_ply(features['points'][i], plyfn)
+      except:
+        print('Total: %d  %d'%(m,n))
+        print(label_hist)
+      dataset_summary = {}
+      dataset_summary['size'] = n
+      dataset_summary['label_hist'] = label_hist
+      write_dataset_summary(dataset_summary, path)
+      get_label_num_weights(dataset_summary)
+      return dataset_summary
 
+def get_label_num_weights(dataset_summary):
+  IsPlot = False
+  label_hist = dataset_summary['label_hist']
+  mean = np.mean(label_hist)
+  weight = mean / label_hist
+  lamda = [0.7, 1, 2, 3]
+  weights = {}
+  for gama in [0.7, 1, 2, 3]:
+    weights[gama] = gama * weight
+  dataset_summary['label_num_weights'] = weights[2]
+  if  IsPlot:
+    for gama in [0.7, 1, 2, 3]:
+      plt.plot(label_hist, weights[gama], '.', label=str(gama))
+    plt.legend()
+    plt.show()
+  return weights
+
+def write_dataset_summary(dataset_summary, data_dir):
+  import pickle, shutil
+  summary_path = os.path.join(data_dir, 'summary.pkl')
+  dataset_summary['intact'] = True
+  with open(summary_path, 'w') as sf:
+    pickle.dump(dataset_summary, sf)
+    print(summary_path)
+  print_script = os.path.join(BASE_DIR,'print_pkl.py')
+  shutil.copyfile(print_script,os.path.join(data_dir,'print_pkl.py'))
+
+def read_dataset_summary(data_dir):
+  import pickle
+  summary_path = os.path.join(data_dir, 'summary.pkl')
+  if not os.path.exists(summary_path):
+    dataset_summary = {}
+    dataset_summary['intact'] = False
+    return dataset_summary
+  dataset_summary = pickle.load(open(summary_path, 'r'))
+  return dataset_summary
 
 def merge_tfrecord( filenames, merged_filename ):
   with tf.Graph().as_default():
@@ -287,105 +354,11 @@ def merge_tfrecord( filenames, merged_filename ):
             break
 
 
-
 if __name__ == '__main__':
   #test_encode_raw()
-  read_tfrecord()
+  DATASET_NAME = 'MODELNET40'
+  path = '/home/z/Research/dynamic_pointnet/data/MODELNET40H5F/Merged_tfrecord/6_mgs1_gs2_2-mbf-neg_fmn14_mvp1-1024_240_1-64_27_256-0d2_0d4-0d1_0d2-pd3-2M2pp'
+  get_dataset_summary(DATASET_NAME, path)
   #merge_tfrecord()
-
-
-
-
-
-
-
-
-################################################################################
-#                              unused
-################################################################################
-def encode_to_raw(in_tensor):
-  # in_tensor: a tensor with any dtype
-  character_lookup = tf.constant([chr(i) for i in range(256)])
-  encoded_string = tf.reduce_join(
-      tf.gather(character_lookup,
-                tf.cast(tf.bitcast(in_tensor, tf.uint8), tf.int32)))
-  org_dtype = in_tensor.dtype
-  org_shape = in_tensor.shape
-  return encoded_string, org_dtype, org_shape
-
-def test_encode_raw():
-  with tf.Graph().as_default():
-    starting_dtype = tf.float32
-    starting_tensor = tf.random_normal(shape=[10, 10], stddev=1e5,
-                                      dtype=starting_dtype)
-
-    encoded_string, org_dtype, org_shape = encode_to_raw(starting_tensor)
-    back_to_tensor = decode_raw(encoded_string, org_dtype, org_shape)
-    with tf.Session() as session:
-      before, after = session.run([starting_tensor, back_to_tensor])
-      print(before - after)
-
-def process_pl_to_uint16( points, point_idxs ):
-  # Preprocess point cloud and transfer all to uint16
-  # points: [num_gblocks, num_point, channels]
-  # point_idxs: {'xyz':[0,1,2], 'nxnynz':[3,4,5]}
-
-  assert points.ndim == 3
-  for ele in point_idxs:
-    idx = point_idxs[ele]
-    if ele == 'xyz':
-      # set min as 0, make all positive
-      min_xyz = points[:,:,idx].min(axis=-1, keepdims=True)
-      points[:,:,idx] -= min_xyz
-
-      # from m to mm
-      points[:,:,idx] *= 1000
-
-    elif ele=='nxnynz':
-      points[:,:,idx] += 1
-      points[:,:,idx] *= 10000
-    else:
-      raise NotImplementedError
-
-  # check scope inside uint16
-  max_data = points.max()
-  min_data = points.min()
-  assert max_data <= 65535
-  assert min_data >= 0
-
-  points = points.astype( np.uint16 )
-
-  # reshape to make image like array
-  data_ele_idxs = {}
-  for i, ele in enumerate(point_idxs):
-    assert len(point_idxs[ele]) == 3
-    data_ele_idxs[ele] = point_idxs[ele][0]//3
-  points = points.reshape( [points.shape[0], points.shape[1], -1, 3] )
-  return points, data_ele_idxs
-
-def read_from_tfrecord(filenames):
-    tfrecord_file_queue = tf.train.string_input_producer(filenames, name='queue')
-    reader = tf.TFRecordReader()
-    _, tfrecord_serialized = reader.read(tfrecord_file_queue)
-    return parse_pl_record(tfrecord_serialized)
-
-
-def read_tfrecord_queuerunner(filenames=None):
-  if filenames == None:
-    path = '/home/z/Research/dynamic_pointnet/data/MODELNET40__H5F/ORG_tfrecord/4096_mgs1_gs2_2-mbf-neg_fmn14_mvp1-1024_240_1-64_27_256-0d2_0d4-0d1_0d2-pd3-2M2pp'
-    filenames = glob.glob(os.path.join(path,'*.tfrecord'))
-  points_, object_label_, sg_all_bidxmaps_, fmap_neighbor_idis_ = read_from_tfrecord(filenames)
-
-  with tf.Session() as sess:
-      coord = tf.train.Coordinator()
-      threads = tf.train.start_queue_runners(coord=coord)
-      for i in range(3):
-        points, object_label, sg_all_bidxmaps, fmap_neighbor_idis = sess.run([points_, object_label_, sg_all_bidxmaps_, fmap_neighbor_idis_])
-        print(points[0])
-        import pdb; pdb.set_trace()  # XXX BREAKPOINT
-      coord.request_stop()
-      coord.join(threads)
-  import pdb; pdb.set_trace()  # XXX BREAKPOINT
-  return points, object_label, sg_all_bidxmaps, fmap_neighbor_idis
 
 
