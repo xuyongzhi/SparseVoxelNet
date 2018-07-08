@@ -185,7 +185,7 @@ bnd optimizer block_config\n'
         feed_data_eles=dnc['feed_data_eles'].replace('nxnynz','n'),
         aug=dnc['aug_types'],
         drop_imo=dnc['drop_imo_str'],
-        loss_weight=dnc['loss_weight'],
+        loss_weight=dnc['loss_lw_gama'] if dnc['loss_lw_gama']>0 else 'No',
         lr0=dnc['learning_rate0'],
         lr_decay_rate=dnc['lr_decay_rate'],
         lr_decay_epochs=dnc['lr_decay_epochs'],

@@ -224,11 +224,11 @@ def extract_sg_bidxmap(sg_all_bidxmaps, sg_bm_extract_idx):
     b_bottom_centers_mm[k] = block_bottom_center_mm
   return sg_bidxmaps, b_bottom_centers_mm
 
-def get_dataset_summary(DATASET_NAME, path):
+def get_dataset_summary(DATASET_NAME, path, loss_lw_gama=2):
   dataset_summary = read_dataset_summary(path)
   if dataset_summary['intact']:
     print('dataset_summary intact, no need to read')
-    get_label_num_weights(dataset_summary)
+    get_label_num_weights(dataset_summary, loss_lw_gama)
     return dataset_summary
 
   filenames = glob.glob(os.path.join(path,'*.tfrecord'))
@@ -284,19 +284,19 @@ def get_dataset_summary(DATASET_NAME, path):
       dataset_summary['size'] = n
       dataset_summary['label_hist'] = label_hist
       write_dataset_summary(dataset_summary, path)
-      get_label_num_weights(dataset_summary)
+      get_label_num_weights(dataset_summary, loss_lw_gama)
       return dataset_summary
 
-def get_label_num_weights(dataset_summary):
+def get_label_num_weights(dataset_summary, loss_lw_gama):
   IsPlot = False
   label_hist = dataset_summary['label_hist']
   mean = np.mean(label_hist)
   weight = mean / label_hist
   lamda = [0.7, 1, 2, 3]
   weights = {}
-  for gama in [0.7, 1, 2, 3]:
+  for gama in [loss_lw_gama]:
     weights[gama] = gama * weight
-  dataset_summary['label_num_weights'] = weights[2]
+  dataset_summary['label_num_weights'] = weights[loss_lw_gama]
   if  IsPlot:
     for gama in [0.7, 1, 2, 3]:
       plt.plot(label_hist, weights[gama], '.', label=str(gama))

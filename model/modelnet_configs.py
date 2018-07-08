@@ -18,10 +18,10 @@ DEFAULTS['data_path'] = 'MODELNET40H5F/Merged_tfrecord/6_mgs1_gs2_2-neg_fmn14_mv
 DEFAULTS['residual'] = 1
 DEFAULTS['shortcut'] = 'MC' #C, MC, AC, MZ, AZ
 DEFAULTS['use_bias'] = 1
-DEFAULTS['loss_weight'] = 'N'
+DEFAULTS['loss_lw_gama'] = 2
 DEFAULTS['block_style'] = 'Bottleneck' # Regular, Bottleneck, Inception
 DEFAULTS['block_style'] = 'Inception' # Regular, Bottleneck, Inception
-#DEFAULTS['block_style'] = 'Regular'
+DEFAULTS['block_style'] = 'Regular'
 DEFAULTS['optimizer'] = 'momentum'
 DEFAULTS['learning_rate0'] = 0.001
 DEFAULTS['lr_decay_rate'] = 0.7
@@ -37,7 +37,7 @@ DEFAULTS['drop_imo'] = '0_0_5'
 DEFAULTS['batch_size'] = 64
 DEFAULTS['num_gpus'] = 2
 DEFAULTS['gpu_id'] = 1
-DEFAULTS['train_epochs'] = 31
+DEFAULTS['train_epochs'] = 41
 DEFAULTS['data_format'] = 'channels_last'
 
 DEFAULTS['weight_decay'] = 0.0  # res official is 1e-4, charles is 0.0
@@ -160,6 +160,22 @@ def get_block_paras_bottle_regu(resnet_size, model_flag, block_style):
 
   elif block_style == 'Regular':
     #------------------------------- Regular -----------------------------------
+    rs = 10
+    num_filters0s[rs] = 32
+    block_sizes[rs]    = [[1], [1], [1,1]]
+    block_filters[rs] = [[32], [64], [128,256]]
+    block_kernels[rs]  = [[], [3], [3,3]]
+    block_strides[rs]  = [[], [1], [1,1]]
+    block_paddings[rs] = [[], ['v'], ['v','v']]
+
+    rs = 15
+    num_filters0s[rs] = 16
+    block_sizes[rs]    = [[1,1], [1,1], [1,1,1]]
+    block_filters[rs] = [[16,32], [64,64], [64,128,256]]
+    block_kernels[rs]  = [[], [3,1], [3,3,3]]
+    block_strides[rs]  = [[], [1,1], [1,1,1]]
+    block_paddings[rs] = [[], ['v','s'], ['v','v','v']]
+
     rs = 16
     num_filters0s[rs] = 32
     block_sizes[rs]    = [[1,1], [1,1], [1,1,1]]
