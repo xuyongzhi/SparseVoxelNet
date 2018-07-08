@@ -36,7 +36,7 @@ DEFAULTS['drop_imo'] = '0_0_5'
 DEFAULTS['batch_size'] = 64
 DEFAULTS['num_gpus'] = 2
 DEFAULTS['gpu_id'] = 1
-DEFAULTS['train_epochs'] = 61
+DEFAULTS['train_epochs'] = 31
 DEFAULTS['data_format'] = 'channels_last'
 
 DEFAULTS['weight_decay'] = 0.0  # res official is 1e-4, charles is 0.0

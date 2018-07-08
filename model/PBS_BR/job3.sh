@@ -35,7 +35,8 @@ residual=1
 shortcut='MZ'
 
 learning_rate0=0.01
+batch_size=80
 
 model_flag='V'
-resnet_size=16
+resnet_size=24
 ./modelnet.sh   $aug_types  $batch_size $model_flag $learning_rate0 $num_gpus $feed_data $drop_imo  $optimizer $use_bias $lr_decay_epochs $lr_decay_rate $resnet_size $block_style $residual $shortcut
