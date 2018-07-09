@@ -1,7 +1,7 @@
 residual=1
 batch_size=64
 learning_rate0=0.01
-lr_decay_epochs=6
+lr_decay_epochs=15
 lr_decay_rate=0.7
 num_gpus=2
 feed_data='xyzs-nxnynz'

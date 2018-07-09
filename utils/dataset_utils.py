@@ -135,6 +135,7 @@ def write_pl_bxm_tfrecord(bxm_tfrecord_writer, tfrecord_meta_writer,\
 
 
 def parse_pl_record(tfrecord_serialized, is_training, data_net_configs=None):
+    from aug_data_tf import aug_main, aug_views
     #if data_net_configs!=None:
     #  from aug_data_tf import aug_data, tf_Rz
     #  R = tf_Rz(1)
@@ -193,13 +194,19 @@ def parse_pl_record(tfrecord_serialized, is_training, data_net_configs=None):
     features['bidxmaps_flat'] = bidxmaps_flat
     features['fmap_neighbor_idis'] = fmap_neighbor_idis
 
-    if is_training and data_net_configs != None and data_net_configs['aug_types']!='none':
-      from aug_data_tf import aug_main
-      features['raw_points'] = points
-      points, b_bottom_centers_mm, augs = aug_main(points, b_bottom_centers_mm,
-                  data_net_configs['aug_types'],
-                  data_net_configs['data_idxs'])
-      features['augs'] = augs
+    if is_training:
+      if data_net_configs != None and data_net_configs['aug_types']!='none':
+        features['raw_points'] = points
+        points, b_bottom_centers_mm, augs = aug_main(points, b_bottom_centers_mm,
+                    data_net_configs['aug_types'],
+                    data_net_configs['data_idxs'])
+        features['augs'] = augs
+    else:
+      if data_net_configs!=None and data_net_configs['eval_views'] > 1:
+        #features['eval_views'] = data_net_configs['eval_views']
+        points, b_bottom_centers_mm, augs = aug_views(points, b_bottom_centers_mm,
+                    data_net_configs['eval_views'],
+                    data_net_configs['data_idxs'])
 
     if data_net_configs != None:
       features['sg_bidxmaps'] = sg_bidxmaps

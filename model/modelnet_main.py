@@ -276,6 +276,8 @@ def define_net_configs(flags_obj):
   global _DATA_PARAS
   if DEFAULTS['num_gpus']==1:
     assert flags_obj.num_gpus == 1
+  _DATA_PARAS['only_eval'] = flags_obj.only_eval == 1
+  _DATA_PARAS['eval_views'] = flags_obj.eval_views
   _DATA_PARAS['residual'] = flags_obj.residual == 1
   _DATA_PARAS['shortcut'] = flags_obj.shortcut
   _DATA_PARAS['use_bias'] = flags_obj.use_bias == 1
@@ -431,6 +433,9 @@ def define_modelnet_flags():
     os.environ['CUDA_VISIBLE_DEVICES'] = str(DEFAULTS['gpu_id'])
 
   _DATA_PARAS = {}
+  flags.DEFINE_integer('only_eval', DEFAULTS['only_eval'], '1, 0')
+  flags.DEFINE_integer('eval_views', DEFAULTS['eval_views'], '1, 5')
+
   flags.DEFINE_integer('residual', DEFAULTS['residual'], '')
   flags.DEFINE_string('shortcut', DEFAULTS['shortcut'], 'C,PC,PZ')
   flags.DEFINE_integer('use_bias', DEFAULTS['use_bias'], '')

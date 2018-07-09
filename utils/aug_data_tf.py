@@ -9,16 +9,16 @@ sys.path.append(BASE_DIR)
 from geometric_tf_util import *
 import numpy as np
 
-
-
-def random_rotate(max_angles_yxz):
+def rotate(max_angles_yxz, style):
   '''
       Rotate the whole object by a random angle 3D
       unit: rad
   '''
-
-  angles = tf.random_uniform([3], dtype=tf.float32) * 2 * np.pi
-  angles = tf.minimum(angles, max_angles_yxz)
+  if style == 'random':
+    angles = tf.random_uniform([3], dtype=tf.float32) * 2 * np.pi
+    angles = tf.minimum(angles, max_angles_yxz)
+  elif style == 'fix_step':
+    angles = max_angles_yxz
   R = tf_EulerRotate(angles, 'yxz')
   return R, angles
 
@@ -70,8 +70,15 @@ def aug_data(points, b_bottom_centers_mm, data_idxs, \
 
   augs = {}
   RS = tf.eye(3, dtype=tf.float32)
+
+  if 'multi_views' in aug_items:
+    R, angles = rotate(aug_metas['max_angles_yxz'], 'fix_step')
+    RS = tf.matmul(RS, R)
+    augs['R'] = R
+    augs['angles_yxz'] = angles
+
   if 'rotation' in aug_items:
-    R, angles = random_rotate(aug_metas['max_angles_yxz'])
+    R, angles = rotate(aug_metas['max_angles_yxz'], 'random')
     RS = tf.matmul(RS, R)
     augs['R'] = R
     augs['angles_yxz'] = angles
@@ -108,7 +115,7 @@ def aug_data(points, b_bottom_centers_mm, data_idxs, \
   if channels==3:
     points = points_xyz
   elif channels==6:
-    if 'rotation' in aug_items:
+    if 'rotation' in aug_items or 'multi_views' in aug_items:
       points_normal = tf.matmul(points[:,3:6], R)
     else:
       points_normal = points[:,3:6]
@@ -122,12 +129,13 @@ def aug_data(points, b_bottom_centers_mm, data_idxs, \
 def parse_augtypes(aug_types):
   tmp = aug_types.split('-')
   for s in tmp[0]:
-    assert s in 'Nrpsfj', ('%s not in Nrsfj'%(s))
+    assert s in 'Nvrpsfj', ('%s not in Nvrsfj'%(s))
   if 'N' in tmp[0]:
     assert tmp[0]=='N'
     aug_items=[]
   else:
-    to_aug_items = {'r':'rotation', 'p':'perturbation', 's':'scaling', 'f':'shifts', 'j':'jitter'}
+    to_aug_items = {'r':'rotation', 'p':'perturbation', 's':'scaling',
+                    'f':'shifts', 'j':'jitter', 'v':'multi_views'}
     aug_items = [to_aug_items[e] for e in tmp[0]]
   aug_metas = {}
   if len(tmp)>1:
@@ -141,5 +149,28 @@ def aug_main(points, b_bottom_centers_mm, aug_types, data_idxs):
   else:
     aug_items, aug_metas = parse_augtypes(aug_types)
     return aug_data(points, b_bottom_centers_mm, data_idxs, aug_items, aug_metas)
+
+def aug_views(points, b_bottom_centers_mm, eval_views, data_idxs):
+  points_ls = []
+  b_bottom_centers_mm_ls = {}
+  augs_ls = []
+  cascade_num = len(b_bottom_centers_mm)
+  for i in range(cascade_num):
+    b_bottom_centers_mm_ls[i] = []
+
+  for v in range(eval_views):
+    y_angle = int(1.0*v/eval_views*360)
+    aug_types = 'v-%d_0_0'%(y_angle)
+    aug_items, aug_metas = parse_augtypes(aug_types)
+    points_v, b_bottom_centers_mm_v, augs = aug_data(points, b_bottom_centers_mm, data_idxs, aug_items, aug_metas)
+    points_ls.append(tf.expand_dims(points_v,0))
+    for i in range(cascade_num):
+      b_bottom_centers_mm_ls[i].append( tf.expand_dims(b_bottom_centers_mm_v[i],0) )
+    augs_ls.append(augs)
+  points_a = tf.concat(points_ls, 0)
+  b_bottom_centers_mm_a = {}
+  for i in range(cascade_num):
+    b_bottom_centers_mm_a[i] = tf.concat(b_bottom_centers_mm_ls[i], 0)
+  return points_a, b_bottom_centers_mm_a, augs
 
 

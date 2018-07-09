@@ -230,6 +230,11 @@ def resnet_model_fn(model_flag, features, labels, mode, model_class,
       'classes': tf.argmax(logits, axis=-1),
       'probabilities': tf.nn.softmax(logits, name='softmax_tensor')
   }
+  if len(logits.shape)==3: # eval multi views
+    eval_views = logits.shape[1].value
+    logits = tf.reduce_min(logits, 1)
+  else:
+    eval_views = 1
 
   if mode == tf.estimator.ModeKeys.PREDICT:
     # Return the predictions and the specification for serving a SavedModel
@@ -310,12 +315,26 @@ def resnet_model_fn(model_flag, features, labels, mode, model_class,
     train_op = None
 
   if not tf.contrib.distribute.has_distribution_strategy():
-    accuracy = tf.metrics.accuracy(labels, predictions['classes'])
+    if eval_views>1:
+      labels_ = tf.tile(labels, [1,eval_views])
+    else:
+      labels_ = labels
+    accuracy = tf.metrics.accuracy(labels_, predictions['classes'])
+    accuracies = []
+    if eval_views>1:
+      for i in range(eval_views):
+        accuracies.append( tf.metrics.accuracy(labels, predictions['classes'][:,i]) )
+
+    #pred_classes = tf.reduce_mean(predictions['classes'], -1, keepdims=True)
+    #accuracy = tf.metrics.accuracy(labels, pred_classes)
   else:
     # Metrics are currently not compatible with distribution strategies during
     # training. This does not affect the overall performance of the model.
     accuracy = (tf.no_op(), tf.constant(0))
   metrics = {'accuracy': accuracy}
+  if eval_views>1:
+    for i in range(eval_views):
+      metrics['accuracy%d'%(i)] = accuracies[i]
 
   # Create a tensor named train_accuracy for logging purposes
   tf.identity(accuracy[1], name='train_accuracy')
@@ -378,6 +397,7 @@ def resnet_main(
       This is only used if flags_obj.export_dir is passed.
   """
   IsMetricLog = True   # temporally used
+  OnlyEval = data_net_configs['only_eval']
   if IsMetricLog:
     metric_log_fn = os.path.join(flags_obj.model_dir, 'log_metric.txt')
     metric_log_f = open(metric_log_fn, 'a')
@@ -446,19 +466,23 @@ def resnet_main(
         data_net_configs = data_net_configs,
         num_epochs=flags_obj.epochs_between_evals)
 
+  eval_views = data_net_configs['eval_views']
   def input_fn_eval():
     return input_function(
         is_training=False, data_dir=flags_obj.data_dir,
         batch_size=per_device_batch_size(
-            flags_obj.batch_size, flags_core.get_num_gpus(flags_obj)),
+            flags_obj.batch_size, flags_core.get_num_gpus(flags_obj)) // eval_views,
         data_net_configs = data_net_configs,
         num_epochs=1)
 
-  total_training_cycle = (flags_obj.train_epochs //
-                          flags_obj.epochs_between_evals)
+  if OnlyEval:
+    total_training_cycle = 1
+  else:
+    total_training_cycle = (flags_obj.train_epochs //
+                            flags_obj.epochs_between_evals)
+    # train for one step to check max memory usage
+    classifier.train(input_fn=input_fn_train, hooks=train_hooks, steps=10)
 
-  # train for one step to check max memory usage
-  classifier.train(input_fn=input_fn_train, hooks=train_hooks, steps=10)
   with tf.Session() as sess:
     max_memory_usage_v = sess.run(max_memory_usage)
     tf.logging.info('\n\nmemory usage: %0.3f G\n\n'%(max_memory_usage_v*1.0/1e9))
@@ -466,24 +490,31 @@ def resnet_main(
   for cycle_index in range(total_training_cycle):
     tf.logging.info('\n\n\nStarting a training cycle: %d/%d\n\n',
                     cycle_index, total_training_cycle)
+    eval_train_steps = 80
+    if not OnlyEval:
+      if (cycle_index%3==0 and cycle_index<=10) or \
+          (cycle_index%5 == 0 and cycle_index>10):
+        #Temporally used before metric in training is not supported in distribution
+        tf.logging.info('Starting to evaluate train data.')
+        t0 = time.time()
+        train_eval_results = classifier.evaluate(input_fn=input_fn_train,
+                                          steps=eval_train_steps, name='train')
+        eval_train_t = time.time() - t0
 
-    if (cycle_index%3==0 and cycle_index<=10) or \
-        (cycle_index%5 == 0 and cycle_index>10):
-      #Temporally used before metric in training is not supported in distribution
-      tf.logging.info('Starting to evaluate train data.')
       t0 = time.time()
-      eval_train_steps = 80
-      train_eval_results = classifier.evaluate(input_fn=input_fn_train,name='train')
-      eval_train_t = time.time() - t0
+      classifier.train(input_fn=input_fn_train, hooks=train_hooks,
+                      max_steps=flags_obj.max_train_steps)
+      train_t = time.time()-t0
+    else:
+      train_t = 0
+      eval_train_t = 0
+      train_eval_results = {}
+      train_eval_results['accuracy'] = 0
+      train_eval_results['loss'] = 0
 
-    t0 = time.time()
-    classifier.train(input_fn=input_fn_train, hooks=train_hooks,
-                     max_steps=flags_obj.max_train_steps)
-    train_t = time.time()-t0
 
-
-    if (cycle_index%3==0 and cycle_index<=10) or \
-        (cycle_index%5 == 0 and cycle_index>10):
+    if  (cycle_index%3==0 and cycle_index<=10) or \
+        (cycle_index%5 == 0 and cycle_index>10) or OnlyEval:
       tf.logging.info('Starting to evaluate.')
       # flags_obj.max_train_steps is generally associated with testing and
       # profiling. As a result it is frequently called with synthetic data, which
@@ -492,6 +523,12 @@ def resnet_main(
       # Note that eval will run for max_train_steps each loop, regardless of the
       # global_step count.
       t0 = time.time()
+
+      #eval_pred = classifier.predict(input_fn=input_fn_eval)
+      #for e in eval_pred:
+      #  import pdb; pdb.set_trace()  # XXX BREAKPOINT
+      #  pass
+
       eval_results = classifier.evaluate(input_fn=input_fn_eval,
                                          steps=flags_obj.max_train_steps,
                                          name='test')
@@ -502,8 +539,12 @@ def resnet_main(
         metric_log_f.write('epoch loss accuracy global_step: {} {:.3f}/{:.3f}--{:.3f}/{:.3f}\n'.format(\
             int(eval_results['global_step']/flags_obj.steps_per_epoch), train_eval_results['loss'], eval_results['loss'],\
             train_eval_results['accuracy'], eval_results['accuracy']))
-        metric_log_f.write('train t:{:.3f}sec    eval train t:{:.3f}sec({}steps)    eval t:{:.3f}\n\n'.format(
-              train_t, eval_train_t, eval_train_steps, eval_t))
+        if eval_views>1:
+          accuracies = [eval_results['accuracy%d'%(i)] for i in range(eval_views)]
+          accuracies_str = ['%0.3f'%(a) for a in accuracies]
+          metric_log_f.write('eval multi view: %s\n'%(accuracies_str))
+        metric_log_f.write('train t:{:.3f}sec    eval train t:{:.3f}sec({}steps)    eval t:{:.3f} eval_views:{}\n\n'.format(
+              train_t, eval_train_t, eval_train_steps, eval_t, eval_views))
         metric_log_f.flush()
 
       if model_helpers.past_stop_threshold(

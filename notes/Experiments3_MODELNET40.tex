@@ -181,13 +181,26 @@
 	\hline 
 \end{tabular}
 	
-\subsubsection{Aug R learning rate 0.01\_0.7\_6}
+\subsection{Aug R learning rate 0.01\_0.7\_6}
 \noindent\begin{tabular}{|p{10cm}|p{5cm}| }	
 \hline
 \rowcolor{blue!20}
 RMZ\_R24V 64 r-360\_0\_0 xyzs-n 0\_0\_5 0.01\_0.7\_6 0.7 mom \par 32+21\_K\_P\_F64+12\_K31\_Pvs\_F128+221\_K333\_Pvvv\_F512& 7 1.090/0.898--0.669/0.730\par 40 0.396/0.405--0.872/0.876\\
 \hline 
 \end{tabular}
+
+\subsection{Weighted Loss RMZ\_R No mbf}
+\subsubsection{learning rate 0.01\_0.7\_6}
+
+\noindent\begin{tabular}{|p{10cm}|p{5cm}| }	
+	\hline
+	model bs aug feed drop\_imo loss\_weight lr0\_drate\_depoch bnd optimizer block\_config & \\
+	\hline
+	\rowcolor{green!20}	
+	RMZ\_R24V 64 N xyzs-n 0\_0\_5 2.0 0.01\_0.7\_6 0.7 mom \par 32+21\_K\_P\_F64+12\_K31\_Pvs\_F128+221\_K333\_Pvvv\_F512& 7 0.637/1.297--0.873/0.843\par 20 0.022/1.873--0.997/0.888\par 40 0.007/2.031--0.999/0.881\\
+	\hline 
+\end{tabular}
+
 
 \section{Residual Bottleneck}
 \subsection{RMC\_B36 - No mbf}

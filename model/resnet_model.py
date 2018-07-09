@@ -786,6 +786,16 @@ bnd optimizer block_config\n'
     return tf.identity(inputs, name)
 
 
+def mytile(tensor, axis, eval_views):
+  org_shape = tensor.shape.as_list()
+  tensor = tf.expand_dims(tensor, axis)
+  multiples = np.ones(len(tensor.shape))
+  multiples[axis] = eval_views
+  tensor = tf.tile(tensor, multiples)
+  org_shape[0]=-1
+  tensor = tf.reshape(tensor, org_shape)
+  return tensor
+
 class Model(ResConvOps):
   """Base class for building the Resnet Model."""
 
@@ -954,19 +964,51 @@ class Model(ResConvOps):
     Returns:
       A logits Tensor with shape [<batch_size>, self.num_classes].
     """
+    IsMultiView = len(inputs_dic['points'].shape) == 4
 
-    outputs = self._call(
-          inputs_dic['points'],
-          inputs_dic['sg_bidxmaps'],
-          inputs_dic['b_bottom_centers_mm'],
-          inputs_dic['bidxmaps_flat'],
-          inputs_dic['fmap_neighbor_idis'],
-          training)
+    if not IsMultiView:
+      assert len(inputs_dic['points'].shape) == 3
+      outputs = self._call(
+            inputs_dic['points'],
+            inputs_dic['sg_bidxmaps'],
+            inputs_dic['b_bottom_centers_mm'],
+            inputs_dic['bidxmaps_flat'],
+            inputs_dic['fmap_neighbor_idis'],
+            training)
+    else:
+      eval_views = inputs_dic['points'].shape[1].value
+      batch_size = inputs_dic['points'].shape[0].value
+      b_bottom_centers_mm = {}
+      sg_bidxmaps = {}
+      cascade_num = len(inputs_dic['b_bottom_centers_mm'])
+      for c in range(cascade_num):
+        #b_bottom_centers_mm[c] = inputs_dic['b_bottom_centers_mm'][c][:,v,:,:]
 
+        tmp = inputs_dic['b_bottom_centers_mm'][c]
+        b_bottom_centers_mm[c] = tf.reshape(tmp, [-1]+tmp.shape[2:4].as_list())
+
+        sg_bidxmaps[c] = mytile(inputs_dic['sg_bidxmaps'][c], 1, eval_views)
+      points = tf.reshape(inputs_dic['points'], [-1]+inputs_dic['points'].shape[2:4].as_list())
+      bidxmaps_flat = mytile(inputs_dic['bidxmaps_flat'], 1, eval_views)
+      fmap_neighbor_idis = mytile(inputs_dic['fmap_neighbor_idis'], 1, eval_views)
+
+      outputs = self._call(
+            points,
+            sg_bidxmaps,
+            b_bottom_centers_mm,
+            bidxmaps_flat,
+            fmap_neighbor_idis,
+            training,
+            eval_views=eval_views)
+      outputs = tf.reshape(outputs, [batch_size, eval_views, outputs.shape[-1].value])
+      #points = tf.reshape(points,[batch_size, eval_views]+ points.shape.as_list()[1:3])
+      #sg_bidxmaps0 = tf.reshape(sg_bidxmaps[0],[batch_size, eval_views]+ sg_bidxmaps[0].shape.as_list()[1:3])
+
+    self.model_log_f.close()
     return outputs
 
   def _call(self, inputs, sg_bidxmaps, b_bottom_centers_mm, bidxmaps_flat,
-            fmap_neighbor_idis, is_training):
+            fmap_neighbor_idis, is_training, eval_views=-1):
 
     if self.IsShowModel: self.log('')
     self.is_training = is_training
@@ -1049,7 +1091,6 @@ class Model(ResConvOps):
                  (self._activation_size/pow(1024.0,2)))
         self.log('------------------------------------------------------------\n\n')
         self.log_model_summary()
-        self.model_log_f.close()
 
       return inputs
 
