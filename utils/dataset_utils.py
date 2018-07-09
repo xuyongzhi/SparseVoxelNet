@@ -288,6 +288,8 @@ def get_dataset_summary(DATASET_NAME, path, loss_lw_gama=2):
       return dataset_summary
 
 def get_label_num_weights(dataset_summary, loss_lw_gama):
+  if loss_lw_gama<0:
+    return
   IsPlot = False
   label_hist = dataset_summary['label_hist']
   mean = np.mean(label_hist)
@@ -302,7 +304,6 @@ def get_label_num_weights(dataset_summary, loss_lw_gama):
       plt.plot(label_hist, weights[gama], '.', label=str(gama))
     plt.legend()
     plt.show()
-  return weights
 
 def write_dataset_summary(dataset_summary, data_dir):
   import pickle, shutil

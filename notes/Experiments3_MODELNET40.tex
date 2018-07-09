@@ -127,29 +127,66 @@
 	\hline 
 \end{tabular}
 
-\subsubsection{learning rate 0.01}
+\subsubsection{learning rate 0.01\_0.7\_20}
 \noindent\begin{tabular}{|p{10cm}|p{5cm}| }	
 	\hline
 	\multicolumn{2}{|p{15cm}|}{ 6\_mgs1\_gs2\_2-neg\_fmn14\_mvp1-1024\_240\_1-64\_27\_256-0d2\_0d4-0d1\_0d2-pd3-2M2pp}\\
 	\hline
 	model bs aug feed drop\_imo lr0\_drate\_depoch bnd optimizer block\_config & train/eval \\
 	
-	\rowcolor{green!20}
-	RMZ\_R24V 32 N xyzs-n 0\_0\_5 0.01\_0.7\_20 0.7 mom \par 32+21\_K\_P\_F64+12\_K31\_Pvs\_F128+221\_K333\_Pvvv\_F512\par 96M
-	& 4 0.439/0.530--0.869/0.840\par 7 0.189/0.520--0.937/0.857\par 35 0.002/0.719--0.999/0.892\par 60 0.001/0.752--1.000/0.892\\
-	
+
 	\rowcolor{yellow!20}
 	RMZ\_R16V 32 N xyzs-n 0\_0\_5 0.01\_0.7\_20 0.7 mom \par 32+11\_K\_P\_F64+11\_K31\_Pvs\_F128+111\_K333\_Pvvv\_F512 & 4 0.353/0.531--0.892/0.843\par 7 0.177/0.491--0.941/0.858\par  30 0.006/0.671--0.998/0.888\\
+	
+	\rowcolor{black!30} \textcolor{red}{24V}\\
+	
+	\rowcolor{green!20}
+	RMZ\_R24V 32 N xyzs-n 0\_0\_5 0.01\_0.7\_20 0.7 mom \par 32+21\_K\_P\_F64+12\_K31\_Pvs\_F128+221\_K333\_Pvvv\_F512\par 96M
+	& 4 0.439/0.530--0.869/0.840\par 7 0.189/0.520--0.937/0.857\par 35 0.002/0.719--0.999/0.892\par 60 0.001/0.752--1.000/0.892\\	
 	
 	\rowcolor{orange!20}
 	RMZ\_R24V 80 N xyzs-n 0\_0\_5 0.01\_0.7\_20 0.7 mom \par 32+21\_K\_P\_F64+12\_K31\_Pvs\_F128+221\_K333\_Pvvv\_F512& 4 0.322/0.532--0.901/0.843\par 7 0.110/0.502--0.965/0.873\par 16 0.033/0.582--0.991/0.898\par 31 0.003/0.639--0.999/0.891\\
 	
-	\rowcolor{green!20}
-	RMZ\_R24V 80 N xyzs-n 0\_0\_5 0.05\_0.7\_5 0.7 mom \par 32+21\_K\_P\_F64+12\_K31\_Pvs\_F128+221\_K333\_Pvvv\_F512& 4 0.797/0.738--0.754/0.773\par 7 0.413/0.583--0.873/0.832\par 16 0.095/0.552--0.968/0.880 \par 31 0.008/0.701--0.998/0.879\\
+	\rowcolor{white} \textcolor{red}{Batch size 80 is better than 32 a bit}\\		
 	
 	\rowcolor{red!20}
-	RMZ\_R16m 32 N xyzs-n 0\_0\_5 0.01\_0.7\_20 0.7 mom \par 32+11\_K\_P\_F64+11\_K11\_Pvv\_F128+111\_K111\_Pvvv\_F512&7 1.188/0.971--0.645/0.710\par 30 0.126/0.518--0.959/0.858\\
+	RMZ\_R16m 32 N xyzs-n 0\_0\_5 0.01\_0.7\_20 0.7 mom \par 32+11\_K\_P\_F64+11\_K11\_Pvv\_F128+111\_K111\_Pvvv\_F512&7 1.188/0.971--0.645/0.710\par 30 0.126/0.518--0.959/0.858\par 61 0.005/0.684--0.999/0.879\\	
+	
 	\hline 
+\end{tabular}
+
+\subsubsection{learning rate 0.01\_0.7\_6}
+\noindent\begin{tabular}{|p{10cm}|p{5cm}| }	
+	\hline
+	\rowcolor{blue!20}
+	RMZ\_R24V 64 N xyzs-n 0\_0\_5 0.01\_0.7\_6 0.7 mom \par 32+21\_K\_P\_F64+12\_K31\_Pvs\_F128+221\_K333\_Pvvv\_F512& 4 0.319/0.527--0.899/0.840\par 7 0.131/0.525--0.957/0.872\par 15 0.010/0.599--0.997/0.883\par 40 0.002/0.633--0.999/0.884 \\
+	
+	\rowcolor{white} \textcolor{red}{Learning rate decay 20 is better than 6}\\
+	
+	\rowcolor{green!20}
+	RMZ\_R24V 80 N xyzs-n 0\_0\_5 0.05\_0.7\_5 0.7 mom \par 32+21\_K\_P\_F64+12\_K31\_Pvs\_F128+221\_K333\_Pvvv\_F512& 4 0.797/0.738--0.754/0.773\par 7 0.413/0.583--0.873/0.832\par 16 0.095/0.552--0.968/0.880 \par 31 0.008/0.701--0.998/0.879\\
+		
+	\rowcolor{yellow!20}
+	RMZ\_R24V 32 N xyzs-n 0\_0\_5 0.01\_0.7\_6 0.7 mom \par 32+21\_K\_P\_F64+12\_K31\_Pvs\_F128+221\_K333\_Pvvv\_F512& 7 0.188/0.491--0.941/0.876\par 25 0.004/0.671--0.999/0.881\par 40 0.002/0.714--0.999/0.879\\
+			
+	\rowcolor{black!30} \textcolor{red}{R24m, 10V, 15V}\\
+	\rowcolor{red!20}
+	RMZ\_R24m 64 N xyzs-n 0\_0\_5 2.0 0.01\_0.7\_6 0.7 mom \par 32+21\_K\_P\_F64+12\_K11\_Pvv\_F128+221\_K111\_Pvvv\_F512& 10 0.948/1.154--0.727/0.662\par 40 0.161/0.694--0.952/0.827\\
+	
+	\rowcolor{green!20}
+	RMZ\_R10V 64 N xyzs-n 0\_0\_5 0.01\_0.7\_6 0.7 mom \par 32+1\_K\_P\_F32+1\_K3\_Pv\_F64+11\_K33\_Pvv\_F256& 4 0.453/0.578--0.861/0.836\par 7 0.263/0.527--0.917/0.850\par 20 0.031/0.653--0.991/0.877\par 40 0.010/0.715--0.998/0.871\\
+	
+	\rowcolor{blue!20}
+	RMZ\_R15V 64 N xyzs-n 0\_0\_5 2.0 0.01\_0.7\_6 0.7 mom \par 16+11\_K\_P\_F32+11\_K31\_Pvs\_F64+111\_K333\_Pvvv\_F256& 7 0.173/0.462--0.943/0.874\par 25 0.007/0.627--0.998/0.877\par 40 0.005/0.646--0.999/0.874\\
+	\hline 
+\end{tabular}
+	
+\subsubsection{Aug R learning rate 0.01\_0.7\_6}
+\noindent\begin{tabular}{|p{10cm}|p{5cm}| }	
+\hline
+\rowcolor{blue!20}
+RMZ\_R24V 64 r-360\_0\_0 xyzs-n 0\_0\_5 0.01\_0.7\_6 0.7 mom \par 32+21\_K\_P\_F64+12\_K31\_Pvs\_F128+221\_K333\_Pvvv\_F512& 7 1.090/0.898--0.669/0.730\par 40 0.396/0.405--0.872/0.876\\
+\hline 
 \end{tabular}
 
 \section{Residual Bottleneck}

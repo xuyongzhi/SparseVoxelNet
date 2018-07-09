@@ -29,8 +29,8 @@ DEFAULTS['lr_decay_epochs'] = 15
 DEFAULTS['lr_warmup'] = 1
 DEFAULTS['batch_norm_decay0'] = 0.7
 
-DEFAULTS['model_flag'] = 'Va'
-DEFAULTS['resnet_size'] = 27
+DEFAULTS['model_flag'] = 'V'
+DEFAULTS['resnet_size'] = 24
 DEFAULTS['feed_data'] = 'xyzs-nxnynz'
 DEFAULTS['aug_types'] = 'N' # 'rpsfj-360_0_0'
 DEFAULTS['drop_imo'] = '0_0_5'

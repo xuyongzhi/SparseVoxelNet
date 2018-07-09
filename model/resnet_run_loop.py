@@ -241,7 +241,7 @@ def resnet_model_fn(model_flag, features, labels, mode, model_class,
         })
 
   # Calculate loss, which includes softmax cross entropy and L2 regularization.
-  if data_net_configs['loss_lw_gama'] > 0:
+  if data_net_configs['loss_lw_gama'] < 0:
     weights = 1
   else:
     weights = tf.gather( data_net_configs['label_num_weights'], labels)

@@ -324,7 +324,10 @@ def define_net_configs(flags_obj):
   # read summary
   dataset_summary = get_dataset_summary(DATASET_NAME, _DATA_PARAS['data_dir'],
                                         flags_obj.loss_lw_gama)
-  _DATA_PARAS['label_num_weights'] = dataset_summary['label_num_weights']
+  if flags_obj.loss_lw_gama>0:
+    _DATA_PARAS['label_num_weights'] = dataset_summary['label_num_weights']
+  else:
+    _DATA_PARAS['label_num_weights'] = 1
 
 
 def _get_block_paras():
