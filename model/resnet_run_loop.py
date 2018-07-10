@@ -536,9 +536,13 @@ def resnet_main(
 
       benchmark_logger.log_evaluation_result(eval_results)
       if IsMetricLog:
-        metric_log_f.write('epoch loss accuracy global_step: {} {:.3f}/{:.3f}--{:.3f}/{:.3f}\n'.format(\
+        if eval_views>1:
+          eval_acu_str = '{:.3f}-{}_{:.3f}'.format(eval_results['accuracy0'], eval_views, eval_results['accuracy'])
+        else:
+          eval_acu_str = '{:.3f}'.format(eval_results['accuracy'])
+        metric_log_f.write('epoch loss accuracy global_step: {} {:.3f}/{:.3f}--{:.3f}/{}\n'.format(\
             int(eval_results['global_step']/flags_obj.steps_per_epoch), train_eval_results['loss'], eval_results['loss'],\
-            train_eval_results['accuracy'], eval_results['accuracy']))
+            train_eval_results['accuracy'], eval_acu_str))
         if eval_views>1:
           accuracies = [eval_results['accuracy%d'%(i)] for i in range(eval_views)]
           accuracies_str = ['%0.3f'%(a) for a in accuracies]

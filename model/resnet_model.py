@@ -1004,7 +1004,8 @@ class Model(ResConvOps):
       #points = tf.reshape(points,[batch_size, eval_views]+ points.shape.as_list()[1:3])
       #sg_bidxmaps0 = tf.reshape(sg_bidxmaps[0],[batch_size, eval_views]+ sg_bidxmaps[0].shape.as_list()[1:3])
 
-    self.model_log_f.close()
+    if self.IsShowModel:
+      self.model_log_f.close()
     return outputs
 
   def _call(self, inputs, sg_bidxmaps, b_bottom_centers_mm, bidxmaps_flat,

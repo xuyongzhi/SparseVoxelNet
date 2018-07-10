@@ -301,13 +301,14 @@ def get_label_num_weights(dataset_summary, loss_lw_gama):
   label_hist = dataset_summary['label_hist']
   mean = np.mean(label_hist)
   weight = mean / label_hist
-  lamda = [0.7, 1, 2, 3]
   weights = {}
-  for gama in [loss_lw_gama]:
+  gamas = [loss_lw_gama, 1, 2, 5, 10, 20]
+  gamas = [loss_lw_gama]
+  for gama in gamas:
     weights[gama] = gama * weight
   dataset_summary['label_num_weights'] = weights[loss_lw_gama]
   if  IsPlot:
-    for gama in [0.7, 1, 2, 3]:
+    for gama in gamas:
       plt.plot(label_hist, weights[gama], '.', label=str(gama))
     plt.legend()
     plt.show()

@@ -17,6 +17,7 @@ def rotate(max_angles_yxz, style):
   if style == 'random':
     angles = tf.random_uniform([3], dtype=tf.float32) * 2 * np.pi
     angles = tf.minimum(angles, max_angles_yxz)
+    angles = angles - max_angles_yxz*0.5
   elif style == 'fix_step':
     angles = max_angles_yxz
   R = tf_EulerRotate(angles, 'yxz')

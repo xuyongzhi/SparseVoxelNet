@@ -1,0 +1,45 @@
+\documentclass[,table,dvipsnames]{article}
+\usepackage[usenames, dvipsnames]{color}
+\usepackage{graphicx}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{hyperref}
+\usepackage{longtable}
+\usepackage{float}
+\usepackage{tikz}
+\usetikzlibrary{shapes.geometric, arrows}
+\usepackage{xcolor}
+
+\graphicspath{ {images/} {images/mat60_1AG/} }
+\title{Sparse voxel net on MODELNET40}
+\author{xyz}
+\date{July 2018}
+
+
+\begin{document}
+\noindent
+\begin{titlepage}
+	\maketitle
+\end{titlepage}	
+
+\tableofcontents{}
+
+\section{RMZ Regular}
+\subsection{Aug r}
+
+\noindent\begin{tabular}{|p{10cm}|p{5cm}| }	
+\hline
+\multicolumn{2}{|p{15cm}|}{ 6\_mgs1\_gs2\_2-neg\_fmn14\_mvp1-1024\_240\_1-64\_27\_256-0d2\_0d4-0d1\_0d2-pd3-2M2pp}\\
+\hline
+model bs aug feed drop\_imo loss\_weight lr0\_drate\_depoch bnd optimizer block\_config & train/eval \\
+
+\rowcolor{green!20}
+ RMZ\_R24V 64 r-360\_0\_0 xyzs-n 0\_0\_5 2.0 0.01\_0.7\_20 0.7 mom par 32+21\_K\_P\_F64+12\_K31\_Pvs\_F128+221\_K333\_Pvvv\_F512& 40 1.143/1.219--0.823/0.852\\
+ 
+ \rowcolor{red!20}
+ RMZ\_R24V 64 r-360\_0\_0 xyzs-n 0\_0\_5 2.0 0.01\_0.7\_6 0.7 mom \par 32+21\_K\_P\_F64+12\_K31\_Pvs\_F128+221\_K333\_Pvvv\_F512&20 0.544/0.508--0.827/0.839 \par 40 0.396/0.405--0.872/0.876\\
+	
+\hline 	
+\end{tabular}
+
+\end{document}

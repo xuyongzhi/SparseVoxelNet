@@ -138,6 +138,9 @@
 	\rowcolor{yellow!20}
 	RMZ\_R16V 32 N xyzs-n 0\_0\_5 0.01\_0.7\_20 0.7 mom \par 32+11\_K\_P\_F64+11\_K31\_Pvs\_F128+111\_K333\_Pvvv\_F512 & 4 0.353/0.531--0.892/0.843\par 7 0.177/0.491--0.941/0.858\par  30 0.006/0.671--0.998/0.888\\
 	
+	\rowcolor{red!20}
+	RMZ\_R16m 32 N xyzs-n 0\_0\_5 0.01\_0.7\_20 0.7 mom \par 32+11\_K\_P\_F64+11\_K11\_Pvv\_F128+111\_K111\_Pvvv\_F512&7 1.188/0.971--0.645/0.710\par 30 0.126/0.518--0.959/0.858\par 61 0.005/0.684--0.999/0.879\\	
+	
 	\rowcolor{black!30} \textcolor{red}{24V}\\
 	
 	\rowcolor{green!20}
@@ -149,9 +152,7 @@
 	
 	\rowcolor{white} \textcolor{red}{Batch size 80 is better than 32 a bit}\\		
 	
-	\rowcolor{red!20}
-	RMZ\_R16m 32 N xyzs-n 0\_0\_5 0.01\_0.7\_20 0.7 mom \par 32+11\_K\_P\_F64+11\_K11\_Pvv\_F128+111\_K111\_Pvvv\_F512&7 1.188/0.971--0.645/0.710\par 30 0.126/0.518--0.959/0.858\par 61 0.005/0.684--0.999/0.879\\	
-	
+			
 	\hline 
 \end{tabular}
 
@@ -198,9 +199,37 @@ RMZ\_R24V 64 r-360\_0\_0 xyzs-n 0\_0\_5 0.01\_0.7\_6 0.7 mom \par 32+21\_K\_P\_F
 	\hline
 	\rowcolor{green!20}	
 	RMZ\_R24V 64 N xyzs-n 0\_0\_5 2.0 0.01\_0.7\_6 0.7 mom \par 32+21\_K\_P\_F64+12\_K31\_Pvs\_F128+221\_K333\_Pvvv\_F512& 7 0.637/1.297--0.873/0.843\par 20 0.022/1.873--0.997/0.888\par 40 0.007/2.031--0.999/0.881\\
+	
+	\rowcolor{yellow!20}
+	RMZ\_R24V 64 N xyzs-n 0\_0\_5 5.0 0.01\_0.7\_6 0.7 mom \par 32+21\_K\_P\_F64+12\_K31\_Pvs\_F128+221\_K333\_Pvvv\_F512&7 3.146/4.107--0.821/0.779\par 20 0.166/4.270--0.989/0.877\par  35 0.037/4.883--0.998/0.890\par 40 0.030/4.983--0.998/0.886\\
+	
+	\rowcolor{blue!20}
+	RMZ\_R24V 32 N xyzs-n 0\_0\_5 2.0 0.01\_0.7\_6 0.7 mom \par 32+21\_K\_P\_F64+12\_K31\_Pvs\_F128+221\_K333\_Pvvv\_F512&7 0.972/1.291--0.866/0.820\par 35 0.011/2.072--0.999/0.887\par 40 0.008/2.127--0.999/0.879\\
+	
+	\rowcolor{red!20}
+	RMZ\_R10V 64 N xyzs-n 0\_0\_5 2.0 0.01\_0.7\_6 0.7 mom \par 32+1\_K\_P\_F32+1\_K3\_Pv\_F64+11\_K33\_Pvv\_F256&10 0.536/1.392--0.913/0.849\par 30 0.053/2.107--0.991/0.882\par 40 0.025/2.349--0.996/0.875\\
+	
+	\rowcolor{yellow!20}
+	 RMZ\_R15V 64 N xyzs-n 0\_0\_5 2.0 0.01\_0.7\_6 0.7 mom \par 16+11\_K\_P\_F32+11\_K31\_Pvs\_F64+111\_K333\_Pvvv\_F256\par 16M& 7 0.660/1.258--0.905/0.861\par 15 0.058/1.626--0.990/0.881\par 40 0.011/1.849--0.999/0.876\\
 	\hline 
 \end{tabular}
 
+\subsubsection{learning rate 0.01\_0.7\_20}
+
+\noindent\begin{tabular}{|p{10cm}|p{5cm}| }	
+	\hline
+	model bs aug feed drop\_imo loss\_weight lr0\_drate\_depoch bnd optimizer block\_config & \\
+	\hline
+\rowcolor{yellow!20}	
+ RMZ\_R24V 32 N xyzs-n 0\_0\_5 2.0 0.01\_0.7\_20 0.7 mom \par 32+21\_K\_P\_F64+12\_K31\_Pvs\_F128+221\_K333\_Pvvv\_F512& 10 0.535/1.299--0.908/0.861\par  40 0.008/2.054--0.999/0.887\\
+	
+\rowcolor{green!20}
+RMZ\_R10V 64 N xyzs-n 0\_0\_5 2.0 0.01\_0.7\_20 0.7 mom \par 32+1\_K\_P\_F32+1\_K3\_Pv\_F64+11\_K33\_Pvv\_F256\par 27M& 4 1.628/1.926--0.776/0.774\par 7 0.657/1.560--0.908/0.820\par 40 0.015/2.359--0.998/0.876\\
+
+\rowcolor{red!20}
+RMZ\_R15V 64 N xyzs-n 0\_0\_5 2.0 0.01\_0.7\_20 0.7 mom \par 16+11\_K\_P\_F32+11\_K31\_Pvs\_F64+111\_K333\_Pvvv\_F256& 7 0.490/1.419--0.926/0.844\par 25 0.023/1.882--0.997/0.885\par 40 0.009/2.083--0.999/0.884\\
+	\hline 
+\end{tabular}
 
 \section{Residual Bottleneck}
 \subsection{RMC\_B36 - No mbf}

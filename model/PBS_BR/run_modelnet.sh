@@ -1,7 +1,7 @@
 residual=1
 batch_size=64
 learning_rate0=0.01
-lr_decay_epochs=15
+lr_decay_epochs=10
 lr_decay_rate=0.7
 num_gpus=2
 feed_data='xyzs-nxnynz'
@@ -17,13 +17,16 @@ loss_lw_gama=2
 
 model_flag='V'
 resnet_size=24
-loss_lw_gama=2
+loss_lw_gama=5
+aug_types='r-360_0_0'
 ./modelnet.sh   $aug_types  $batch_size $model_flag $learning_rate0 $num_gpus $feed_data $drop_imo  $optimizer $use_bias $lr_decay_epochs $lr_decay_rate $resnet_size $block_style $residual $shortcut $loss_lw_gama
-#
-#loss_lw_gama=5
+
+#aug_types='r-180_0_0'
 #./modelnet.sh   $aug_types  $batch_size $model_flag $learning_rate0 $num_gpus $feed_data $drop_imo  $optimizer $use_bias $lr_decay_epochs $lr_decay_rate $resnet_size $block_style $residual $shortcut $loss_lw_gama
 #
-loss_lw_gama=2
+#aug_types='r-90_0_0'
+#./modelnet.sh   $aug_types  $batch_size $model_flag $learning_rate0 $num_gpus $feed_data $drop_imo  $optimizer $use_bias $lr_decay_epochs $lr_decay_rate $resnet_size $block_style $residual $shortcut $loss_lw_gama
+#loss_lw_gama=2
 
 
 
