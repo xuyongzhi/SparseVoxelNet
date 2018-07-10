@@ -14,6 +14,7 @@ import numpy as np
 DEFAULTS = {}
 #DEFAULTS['data_path'] = 'MODELNET40H5F/Merged_tfrecord/6_mgs1_gs2_2-mbf-neg_fmn14_mvp1-1024_240_1-64_27_256-0d2_0d4-0d1_0d2-pd3-2M2pp'
 DEFAULTS['data_path'] = 'MODELNET40H5F/Merged_tfrecord/6_mgs1_gs2_2-neg_fmn14_mvp1-1024_240_1-64_27_256-0d2_0d4-0d1_0d2-pd3-2M2pp'
+#DEFAULTS['data_path'] = 'MODELNET40H5F/Merged_tfrecord/6_mgs1_gs2_2d2-neg_fmn1444_mvp1-3200_1024_48_1-18_24_56_56-0d1_0d2_0d6-0d0_0d1_0d4-pd3-3M1'
 
 
 DEFAULTS['only_eval'] = 0
@@ -41,7 +42,7 @@ DEFAULTS['drop_imo'] = '0_0_5'
 DEFAULTS['batch_size'] = 64
 DEFAULTS['num_gpus'] = 2
 DEFAULTS['gpu_id'] = 1
-DEFAULTS['train_epochs'] = 41
+DEFAULTS['train_epochs'] = 101
 DEFAULTS['data_format'] = 'channels_last'
 
 DEFAULTS['weight_decay'] = 0.0  # res official is 1e-4, charles is 0.0
@@ -144,82 +145,94 @@ def get_block_paras_bottle_regu(resnet_size, model_flag, block_style):
   block_paddings = {}   # only used when strides == 1
   block_filters = {}
 
-  if block_style == 'Bottleneck':
-    #------------------------------ Bottleneck ---------------------------------
-    rs = 36
-    num_filters0s[rs] = 32
-    block_sizes[rs]    = [[2,1], [1,1,2], [2,2,1]]
-    block_filters[rs] = [[32,64], [256,256,512], [512,1024,2048]]
-    block_kernels[rs]  = [[], [1,3,1], [3,2,1]]
-    block_strides[rs]  = [[], [1,1,1], [1,1,1]]
-    block_paddings[rs] = [[], ['s','v','s'], ['v','v','v']]
+  data_flag = DEFAULTS['data_path'].split('-')[-1]
+  if data_flag == '2M2pp':
+    if block_style == 'Bottleneck':
+      #------------------------------ Bottleneck ---------------------------------
+      rs = 36
+      num_filters0s[rs] = 32
+      block_sizes[rs]    = [[2,1], [1,1,2], [2,2,1]]
+      block_filters[rs] = [[32,64], [256,256,512], [512,1024,2048]]
+      block_kernels[rs]  = [[], [1,3,1], [3,2,1]]
+      block_strides[rs]  = [[], [1,1,1], [1,1,1]]
+      block_paddings[rs] = [[], ['s','v','s'], ['v','v','v']]
 
-    rs = 37
-    num_filters0s[rs] = 32
-    block_sizes[rs]    = [[1,1,1], [1,1,1], [1,1,1]]
-    block_filters[rs] = [[32,64,128], [256,256,512], [512,512,1024]]
-    block_kernels[rs]  = [[], [1,3,1], [3,2,1]]
-    block_strides[rs]  = [[], [1,1,1], [1,1,1]]
-    block_paddings[rs] = [[], ['s','v','s'], ['v','v','v']]
+      rs = 37
+      num_filters0s[rs] = 32
+      block_sizes[rs]    = [[1,1,1], [1,1,1], [1,1,1]]
+      block_filters[rs] = [[32,64,128], [256,256,512], [512,512,1024]]
+      block_kernels[rs]  = [[], [1,3,1], [3,2,1]]
+      block_strides[rs]  = [[], [1,1,1], [1,1,1]]
+      block_paddings[rs] = [[], ['s','v','s'], ['v','v','v']]
 
-  elif block_style == 'Regular':
-    #------------------------------- Regular -----------------------------------
-    rs = 10
-    num_filters0s[rs] = 32
-    block_sizes[rs]    = [[1], [1], [1,1]]
-    block_filters[rs] = [[32], [64], [128,256]]
-    block_kernels[rs]  = [[], [3], [3,3]]
-    block_strides[rs]  = [[], [1], [1,1]]
-    block_paddings[rs] = [[], ['v'], ['v','v']]
+    elif block_style == 'Regular':
+      #------------------------------- Regular -----------------------------------
+      rs = 10
+      num_filters0s[rs] = 32
+      block_sizes[rs]    = [[1], [1], [1,1]]
+      block_filters[rs] = [[32], [64], [128,256]]
+      block_kernels[rs]  = [[], [3], [3,3]]
+      block_strides[rs]  = [[], [1], [1,1]]
+      block_paddings[rs] = [[], ['v'], ['v','v']]
 
-    rs = 15
-    num_filters0s[rs] = 16
-    block_sizes[rs]    = [[1,1], [1,1], [1,1,1]]
-    block_filters[rs] = [[16,32], [64,64], [64,128,256]]
-    block_kernels[rs]  = [[], [3,1], [3,3,3]]
-    block_strides[rs]  = [[], [1,1], [1,1,1]]
-    block_paddings[rs] = [[], ['v','s'], ['v','v','v']]
+      rs = 15
+      num_filters0s[rs] = 16
+      block_sizes[rs]    = [[1,1], [1,1], [1,1,1]]
+      block_filters[rs] = [[16,32], [64,64], [64,128,256]]
+      block_kernels[rs]  = [[], [3,1], [3,3,3]]
+      block_strides[rs]  = [[], [1,1], [1,1,1]]
+      block_paddings[rs] = [[], ['v','s'], ['v','v','v']]
 
-    rs = 16
-    num_filters0s[rs] = 32
-    block_sizes[rs]    = [[1,1], [1,1], [1,1,1]]
-    block_filters[rs] = [[32,64], [128,128], [128,256,512]]
-    block_kernels[rs]  = [[], [3,1], [3,3,3]]
-    block_strides[rs]  = [[], [1,1], [1,1,1]]
-    block_paddings[rs] = [[], ['v','s'], ['v','v','v']]
+      rs = 16
+      num_filters0s[rs] = 32
+      block_sizes[rs]    = [[1,1], [1,1], [1,1,1]]
+      block_filters[rs] = [[32,64], [128,128], [128,256,512]]
+      block_kernels[rs]  = [[], [3,1], [3,3,3]]
+      block_strides[rs]  = [[], [1,1], [1,1,1]]
+      block_paddings[rs] = [[], ['v','s'], ['v','v','v']]
 
-    rs = 24
-    num_filters0s[rs] = 32
-    block_sizes[rs]    = [[2,1], [1,2], [2,2,1]]
-    block_filters[rs] = [[32,64], [128,128], [128,256,512]]
-    block_kernels[rs]  = [[], [3,1], [3,3,3]]
-    block_strides[rs]  = [[], [1,1], [1,1,1]]
-    block_paddings[rs] = [[], ['v','s'], ['v','v','v']]
+      rs = 24
+      num_filters0s[rs] = 32
+      block_sizes[rs]    = [[2,1], [1,2], [2,2,1]]
+      block_filters[rs] = [[32,64], [128,128], [128,256,512]]
+      block_kernels[rs]  = [[], [3,1], [3,3,3]]
+      block_strides[rs]  = [[], [1,1], [1,1,1]]
+      block_paddings[rs] = [[], ['v','s'], ['v','v','v']]
 
-    rs = 36
-    num_filters0s[rs] = 32
-    block_sizes[rs]    = [[2,1], [1,2], [2,2,1]]
-    block_filters[rs] = [[32,64], [128,256], [256,512,1024]]
-    block_kernels[rs]  = [[], [3,1], [3,2,1]]
-    block_strides[rs]  = [[], [1,1], [1,1,1]]
-    block_paddings[rs] = [[], ['v','s'], ['v','v','v']]
+      rs = 36
+      num_filters0s[rs] = 32
+      block_sizes[rs]    = [[2,1], [1,2], [2,2,1]]
+      block_filters[rs] = [[32,64], [128,256], [256,512,1024]]
+      block_kernels[rs]  = [[], [3,1], [3,2,1]]
+      block_strides[rs]  = [[], [1,1], [1,1,1]]
+      block_paddings[rs] = [[], ['v','s'], ['v','v','v']]
 
-    rs = 37
-    num_filters0s[rs] = 32
-    block_sizes[rs]    = [[2,1,1], [1,2], [1,1,1,1,1]]
-    block_filters[rs] = [[32,64,128], [256,256], [256,384,512,768,1024]]
-    block_kernels[rs]  = [[], [3,1], [3,2,2,2,2]]
-    block_strides[rs]  = [[], [1,1], [1,1,1,1,1]]
-    block_paddings[rs] = [[], ['v','s'], ['v','v','v','v','v']]
+      rs = 37
+      num_filters0s[rs] = 32
+      block_sizes[rs]    = [[2,1,1], [1,2], [1,1,1,1,1]]
+      block_filters[rs] = [[32,64,128], [256,256], [256,384,512,768,1024]]
+      block_kernels[rs]  = [[], [3,1], [3,2,2,2,2]]
+      block_strides[rs]  = [[], [1,1], [1,1,1,1,1]]
+      block_paddings[rs] = [[], ['v','s'], ['v','v','v','v','v']]
 
-    rs = 38
-    num_filters0s[rs] = 32
-    block_sizes[rs]    = [[2,1,1], [1,2], [1,1,1,1,1]]
-    block_filters[rs] = [[32,64,128], [256,256], [256,384,512,768,1024]]
-    block_kernels[rs]  = [[], [3,1], [3,3,3,2,2]]
-    block_strides[rs]  = [[], [1,1], [1,1,1,1,1]]
-    block_paddings[rs] = [[], ['v','s'], ['v','v','v','v','v']]
+      rs = 38
+      num_filters0s[rs] = 32
+      block_sizes[rs]    = [[2,1,1], [1,2], [1,1,1,1,1]]
+      block_filters[rs] = [[32,64,128], [256,256], [256,384,512,768,1024]]
+      block_kernels[rs]  = [[], [3,1], [3,3,3,2,2]]
+      block_strides[rs]  = [[], [1,1], [1,1,1,1,1]]
+      block_paddings[rs] = [[], ['v','s'], ['v','v','v','v','v']]
 
+
+  if data_flag == '3M1':
+    if block_style == 'Regular':
+      rs = 24
+      num_filters0s[rs] = 32
+      block_sizes[rs]    = [[2,1], [1,2], [2,2,1],[1]]
+      block_filters[rs]  = [[32,64], [128,128], [128,256,512],[512]]
+      block_kernels[rs]  = [[], [3,1], [3,3,3],[1]]
+      block_strides[rs]  = [[], [1,1], [1,1,1],[1]]
+      block_paddings[rs] = [[], ['v','s'], ['v','v','v'],['v']]
 
   if 'V' not in model_flag:
     for i in range(len(block_sizes[resnet_size])):

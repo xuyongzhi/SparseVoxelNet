@@ -1,20 +1,19 @@
-residual=1
-batch_size=64
+residual=0
+batch_size=32
 learning_rate0=0.01
 lr_decay_epochs=10
 lr_decay_rate=0.7
 num_gpus=2
-feed_data='xyzs-nxnynz'
+feed_data='xyzs'
 drop_imo='0_0_5'
-optimizer='momentum'
+optimizer='adam'
 aug_types='N'
 use_bias=1
 block_style='Regular'
-residual=1
 shortcut='MZ'
-loss_lw_gama=2
+loss_lw_gama=1
 train_epochs=41
-model_flag='V'
+model_flag='m'
 loss_lw_gama=1
 resnet_size=24
 

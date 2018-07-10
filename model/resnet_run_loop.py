@@ -465,8 +465,8 @@ def resnet_main(
             flags_obj.batch_size, flags_core.get_num_gpus(flags_obj)),
         data_net_configs = data_net_configs,
         num_epochs=flags_obj.epochs_between_evals)
-
   eval_views = data_net_configs['eval_views']
+
   def input_fn_eval():
     return input_function(
         is_training=False, data_dir=flags_obj.data_dir,
