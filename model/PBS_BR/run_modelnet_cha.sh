@@ -19,6 +19,7 @@ loss_lw_gama=-1
 train_epochs=41
 model_flag='V'
 resnet_size=31
+resnet_size=10
 
 aug_types='r-360_0_0'
 

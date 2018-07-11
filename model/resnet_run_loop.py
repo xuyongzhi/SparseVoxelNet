@@ -121,8 +121,8 @@ def get_synth_input_fn(height, width, num_channels, num_classes):
 # Functions for running training/eval/validation loops for the model.
 ################################################################################
 def learning_rate_with_decay(
-    batch_size, batch_denom, num_images, boundary_epochs, decay_rates,
-    initial_learning_rate, initial_bndecay ):
+    batch_size, batch_denom, num_images, boundary_epochs, lr_decay_rates,
+    bn_decay_rates, initial_learning_rate, initial_bndecay ):
   """Get a learning rate that decays step-wise as training progresses.
 
   Args:
@@ -151,12 +151,11 @@ def learning_rate_with_decay(
 
   # Multiply the learning rate by 0.1 at 100, 150, and 200 epochs.
   boundaries = [int(batches_per_epoch * epoch) for epoch in boundary_epochs]
-  lr_vals = [max(initial_learning_rate * decay, 5e-6) for decay in decay_rates]
+  lr_vals = [max(initial_learning_rate * decay, 5e-6) for decay in lr_decay_rates]
 
-  lr_warmup = decay_rates[0] < decay_rates[1]
-  bndecay_vals = [min( 1-(1-initial_bndecay) * (decay-0.5), 0.99) for decay in decay_rates]
+  lr_warmup = lr_decay_rates[0] < lr_decay_rates[1]
+  bndecay_vals = [min( 1-(1-initial_bndecay) * decay, 0.99) for decay in bn_decay_rates]
   if lr_warmup:
-    bndecay_vals = bndecay_vals[1:len(bndecay_vals)]
     boundaries_bnd = boundaries[1:len(boundaries)]
   else:
     boundaries_bnd = boundaries

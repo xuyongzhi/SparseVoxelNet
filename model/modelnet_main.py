@@ -224,18 +224,21 @@ class ModelnetModel(resnet_model.Model):
 
 def modelnet_model_fn(features, labels, mode, params):
   """Our model_fn for ResNet to be used with our Estimator."""
-  decay_rate = params['data_net_configs']['lr_decay_rate']
+  lr_decay_rate = params['data_net_configs']['lr_decay_rate']
+  bn_decay_rate = max(lr_decay_rate - 0.2,0.5)
   boundary_epochs = params['data_net_configs']['lr_boundary_epochs']
-  decay_rates = [1] + [pow(decay_rate,i+1) for i in range(len(boundary_epochs))]
+  lr_decay_rates = [1] + [pow(lr_decay_rate,i+1) for i in range(len(boundary_epochs))]
+  bn_decay_rates = [1] + [pow(bn_decay_rate,i+1) for i in range(len(boundary_epochs))]
   if params['data_net_configs']['lr_warmup']:
     boundary_epochs = [1]+boundary_epochs
-    decay_rates = [0.01] + decay_rates
+    lr_decay_rates = [0.01] + lr_decay_rates
 
   learning_rate_fn, bndecay_fn, lr_vals, bndecay_vals = \
       resnet_run_loop.learning_rate_with_decay(
       batch_size=params['batch_size'], batch_denom=256,
       num_images=_NUM_IMAGES['train'], boundary_epochs=boundary_epochs,
-      decay_rates=decay_rates,
+      lr_decay_rates=lr_decay_rates,
+      bn_decay_rates=bn_decay_rates,
       initial_learning_rate=params['data_net_configs']['learning_rate0'],
       initial_bndecay=params['data_net_configs']['batch_norm_decay0'])
   params['data_net_configs']['bndecay_fn'] = bndecay_fn
