@@ -154,7 +154,7 @@ def learning_rate_with_decay(
   lr_vals = [max(initial_learning_rate * decay, 5e-6) for decay in decay_rates]
 
   lr_warmup = decay_rates[0] < decay_rates[1]
-  bndecay_vals = [min( 1-(1-initial_bndecay) * (decay-0.1), 0.99) for decay in decay_rates]
+  bndecay_vals = [min( 1-(1-initial_bndecay) * (decay-0.5), 0.99) for decay in decay_rates]
   if lr_warmup:
     bndecay_vals = bndecay_vals[1:len(bndecay_vals)]
     boundaries_bnd = boundaries[1:len(boundaries)]

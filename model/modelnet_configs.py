@@ -18,24 +18,24 @@ DEFAULTS['data_path'] = 'MODELNET40H5F/Merged_tfrecord/6_mgs1_gs2_2d2-neg_fmn144
 
 
 DEFAULTS['only_eval'] = 0
-DEFAULTS['eval_views'] = 5
+DEFAULTS['eval_views'] = -1
 
-DEFAULTS['residual'] = 1
+DEFAULTS['residual'] = 0
 DEFAULTS['shortcut'] = 'MC' #C, MC, AC, MZ, AZ
 DEFAULTS['use_bias'] = 1
 DEFAULTS['loss_lw_gama'] = 2
 DEFAULTS['block_style'] = 'Bottleneck' # Regular, Bottleneck, Inception
 DEFAULTS['block_style'] = 'Inception' # Regular, Bottleneck, Inception
 DEFAULTS['block_style'] = 'Regular'
-DEFAULTS['optimizer'] = 'momentum'
+DEFAULTS['optimizer'] = 'adam'
 DEFAULTS['learning_rate0'] = 0.001
 DEFAULTS['lr_decay_rate'] = 0.7
 DEFAULTS['lr_decay_epochs'] = 15
 DEFAULTS['lr_warmup'] = 1
 DEFAULTS['batch_norm_decay0'] = 0.7
 
-DEFAULTS['model_flag'] = 'V'
-DEFAULTS['resnet_size'] = 24
+DEFAULTS['model_flag'] = 'm'
+DEFAULTS['resnet_size'] = 27
 DEFAULTS['feed_data'] = 'xyzs'
 DEFAULTS['aug_types'] = 'N' # 'rpsfj-360_0_0'
 DEFAULTS['drop_imo'] = '0_0_5'
@@ -226,13 +226,13 @@ def get_block_paras_bottle_regu(resnet_size, model_flag, block_style):
 
   if data_flag == '3M1':
     if block_style == 'Regular':
-      rs = 24
+      rs = 31
       num_filters0s[rs] = 32
-      block_sizes[rs]    = [[2,1], [1,2], [2,2,1],[1]]
-      block_filters[rs]  = [[32,64], [128,128], [128,256,512],[512]]
-      block_kernels[rs]  = [[], [3,1], [3,3,3],[1]]
-      block_strides[rs]  = [[], [1,1], [1,1,1],[1]]
-      block_paddings[rs] = [[], ['v','s'], ['v','v','v'],['v']]
+      block_sizes[rs]    = [[2,1,1],    [1,3],    [1,1,2],      [1,1,1]]
+      block_filters[rs]  = [[32,64,125],[128,128],[131,256,256],[256,512,1024]]
+      block_kernels[rs]  = [[],         [3,1],    [3,3,1],      [3,3,1]]
+      block_strides[rs]  = [[],         [1,1],    [1,1,1],      [1,1,1]]
+      block_paddings[rs] = [[],         ['v','v'],['v','v','v'],['v','v','s']]
 
   if 'V' not in model_flag:
     for i in range(len(block_sizes[resnet_size])):

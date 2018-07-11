@@ -51,9 +51,13 @@ ALLOWED_TYPES = (DEFAULT_DTYPE,) + CASTABLE_TYPES
 USE_CHARLES = True
 NoRes_InceptionReduction = True
 
+if USE_CHARLES:
+  KERNEL_INI = tf.contrib.layers.xavier_initializer()   # charles
+else:
+  KERNEL_INI = tf.variance_scaling_initializer()       # res official
 
 def tensor_info(tensor_ls, tensor_name_ls=None, layer_name=None,
-                weight_num_bytes_shapes=None):
+                weight_num_bytes_shapes=None, batch_size=None):
   if type(tensor_ls) != list:
     tensor_ls = [tensor_ls]
   if tensor_name_ls == None:
@@ -69,9 +73,11 @@ def tensor_info(tensor_ls, tensor_name_ls=None, layer_name=None,
     if tensor_ls[i] == None:
         tensor_sum += 'None'
     else:
+        if batch_size==None:
+          batch_size = tensor_ls[i].shape[0].value
         activation_shape_str = str([s.value for s in tensor_ls[i].shape])
-        activation_size = np.prod(tensor_ls[i].shape.as_list()[1:])
-        #activation_size = np.prod(tensor_ls[i].shape.as_list())
+        activation_size = np.prod(tensor_ls[i].shape.as_list()) \
+                          * tensor_ls[i].dtype.size / batch_size
         activation_size_str = '(%0.1fK)'%(activation_size/1024.0)
         tensor_sum += '%-40s'%(str( activation_shape_str + activation_size_str ))
 
@@ -130,7 +136,7 @@ def conv3d_fixed_padding(inputs, filters, kernel_size, strides, padding, data_fo
   return tf.layers.conv3d(
       inputs=inputs, filters=filters, kernel_size=kernel_size, strides=strides,
       padding=padding, use_bias=False,
-      kernel_initializer=tf.variance_scaling_initializer(),
+      kernel_initializer=KERNEL_INI,
       data_format=data_format)
 
 
@@ -238,9 +244,10 @@ bnd optimizer block_config\n'
     return weight_num, weight_bytes, conv_shapes
 
   def add_activation_size(self, activation):
-    self._activation_size += np.prod(activation.shape.as_list()[1:])
+    self._activation_size += np.prod(activation.shape.as_list()[1:]) \
+                             * activation.dtype.size
 
-  def batch_norm(self, inputs, training):
+  def batch_norm(self, inputs, training, activation):
     """Performs a batch normalization using a standard set of parameters."""
     # We set fused=True for a significant performance boost. See
     # https://www.tensorflow.org/performance/performance_guide#common_fused_ops
@@ -252,10 +259,17 @@ bnd optimizer block_config\n'
       scale = True
       epsilon = _BATCH_NORM_EPSILON
       fused = True
-    return tf.layers.batch_normalization(
+    inputs = tf.layers.batch_normalization(
         inputs=inputs, axis=1 if self.data_format == 'channels_first' else -1,
         momentum=self.batch_norm_decay , epsilon=epsilon, center=True,
         scale=scale, training=training, fused=fused)
+    if activation!=None:
+      inputs = activation(inputs)
+      if self.IsShowModel:  self.log('%38s'%('BN RELU'))
+    else:
+      if self.IsShowModel:  self.log('%38s'%('BN'))
+
+    return inputs
 
   def log(self, log_str):
     self.model_log_f.write(log_str+'\n')
@@ -270,7 +284,7 @@ bnd optimizer block_config\n'
       layer_name = pre_indent+'/'.join(var_scope.split('/')[2:])
       self.log( tensor_info(inputs, '%s (%d,%d,%s)'%
                     (conv_str, kernels, strides, padding_s1), layer_name,
-                    self.train_w_bytes(var_scope)) )
+                    self.train_w_bytes(var_scope), self.batch_size) )
 
   def log_tensor_p(self, inputs, pool_op_name, layer_name,
                    kernels=None, strides=None, paddings=None):
@@ -279,7 +293,8 @@ bnd optimizer block_config\n'
       pool_str = pool_op_name
       if kernels!=None:
         pool_str += ' (%d,%d,%s)'%(kernels, strides, paddings)
-      self.log(tensor_info(inputs, pool_str, layer_name))
+      self.log(tensor_info(inputs, pool_str, layer_name,
+                           batch_size=self.batch_size))
 
   def show_layers_num_summary(self):
     self.log('block layers num:{}\nconv2d num:{}\nconv3d num:{}\n'.format(
@@ -321,15 +336,11 @@ bnd optimizer block_config\n'
 
     inputs, padding = self.padding2d3d(inputs, kernels, strides, padding_s1)
 
-    if USE_CHARLES:
-      kernel_initializer = tf.contrib.layers.xavier_initializer()   # charles
-    else:
-      kernel_initializer = tf.variance_scaling_initializer()       # res official
 
     outputs = conv_fn(
         inputs=inputs, filters=filters, kernel_size=kernels, strides=strides,
         padding=padding, use_bias=self.use_bias,
-        kernel_initializer=kernel_initializer,
+        kernel_initializer=KERNEL_INI,
         data_format=self.data_format)
     return outputs
 
@@ -432,7 +443,8 @@ bnd optimizer block_config\n'
     assert self.data_format == 'channels_last'
     with tf.variable_scope('fu'):
       for i in range(uncompress_times):
-        filters_i = int(self.get_feature_channels(inputs)*2) - 3*self.use_xyz
+        #filters_i = int(self.get_feature_channels(inputs)*2) - 3*self.use_xyz
+        filters_i = int(self.get_feature_channels(inputs)*2)
         inputs = self.conv2d3d(inputs, filters_i, 1,1,'s')
         self.log_tensor_c(inputs, 1,1,'s', tf.get_variable_scope().name)
     self.block_num_count += 1
@@ -467,9 +479,7 @@ bnd optimizer block_config\n'
     padding_s1 = block_params['padding_s1']
 
     shortcut = inputs
-    inputs = self.batch_norm(inputs, training)
-    inputs = tf.nn.relu(inputs)
-    if self.IsShowModel:  self.log('%38s'%('BN RELU'))
+    inputs = self.batch_norm(inputs, training, tf.nn.relu)
     if projection_shortcut == 'FirstResUnit':
       # For pointnet, projection shortcut is not needed at the First ResUnit.
       # However, BN and Activation is still required at the First ResUnit for
@@ -489,9 +499,7 @@ bnd optimizer block_config\n'
       self.log_tensor_c(inputs, kernels, strides, padding_s1,
                         tf.get_variable_scope().name)
 
-    inputs = self.batch_norm(inputs, training)
-    inputs = tf.nn.relu(inputs)
-    if self.IsShowModel:  self.log('%38s'%('BN RELU'))
+    inputs = self.batch_norm(inputs, training, tf.nn.relu)
 
     with tf.variable_scope('conv1'):
       if self.check_kernel_waste(inputs, kernels):
@@ -544,9 +552,7 @@ bnd optimizer block_config\n'
     padding_s1 = block_params['padding_s1']
 
     shortcut = inputs
-    inputs = self.batch_norm(inputs, training)
-    inputs = tf.nn.relu(inputs)
-    if self.IsShowModel:  self.log('%38s'%('BN RELU'))
+    inputs = self.batch_norm(inputs, training, tf.nn.relu)
 
     # The projection shortcut should come after the first batch norm and ReLU
     # since it performs a 1x1 convolution.
@@ -557,18 +563,14 @@ bnd optimizer block_config\n'
       inputs = self.conv2d3d(inputs, filters//4, 1, 1, 's')
       self.log_tensor_c(inputs, 1, 1, 's', tf.get_variable_scope().name)
 
-    inputs = self.batch_norm(inputs, training)
-    inputs = tf.nn.relu(inputs)
-    if self.IsShowModel:  self.log('%38s'%('BN RELU'))
+    inputs = self.batch_norm(inputs, training, tf.nn.relu)
 
     with tf.variable_scope('c1'):
       inputs = self.conv2d3d(inputs, filters//4, kernels, strides, padding_s1)
       self.log_tensor_c(inputs, kernels, strides, padding_s1,
                         tf.get_variable_scope().name)
 
-    inputs = self.batch_norm(inputs, training)
-    inputs = tf.nn.relu(inputs)
-    if self.IsShowModel:  self.log('%38s'%('BN RELU'))
+    inputs = self.batch_norm(inputs, training, tf.nn.relu)
 
     with tf.variable_scope('c2'):
       inputs = self.conv2d3d(inputs, filters, 1, 1, 's')
@@ -623,9 +625,7 @@ bnd optimizer block_config\n'
       The output tensor of the block; shape should match inputs.
     """
     shortcut = inputs
-    inputs = self.batch_norm(inputs, training)
-    inputs = tf.nn.relu(inputs)
-    if self.IsShowModel:  self.log('%38s'%('BN RELU'))
+    inputs = self.batch_norm(inputs, training, tf.nn.relu)
 
     # The projection shortcut should come after the first batch norm and ReLU
     # since it performs a 1x1 convolution.
@@ -643,9 +643,7 @@ bnd optimizer block_config\n'
           if l==0:
             inputs_b = inputs
           else:
-            inputs_b = self.batch_norm(inputs_b, training)
-            inputs_b = tf.nn.relu(inputs_b)
-            if self.IsShowModel:  self.log('%38s'%('BN RELU'))
+            inputs_b = self.batch_norm(inputs_b, training, tf.nn.relu)
           inputs_b = self.operation(op, inputs_b, pre_indent)
       inputs_branches.append(inputs_b)
     self._inception_block_layer += max([len(ops_branch) for ops_branch in icp_block_ops])
@@ -773,6 +771,8 @@ bnd optimizer block_config\n'
       projection_shortcut_0 = shortcut_projection
       if cascade_id!=0 and self.block_style == 'Inception' and NoRes_InceptionReduction:
         projection_shortcut_0 = None
+    if not self.residual:
+      projection_shortcut_0 = None
     with tf.variable_scope('L0'):
       inputs = block_fn(inputs, block_params, training, projection_shortcut_0)
 
@@ -965,6 +965,7 @@ class Model(ResConvOps):
       A logits Tensor with shape [<batch_size>, self.num_classes].
     """
     IsMultiView = len(inputs_dic['points'].shape) == 4
+    self.batch_size = inputs_dic['points'].shape[0].value
 
     if not IsMultiView:
       assert len(inputs_dic['points'].shape) == 3
@@ -1059,27 +1060,33 @@ class Model(ResConvOps):
       # Only apply the BN and ReLU for model that does pre_activation in each
       # building/bottleneck block, eg resnet V2.
       if self.pre_activation:
-        inputs = self.batch_norm(inputs, is_training)
-        inputs = tf.nn.relu(inputs)
-        if self.IsShowModel:  self.log('%38s'%('BN RELU'))
+        inputs = self.batch_norm(inputs, is_training, tf.nn.relu)
 
       # ----------------------
-      if self.IsShowModel: self.log( tensor_info(new_points, 'end', 'res blocks') )
       inputs = new_points
       axes = [2] if self.data_format == 'channels_first' else [1]
       if self.get_feature_shape(inputs)!=1:
         inputs = tf.reduce_mean(inputs, axes)
+        if self.IsShowModel: self.log( tensor_info(inputs, 'reduce_mean', 'final') )
       else:
         inputs = tf.squeeze(inputs)
       inputs = tf.identity(inputs, 'final_reduce_mean')
-      if self.IsShowModel: self.log( tensor_info(inputs, 'reduce_mean', 'final') )
+
+      # Fully connect layers
       out_drop_rate=self.data_net_configs['drop_imo']['output']
+      inputs = tf.layers.dense(inputs, 512, None, True, KERNEL_INI )
+      if self.IsShowModel: self.log( tensor_info(inputs, 'dense', 'dense0'))
+      inputs = self.batch_norm(inputs, is_training, tf.nn.relu)
       inputs = tf.layers.dropout(inputs, out_drop_rate, is_training)
-      inputs = tf.layers.dense(inputs=inputs, units=256)
-      if self.IsShowModel: self.log( tensor_info(inputs, 'dense', 'final0'))
+
+      inputs = tf.layers.dense(inputs, 256, None, True, KERNEL_INI )
+      if self.IsShowModel: self.log( tensor_info(inputs, 'dense', 'dense1'))
+      inputs = self.batch_norm(inputs, is_training, tf.nn.relu)
       inputs = tf.layers.dropout(inputs, out_drop_rate, is_training)
-      inputs = tf.layers.dense(inputs=inputs, units=self.num_classes)
+
+      inputs = tf.layers.dense(inputs, self.num_classes, None, True, KERNEL_INI )
       inputs = tf.identity(inputs, 'final_dense')
+
       if self.IsShowModel:
         self.log( tensor_info(inputs, 'dense', 'final1') +'\n\n' )
         self.show_layers_num_summary()
@@ -1117,7 +1124,7 @@ class Model(ResConvOps):
       if cascade_id == 0 or (not self.voxel3d):
         # use max pooling to reduce map size
         if cascade_id==0:
-          outputs = self.feature_uncompress_block(outputs, 2, 1)
+          #outputs = self.feature_uncompress_block(outputs, 2, 1)
           outputs = tf.squeeze(outputs, 2)
           new_xyz, grouped_xyz, outputs, valid_mask = self.grouping(cascade_id, xyz,
                             outputs, bidmap, block_bottom_center_mm)
@@ -1164,10 +1171,7 @@ class Model(ResConvOps):
       # for both the shortcut and non-shortcut paths as part of the first
       # block's projection. Cf. Appendix of [2].
       if self.resnet_version == 1:
-        inputs = self.batch_norm(inputs, training)
-        inputs = tf.nn.relu(inputs)
-        if self.IsShowModel:
-          self.log('%38s'%('BN RELU'))
+        inputs = self.batch_norm(inputs, training, tf.nn.relu)
 
     return inputs
 

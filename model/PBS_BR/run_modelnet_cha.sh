@@ -1,25 +1,24 @@
 #!/bin/bash
 
-export CUDA_VISIBLE_DEVICES=0
+#export CUDA_VISIBLE_DEVICES=0
 
+num_gpus=2
 batch_size=32
-learning_rate0=0.01
-lr_decay_epochs=10
+learning_rate0=0.001
+optimizer='adam'
+lr_decay_epochs=20
 lr_decay_rate=0.7
-num_gpus=1
 feed_data='xyzs'
 drop_imo='0_0_5'
-optimizer='momentum'
 aug_types='N'
 use_bias=1
 block_style='Regular'
-residual=0
+residual=1
 shortcut='MZ'
-loss_lw_gama=2
+loss_lw_gama=-1
 train_epochs=41
 model_flag='V'
-loss_lw_gama=1
-resnet_size=24
+resnet_size=31
 
 aug_types='r-360_0_0'
 

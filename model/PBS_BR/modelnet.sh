@@ -1,4 +1,4 @@
-batch_norm_decay0=0.7
+batch_norm_decay0=0.5
 
 
 modelnet()
