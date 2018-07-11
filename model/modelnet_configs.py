@@ -13,12 +13,12 @@ import numpy as np
 
 DEFAULTS = {}
 #DEFAULTS['data_path'] = 'MODELNET40H5F/Merged_tfrecord/6_mgs1_gs2_2-mbf-neg_fmn14_mvp1-1024_240_1-64_27_256-0d2_0d4-0d1_0d2-pd3-2M2pp'
-DEFAULTS['data_path'] = 'MODELNET40H5F/Merged_tfrecord/6_mgs1_gs2_2-neg_fmn14_mvp1-1024_240_1-64_27_256-0d2_0d4-0d1_0d2-pd3-2M2pp'
-#DEFAULTS['data_path'] = 'MODELNET40H5F/Merged_tfrecord/6_mgs1_gs2_2d2-neg_fmn1444_mvp1-3200_1024_48_1-18_24_56_56-0d1_0d2_0d6-0d0_0d1_0d4-pd3-3M1'
+#DEFAULTS['data_path'] = 'MODELNET40H5F/Merged_tfrecord/6_mgs1_gs2_2-neg_fmn14_mvp1-1024_240_1-64_27_256-0d2_0d4-0d1_0d2-pd3-2M2pp'
+DEFAULTS['data_path'] = 'MODELNET40H5F/Merged_tfrecord/6_mgs1_gs2_2d2-neg_fmn1444_mvp1-3200_1024_48_1-18_24_56_56-0d1_0d2_0d6-0d0_0d1_0d4-pd3-3M1'
 
 
 DEFAULTS['only_eval'] = 0
-DEFAULTS['eval_views'] = -1
+DEFAULTS['eval_views'] = 3
 
 DEFAULTS['residual'] = 0
 DEFAULTS['shortcut'] = 'MC' #C, MC, AC, MZ, AZ
@@ -226,9 +226,17 @@ def get_block_paras_bottle_regu(resnet_size, model_flag, block_style):
 
   if data_flag == '3M1':
     if block_style == 'Regular':
+      rs = 14
+      num_filters0s[rs] = 64
+      block_sizes[rs]    = [[1],    [1],    [1,1],      [1,1,0.5]]
+      block_filters[rs]  = [[125], [128],  [131,256],[256,512,1024]]
+      block_kernels[rs]  = [[],       [3],    [3,3],      [3,3,1]]
+      block_strides[rs]  = [[],       [1],    [1,1],      [1,1,1]]
+      block_paddings[rs] = [[],       ['v'],['v','v'],['v','v','s']]
+
       rs = 31
       num_filters0s[rs] = 32
-      block_sizes[rs]    = [[2,1,1],    [1,3],    [1,1,2],      [1,1,1]]
+      block_sizes[rs]    = [[2,1,1],    [1,3],    [1,1,2],      [1,1,0.5]]
       block_filters[rs]  = [[32,64,125],[128,128],[131,256,256],[256,512,1024]]
       block_kernels[rs]  = [[],         [3,1],    [3,3,1],      [3,3,1]]
       block_strides[rs]  = [[],         [1,1],    [1,1,1],      [1,1,1]]

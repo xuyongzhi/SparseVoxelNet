@@ -450,7 +450,7 @@ bnd optimizer block_config\n'
     self.block_num_count += 1
     return inputs
 
-  def building_block_v2(self, inputs, block_params, training, projection_shortcut):
+  def building_block_v2(self, inputs, block_params, training, projection_shortcut, half_layer=None):
     """A single block for ResNet v2, without a bottleneck.
 
     Batch normalization then ReLu then convolution as described by:
@@ -488,6 +488,8 @@ bnd optimizer block_config\n'
       projection_shortcut = None
       if self.IsShowModel:  self.log(
             'shortcut after activation identity for pointnet first res unit')
+    if half_layer:
+      projection_shortcut = None
 
     # The projection shortcut should come after the first batch norm and ReLU
     # since it performs a 1x1 convolution.
@@ -498,7 +500,7 @@ bnd optimizer block_config\n'
       inputs = self.conv2d3d(inputs, filters, kernels, strides, padding_s1)
       self.log_tensor_c(inputs, kernels, strides, padding_s1,
                         tf.get_variable_scope().name)
-
+    if half_layer: return inputs
     inputs = self.batch_norm(inputs, training, tf.nn.relu)
 
     with tf.variable_scope('conv1'):
@@ -515,7 +517,7 @@ bnd optimizer block_config\n'
     else:
       return inputs
 
-  def bottleneck_block_v2(self, inputs, block_params, training, projection_shortcut):
+  def bottleneck_block_v2(self, inputs, block_params, training, projection_shortcut, half_layer=None):
     """A single block for ResNet v2, with a bottleneck.
 
     Similar to building_block_v2(), except using the "bottleneck" blocks
@@ -605,7 +607,7 @@ bnd optimizer block_config\n'
     return net
 
   def inception_block_v2(self, inputs, block_params, training,
-                         projection_shortcut):
+                         projection_shortcut, half_layer=None):
     """A single block for ResNet v2, with inception structure
 
 
@@ -756,6 +758,9 @@ bnd optimizer block_config\n'
     filters = block_params['filters']
 
     if block_size==0: return inputs
+    half_layer = block_size==0.5
+    if half_layer:
+      block_size = 1
     # Bottleneck block_size end with 4x the number of filters as they start with
     bottleneck = block_fn == self.bottleneck_block_v2
 
@@ -765,7 +770,7 @@ bnd optimizer block_config\n'
     # (1) Only the first block per block_layer uses projection_shortcut and strides
     # and padding_s1
     # (2) No need to change map size and channels in first unit if Pointnet
-    if self._block_layers_num == 0:
+    if self._block_layers_num == 0 and filters==inputs.shape[0].value:
         projection_shortcut_0 = 'FirstResUnit'
     else:
       projection_shortcut_0 = shortcut_projection
@@ -774,7 +779,7 @@ bnd optimizer block_config\n'
     if not self.residual:
       projection_shortcut_0 = None
     with tf.variable_scope('L0'):
-      inputs = block_fn(inputs, block_params, training, projection_shortcut_0)
+      inputs = block_fn(inputs, block_params, training, projection_shortcut_0, half_layer)
 
     block_params['strides'] = 1
     block_params['padding_s1'] = 's'
