@@ -1098,8 +1098,12 @@ class Model(ResConvOps):
   def res_sa_module(self, cascade_id, xyz, points, bidmap, block_bottom_center_mm):
     with tf.variable_scope('sa_%d'%(cascade_id)):
       batch_size = xyz.shape[0].value
-      new_xyz, grouped_xyz, inputs, valid_mask = self.grouping(cascade_id, xyz,
+      if cascade_id > 0:
+        new_xyz, grouped_xyz, inputs, valid_mask = self.grouping(cascade_id, xyz,
                           points, bidmap, block_bottom_center_mm)
+      else:
+        inputs = tf.expand_dims(xyz, 2)
+
       if cascade_id == 0:
         inputs = self.initial_layer(inputs)
       elif self.voxel3d:
@@ -1107,17 +1111,21 @@ class Model(ResConvOps):
                             valid_mask, block_bottom_center_mm, grouped_xyz)
 
       outputs= self.res_sa_model(cascade_id,
-                  inputs, grouped_xyz, valid_mask, block_bottom_center_mm)
+                  inputs, block_bottom_center_mm)
+
 
       if cascade_id == 0 or (not self.voxel3d):
         # use max pooling to reduce map size
-        if cascade_id == 0:
+        if cascade_id==0:
+          outputs = self.feature_uncompress_block(outputs, 2, 1)
+          outputs = tf.squeeze(outputs, 2)
+          new_xyz, grouped_xyz, outputs, valid_mask = self.grouping(cascade_id, xyz,
+                            outputs, bidmap, block_bottom_center_mm)
           root_point_features = outputs
         else:
           root_point_features = None
         assert len(outputs.shape)==4
-        if cascade_id==0:
-          outputs = self.feature_uncompress_block(outputs, 2, 1)
+
         outputs = tf.reduce_max(outputs, axis=2 if self.data_format=='channels_last' else 3)
         self.log_tensor_p(outputs, 'max', 'cas%d'%(cascade_id))
       else:
@@ -1163,8 +1171,8 @@ class Model(ResConvOps):
 
     return inputs
 
-  def res_sa_model(self, cascade_id, inputs, grouped_xyz,
-                   valid_mask, block_bottom_center_mm):
+  def res_sa_model(self, cascade_id, inputs,
+                   block_bottom_center_mm):
       for i, block_size in enumerate(self.block_params['block_sizes'][cascade_id]):
         if self.IsShowModel:
           self.log('-------------------cascade_id %d, block %d---------------------'%(cascade_id, i))
@@ -1277,6 +1285,7 @@ class Model(ResConvOps):
 
     if self.IsShowModel:
       sc = 'grouping %d'%(cascade_id)
+      self.log('')
       self.log_tensor_p(xyz, 'xyz', sc)
       self.log_tensor_p(new_xyz, 'new_xyz', sc)
       self.log_tensor_p(grouped_xyz, 'grouped_xyz', sc)

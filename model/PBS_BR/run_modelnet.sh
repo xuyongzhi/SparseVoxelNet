@@ -1,16 +1,19 @@
-residual=1
-batch_size=64
+#!/bin/bash
+
+export CUDA_VISIBLE_DEVICES=0
+
+batch_size=32
 learning_rate0=0.01
 lr_decay_epochs=10
 lr_decay_rate=0.7
-num_gpus=2
-feed_data='xyzs-nxnynz'
+num_gpus=1
+feed_data='xyzs'
 drop_imo='0_0_5'
 optimizer='momentum'
 aug_types='N'
 use_bias=1
 block_style='Regular'
-residual=1
+residual=0
 shortcut='MZ'
 loss_lw_gama=2
 train_epochs=41
