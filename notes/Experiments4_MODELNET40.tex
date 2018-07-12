@@ -24,6 +24,8 @@
 
 \tableofcontents{}
 
+
+
 \section{RMZ Regular}
 \subsection{Aug r}
 
@@ -49,4 +51,54 @@ RMZ\_R24V 64 r-360\_0\_0 xyzs-n 0\_0\_5 5.0 0.01\_0.7\_5 0.7 mom \par 32+21\_K\_
 \hline 	
 \end{tabular}
 
+\section{Plain 14m, Data:3M1 }
+\subsection{Aug No}
+\noindent\begin{tabular}{|p{10cm}|p{5.5cm}| }	
+\hline
+\multicolumn{2}{|p{16cm}|}{ 6\_mgs1\_gs2\_2d2-neg\_fmn1444\_mvp1-3200\_1024\_48\_1-18\_24\_56\_56-0d1\_0d2\_0d6-0d0\_0d1\_0d4-pd3-3M1}\\\hline
+
+model bs aug feed drop\_imo loss\_weight lr0\_drate\_depoch bnd optimizer block\_config & train/eval \\
+
+\rowcolor{yellow!20}
+P\_R14m 32 N xyzs 0\_0\_5 No 0.001\_0.7\_20 0.5 ada \par 64+1\_K\_P\_F125+1\_K1\_Pv\_F128+11\_K11\_Pvv\_F256+110.5\_K111\_Pvvv\_F1024\par 22M& 7 0.482/2.388--0.852/0.811-3\_0.485\par 40 0.112/2.901--0.957/0.846-3\_0.521\\
+
+
+	
+\hline 	
+\end{tabular}
+\subsection{Aug}
+\noindent\begin{tabular}{|p{10cm}|p{5.5cm}| }	
+\hline
+\multicolumn{2}{|p{16cm}|}{ 6\_mgs1\_gs2\_2d2-neg\_fmn1444\_mvp1-3200\_1024\_48\_1-18\_24\_56\_56-0d1\_0d2\_0d6-0d0\_0d1\_0d4-pd3-3M1}\\\hline
+	
+model bs aug feed drop\_imo loss\_weight lr0\_drate\_depoch bnd optimizer block\_config & train/eval \\
+
+\rowcolor{green!20}
+P\_R14m 32 psfj xyzs 0\_0\_5 No 0.001\_0.7\_20 0.5 ada \par 64+1\_K\_P\_F125+1\_K1\_Pv\_F128+11\_K11\_Pvv\_F256+110.5\_K111\_Pvvv\_F1024& 7 0.680/2.200--0.784/0.785-3\_0.482\par 40 0.228/2.399--0.921/0.854-3\_0.560\\
+
+\rowcolor{yellow!20}P\_R14m 32 rpsfj-360\_0\_0 xyzs 0\_0\_5 No 0.001\_0.7\_20 0.5 ada \par 64+1\_K\_P\_F125+1\_K1\_Pv\_F128+11\_K11\_Pvv\_F256+110.5\_K111\_Pvvv\_F1024 & 7 0.956/0.845--0.709/0.720-3\_0.722\par 40 0.396/0.525--0.862/0.854-3\_0.847\par 71 0.162/0.547--0.948/0.854-3\_0.848\\
+
+\rowcolor{green!20}
+ P\_R31m 32 rpsfj-360\_0\_0 xyzs 0\_0\_5 No 0.001\_0.7\_20 0.5 ada \par 32+211\_K\_P\_F125+13\_K11\_Pvv\_F128+112\_K111\_Pvvv\_F256+110.5\_K111\_Pvvv\_F1024& 7 1.125/1.006--0.650/0.666-3\_0.676\par 25 0.642/0.739--0.788/0.776-3\_0.773\\
+\hline 	
+\end{tabular}
+
+\section{Residual 14m, Data:3M1 }
+\subsection{}
+\noindent\begin{tabular}{|p{10cm}|p{5.5cm}| }	
+\hline
+\multicolumn{2}{|p{16cm}|}{ 6\_mgs1\_gs2\_2d2-neg\_fmn1444\_mvp1-3200\_1024\_48\_1-18\_24\_56\_56-0d1\_0d2\_0d6-0d0\_0d1\_0d4-pd3-3M1}\\\hline
+	
+model bs aug feed drop\_imo loss\_weight lr0\_drate\_depoch bnd optimizer block\_config & train/eval \\
+
+\rowcolor{green!20}
+RMZ\_R14m 32 N xyzs 0\_0\_5 No 0.001\_0.7\_20 0.5 ada \par 64+1\_K\_P\_F125+1\_K1\_Pv\_F128+11\_K11\_Pvv\_F256+110.5\_K111\_Pvvv\_F1024& 7 0.444/2.194--0.863/0.798-3\_0.502\par 40 0.095/2.478--0.963/0.848-3\_0.541\\
+
+\rowcolor{yellow!20}
+RMZ\_R14m 32 rpsfj-360\_0\_0 xyzs 0\_0\_5 No 0.001\_0.7\_20 0.5 ada \par 64+1\_K\_P\_F125+1\_K1\_Pv\_F128+11\_K11\_Pvv\_F256+110.5\_K111\_Pvvv\_F1024& 7 0.792/0.779--0.748/0.757-3\_0.751\par 40 0.340/0.505--0.895/0.849-3\_0.848\\
+
+\rowcolor{green!20}
+RMZ\_R24V 64 r-360\_0\_0 xyzs-n 0\_0\_5 1.0 0.01\_0.7\_10 0.7 mom par 32+21\_K\_P\_F64+12\_K31\_Pvs\_F128+221\_K333\_Pvvv\_F512& 40 0.523/2.081--0.832/0.863-5\_0.606\par 96 0.301/2.796--0.906/0.878-5\_0.582\par 151 0.253/2.828-0.911/0.869-5\_0.582\\
+\hline 	
+\end{tabular}
 \end{document}

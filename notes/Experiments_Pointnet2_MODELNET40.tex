@@ -1,0 +1,59 @@
+\documentclass[,table,dvipsnames]{article}
+\usepackage[usenames, dvipsnames]{color}
+\usepackage{graphicx}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{hyperref}
+\usepackage{longtable}
+\usepackage{float}
+\usepackage{tikz}
+\usetikzlibrary{shapes.geometric, arrows}
+\usepackage{xcolor}
+
+\graphicspath{ {images/} {images/mat60_1AG/} }
+\title{PointNet++}
+\author{xyz}
+\date{July 2018}
+
+
+\begin{document}
+\noindent
+\begin{titlepage}
+	\maketitle
+\end{titlepage}	
+
+
+\section{MODELNET40 1024, One parameter modified from charles default}
+\noindent\begin{tabular}{|p{10cm}|p{5.5cm}| }	
+	\hline
+	
+	config & epoch: train acc/ eval instance acc-class acc\\
+	
+	\rowcolor{green!20}
+	Default\par 
+	batch\_size=32, decay\_rate=0.7, decay\_step=200000, learning\_rate=0.001, log\_dir='log32', max\_epoch=251, model='pointnet2\_cls\_ssg', momentum=0.9, normal=False, num\_gpus=2, num\_point=1024, opt     imizer='adam'&
+	0:0.53/0.604-0.510\par 1:0.649/0.709-0.651\par 5:0.765/0.810-0.758\par 10:0.793/0.821-0.758\par 28:0.86/0.883-0.847\par 52:0.913/0.901-0.8677\par 250:0.971/0.89992-0.88189\par votes 5 get 0.903\\
+	
+	\rowcolor{yellow!20}
+	No aug\par
+	aug='No', batch\_size=32, decay\_rate=0.7, decay\_step=200000, learning\_rate=0.001, log\_dir='log\_NoAug', max\_epoch=251, model='pointnet2\_cls\_ssg', momentum=0.9, normal=False, num\_gpus=1, num\_p     oint=1024, optimizer='adam' & 0:0.706/0.780-0.6778\par 1:0.7787/0.8379-0.745\par 5:0.859/0.871-0.817\par 10:0.9/0.88-0.839 \par 27:0.961/0.9056-0.8625\par 127:0.998/0.916-0.8887\par 250:1.0/0.9137-0.88\par votes 5 seems a bit better\\	
+
+	\rowcolor{orange!20}
+	No aug again\par
+	votes 1: 0.906-0.871\par votes 2: 0.90478-0.883\par votes 3: 0.844-0.8358\par votes 10: 0.7508-0.7675
+	&0: 0.647/0.751-0.646\par 1: 0.750/0.809-0.734\par 5: 0.839/0.871-0.814\par 90: 0.998/0.908-0.8778\par 210: 1.0/0.910-0.8848
+	\\
+
+	\rowcolor{green!20}
+	batch size 64 & 227: 0.977/0.893-0.8706\\
+	
+	\rowcolor{yellow!20}
+	momentum & 10:0.712/0.792-0.708\par 249: 0.8868/0.8812-0.8487\\
+	
+	\rowcolor{green!20}
+	momentum lr=0.01 & 10:0.8319/0.83995-0.7816\par 112: 0.9506/0.896677-0.8653\\
+	
+	\hline 	
+\end{tabular}
+
+\end{document}

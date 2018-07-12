@@ -1,8 +1,8 @@
 #!/bin/bash
 
-#export CUDA_VISIBLE_DEVICES=0
+export CUDA_VISIBLE_DEVICES=1
 
-num_gpus=2
+num_gpus=1
 batch_size=32
 learning_rate0=0.001
 optimizer='adam'
@@ -15,12 +15,13 @@ use_bias=1
 block_style='Regular'
 shortcut='MZ'
 loss_lw_gama=-1
-train_epochs=41
-model_flag='m'
+train_epochs=81
+model_flag='V'
 
-residual=0
+residual=1
 
 resnet_size=14
+#resnet_size=31
 
 aug_types='rpsfj-360_0_0'
 ./modelnet.sh   $aug_types  $batch_size $model_flag $learning_rate0 $num_gpus $feed_data $drop_imo  $optimizer $use_bias $lr_decay_epochs $lr_decay_rate $resnet_size $block_style $residual $shortcut $loss_lw_gama  $train_epochs
@@ -32,6 +33,9 @@ aug_types='N'
 aug_types='psfj'
 ./modelnet.sh   $aug_types  $batch_size $model_flag $learning_rate0 $num_gpus $feed_data $drop_imo  $optimizer $use_bias $lr_decay_epochs $lr_decay_rate $resnet_size $block_style $residual $shortcut $loss_lw_gama  $train_epochs
 
+
+aug_types='r-360_0_0'
+./modelnet.sh   $aug_types  $batch_size $model_flag $learning_rate0 $num_gpus $feed_data $drop_imo  $optimizer $use_bias $lr_decay_epochs $lr_decay_rate $resnet_size $block_style $residual $shortcut $loss_lw_gama  $train_epochs
 
 #----------------------------------------
 #aug_types='r-360_0_0'
