@@ -24,7 +24,6 @@ import numpy as np
 
 from six.moves import urllib
 import tensorflow as tf
-import matplotlib.pyplot as plt
 
 LABELS_FILENAME = 'labels.txt'
 
@@ -308,6 +307,7 @@ def get_label_num_weights(dataset_summary, loss_lw_gama):
     weights[gama] = gama * weight
   dataset_summary['label_num_weights'] = weights[loss_lw_gama]
   if  IsPlot:
+    import matplotlib.pyplot as plt
     for gama in gamas:
       plt.plot(label_hist, weights[gama], '.', label=str(gama))
     plt.legend()
