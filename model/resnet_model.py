@@ -167,7 +167,6 @@ class ResConvOps(object):
     self.shortcut_method = data_net_configs['shortcut'] #'C' 'PC' 'PZ'
     self.res_scale = 1.0
 
-    self.final_filters_each_scale = []
     model_dir = data_net_configs['model_dir']
     if ResConvOps._epoch==0:
       self.IsShowModel = True
@@ -265,9 +264,9 @@ bnd optimizer block_config\n'
         scale=scale, training=training, fused=fused)
     if activation!=None:
       inputs = activation(inputs)
-      if self.IsShowModel:  self.log('%38s'%('BN RELU'))
+      if self.IsShowModel:  self.log('%30s'%('BN RELU'))
     else:
-      if self.IsShowModel:  self.log('%38s'%('BN'))
+      if self.IsShowModel:  self.log('%30s'%('BN'))
 
     return inputs
 
@@ -449,6 +448,7 @@ bnd optimizer block_config\n'
         self.log_tensor_c(inputs, 1,1,'s', tf.get_variable_scope().name)
     self.block_num_count += 1
     return inputs
+
 
   def building_block_v2(self, inputs, block_params, training, projection_shortcut, half_layer=None):
     """A single block for ResNet v2, without a bottleneck.
@@ -861,6 +861,8 @@ class Model(ResConvOps):
         self.block_fn = self.bottleneck_block_v2
       elif block_style == 'Inception':
         self.block_fn = self.inception_block_v2
+      elif block_style == 'PointNet':
+        self.block_fn = None
       else:
         raise NotImplementedError
 
@@ -869,7 +871,6 @@ class Model(ResConvOps):
 
     self.num_classes = num_classes
     self.block_params = block_params
-    self.num_filters0 = block_params['num_filters0']
     self.dtype = dtype
     self.pre_activation = resnet_version == 2
     self.data_net_configs = data_net_configs
@@ -885,7 +886,7 @@ class Model(ResConvOps):
         self.num_neighbors= None
     self.global_numpoint = self.data_net_configs['points'][0]
     #self.cascade_num = int(self.model_flag[0])
-    self.cascade_num = len(self.data_net_configs['block_params']['block_sizes'])
+    self.cascade_num = len(self.data_net_configs['block_params']['filters'])
     assert self.cascade_num <= self.data_net_configs['sg_bm_extract_idx'].shape[0]-1
     #self.log('cascade_num:{}'.format(self.cascade_num))
     self.IsOnlineGlobal = self.model_flag[-1] == 'G'
@@ -1054,7 +1055,11 @@ class Model(ResConvOps):
             sg_bidxmap_k = sg_bidxmaps[k]
           block_bottom_center_mm = tf.cast(block_bottom_center_mm, tf.float32, name='block_bottom_center_mm')
 
-          l_xyz, new_points, root_point_features = self.res_sa_module(k, l_xyz,
+          if self.block_style == 'PointNet':
+            l_xyz, new_points, root_point_features = self.pointnet2_module(k, l_xyz,
+                          new_points, sg_bidxmap_k, block_bottom_center_mm )
+          else:
+            l_xyz, new_points, root_point_features = self.res_sa_module(k, l_xyz,
                           new_points, sg_bidxmap_k, block_bottom_center_mm )
           if k == 0:
               l_points[0] = root_point_features
@@ -1122,8 +1127,7 @@ class Model(ResConvOps):
         inputs = self.grouped_points_to_voxel_points( cascade_id, inputs,
                             valid_mask, block_bottom_center_mm, grouped_xyz)
 
-      outputs= self.res_sa_model(cascade_id,
-                  inputs, block_bottom_center_mm)
+      outputs= self.res_sa_model(cascade_id, inputs, block_bottom_center_mm)
 
 
       if cascade_id == 0 or (not self.voxel3d):
@@ -1138,8 +1142,15 @@ class Model(ResConvOps):
           root_point_features = None
         assert len(outputs.shape)==4
 
+        outputs = self.batch_norm(outputs, is_training, tf.nn.relu)
         outputs = tf.reduce_max(outputs, axis=2 if self.data_format=='channels_last' else 3)
         self.log_tensor_p(outputs, 'max', 'cas%d'%(cascade_id))
+
+
+
+        if self.use_xyz and (not cascade_id==self.cascade_num-1):
+          outputs = tf.concat([outputs, new_xyz], axis=-1)
+          self.log_tensor_p(outputs, 'use xyz', 'cas%d'%(cascade_id))
       else:
         # already used 3D CNN to reduce map size, just reshape
         root_point_features = None
@@ -1159,14 +1170,14 @@ class Model(ResConvOps):
           else:
             outputs = tf.reshape(outputs, [batch_size,outputs.shape[1].value,-1])
 
-        self.final_filters_each_scale.append(self.get_feature_channels(outputs))
 
       return new_xyz, outputs, root_point_features
 
   def initial_layer(self, inputs, scope_ini='initial'):
+    self.log_tensor_p(inputs, 'inputs', '\nOriginal')
     with tf.variable_scope(scope_ini):
       inputs = self.conv2d3d(
-          inputs=inputs, filters=self.num_filters0, kernels=1,
+          inputs=inputs, filters=self.block_params['num_filters0'], kernels=1,
           strides=1, padding_s1='s')
       inputs = tf.identity(inputs, 'initial_conv')
       self.log_tensor_c(inputs, 1, 1, 's', tf.get_variable_scope().name)
@@ -1205,6 +1216,35 @@ class Model(ResConvOps):
                     self.is_training, 'block_layer{}'.format(i + 1))
         self.block_num_count += 1
       return inputs
+
+  def pointnet2_module(self, cascade_id, xyz, points, bidmap, block_bottom_center_mm):
+    with tf.variable_scope('sa_%d'%(cascade_id)):
+      batch_size = xyz.shape[0].value
+      inputs = tf.expand_dims(xyz, 2)
+
+      if self.IsShowModel:
+        self.log('-------------------  cascade_id %d  ---------------------'%(cascade_id))
+      filters = self.block_params['filters'][cascade_id]
+      with tf.variable_scope('c%d'%(cascade_id)):
+        for i,filter in enumerate(filters):
+          with tf.variable_scope('l%d'%(i)):
+            inputs = self.conv2d3d(inputs, filter, 1, 1, 'v')
+            self.log_tensor_c(inputs, 1, 1, 'v', tf.get_variable_scope().name)
+            inputs = self.batch_norm(inputs, self.is_training, tf.nn.relu)
+
+      # use max pooling to reduce map size
+      outputs = tf.squeeze(inputs, 2)
+      new_xyz, grouped_xyz_feed, outputs, valid_mask = self.grouping(cascade_id, xyz,
+                        outputs, bidmap, block_bottom_center_mm)
+      assert len(outputs.shape)==4
+
+      outputs = tf.reduce_max(outputs, axis=2 if self.data_format=='channels_last' else 3)
+      self.log_tensor_p(outputs, 'max', 'cas%d'%(cascade_id))
+      if self.use_xyz and (not cascade_id==self.cascade_num-1):
+        outputs = tf.concat([outputs, new_xyz], axis=-1)
+        self.log_tensor_p(outputs, 'use xyz', 'cas%d'%(cascade_id))
+
+      return new_xyz, outputs, None
 
   def grouping(self, cascade_id, xyz, points, bidmap, block_bottom_center_mm):
     if self.data_format == 'channels_first':
@@ -1284,27 +1324,24 @@ class Model(ResConvOps):
         #    elif InDropMethod == 'set0':
         #        valid_mask = tf.logical_and( valid_mask, tf.equal(grouped_indrop_keep_mask,0), name='valid_mask_droped' )   # gpu_1/sa_layer0/valid_mask_droped
 
-    else:
-      if self.use_xyz and (not cascade_id==self.cascade_num-1):
-          grouped_points = tf.concat([grouped_xyz_feed, grouped_points],axis=-1)
-          ## use_xyz add 3 three channels, if only this make shortcut not identiy,
-          ## it is a bit waste
-          ## just make the shortcut identity if possible, nothing special
-          #self.block_params['filters'][cascade_id] =[e+3 for e in self.block_params['filters'][cascade_id]]
+    #else:
+    #  if self.use_xyz and (not cascade_id==self.cascade_num-1):
+    #      assert False, "not here"
+    #      grouped_points = tf.concat([grouped_xyz_feed, grouped_points],axis=-1)
 
     if self.IsShowModel:
       sc = 'grouping %d'%(cascade_id)
       self.log('')
-      self.log_tensor_p(xyz, 'xyz', sc)
-      self.log_tensor_p(new_xyz, 'new_xyz', sc)
-      self.log_tensor_p(grouped_xyz, 'grouped_xyz', sc)
+      #self.log_tensor_p(xyz, 'xyz', sc)
+      #self.log_tensor_p(new_xyz, 'new_xyz', sc)
+      #self.log_tensor_p(grouped_xyz, 'grouped_xyz', sc)
       self.log_tensor_p(grouped_points, 'grouped_points', sc)
-      self.log('')
+      #self.log('')
 
     new_points = grouped_points
     if self.data_format == 'channels_first':
       new_points = tf.transpose(new_points, [0, 3, 1, 2])
-    return new_xyz, grouped_xyz, new_points, valid_mask
+    return new_xyz, grouped_xyz_feed, new_points, valid_mask
 
   def grouped_points_to_voxel_points (self, cascade_id, new_points, valid_mask, block_bottom_center_mm, grouped_xyz):
     IS_merge_blocks_while_fix_bmap = True

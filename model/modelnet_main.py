@@ -364,6 +364,8 @@ def ls_str(ls_in_ls):
 def define_model_dir():
   def get_block_configs_fused():
     block_params = _DATA_PARAS['block_params']
+    if 'block_sizes' not in block_params:
+      return 'pointnet'
     sizes = [''.join([str(e)  for e in bs]) for bs in block_params['block_sizes']]
     if _DATA_PARAS['block_style'] != 'Inception':
       kernels =  [''.join([str(e)  for e in bs]) for bs in block_params['kernels']]

@@ -13,8 +13,8 @@ import numpy as np
 
 DEFAULTS = {}
 #DEFAULTS['data_path'] = 'MODELNET40H5F/Merged_tfrecord/6_mgs1_gs2_2-mbf-neg_fmn14_mvp1-1024_240_1-64_27_256-0d2_0d4-0d1_0d2-pd3-2M2pp'
-#DEFAULTS['data_path'] = 'MODELNET40H5F/Merged_tfrecord/6_mgs1_gs2_2-neg_fmn14_mvp1-1024_240_1-64_27_256-0d2_0d4-0d1_0d2-pd3-2M2pp'
-DEFAULTS['data_path'] = 'MODELNET40H5F/Merged_tfrecord/6_mgs1_gs2_2d2-neg_fmn1444_mvp1-3200_1024_48_1-18_24_56_56-0d1_0d2_0d6-0d0_0d1_0d4-pd3-3M1'
+DEFAULTS['data_path'] = 'MODELNET40H5F/Merged_tfrecord/6_mgs1_gs2_2-neg_fmn14_mvp1-1024_240_1-64_27_256-0d2_0d4-0d1_0d2-pd3-2M2pp'
+#DEFAULTS['data_path'] = 'MODELNET40H5F/Merged_tfrecord/6_mgs1_gs2_2d2-neg_fmn1444_mvp1-3200_1024_48_1-18_24_56_56-0d1_0d2_0d6-0d0_0d1_0d4-pd3-3M1'
 
 
 DEFAULTS['only_eval'] = 0
@@ -52,6 +52,8 @@ def get_block_paras(resnet_size, model_flag, block_style):
     return get_block_paras_bottle_regu(resnet_size, model_flag, block_style)
   elif block_style == 'Inception':
     return get_block_paras_inception(resnet_size, model_flag)
+  elif block_style == 'PointNet':
+    return get_block_paras_pointnet(resnet_size, model_flag)
 
 def icp_block(flag):
   def icp_by_mapsize(map_size, filters_in, filters_out):
@@ -242,6 +244,7 @@ def get_block_paras_bottle_regu(resnet_size, model_flag, block_style):
       block_strides[rs]  = [[],         [1,1],    [1,1,1],      [1,1,1]]
       block_paddings[rs] = [[],         ['v','v'],['v','v','v'],['v','v','s']]
 
+
   if 'V' not in model_flag:
     for i in range(len(block_sizes[resnet_size])):
       if i==0: continue
@@ -271,4 +274,24 @@ def get_block_paras_bottle_regu(resnet_size, model_flag, block_style):
   block_params['block_sizes'] = block_sizes[resnet_size]
   return block_params
 
+def get_block_paras_pointnet(resnet_size, model_flag):
+  num_filters0s = {}
+  block_filters = {}
 
+  data_flag = DEFAULTS['data_path'].split('-')[-1]
+
+  rs = 10
+  block_filters[rs]  = [[64,64,128], [128,128,256], [256,512,1024]]
+
+  #for k in block_kernels:
+  #  # cascade_id 0 is pointnet
+  #  assert (np.array(block_kernels[k][0])==1).all()
+  #  assert (np.array(block_strides[k][0])==1).all()
+
+  block_params = {}
+  block_params['filters'] = block_filters[resnet_size]
+  #block_params['kernels'] = block_kernels[resnet_size]
+  #block_params['strides'] = block_strides[resnet_size]
+  #block_params['padding_s1'] = block_paddings[resnet_size]
+  #block_params['block_sizes'] = block_sizes[resnet_size]
+  return block_params
