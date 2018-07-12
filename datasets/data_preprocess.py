@@ -423,6 +423,7 @@ class H5Prepare():
         sh5f_dir = self.BasicDataDir+'/%s'%(get_stride_step_name(base_stride,base_step))
         file_list = glob.glob( os.path.join( sh5f_dir, '*.sh5' ) )
         file_list.sort()
+        assert len(file_list)>0, sh5f_dir
         N = len(file_list)
         if TMPDEBUG:
             choice = range(0,N,N//12)
