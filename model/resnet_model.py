@@ -312,6 +312,7 @@ bnd optimizer block_config\n'
       if self.data_format == 'channels_last':
         shape = net.shape.as_list()[1]
     else:
+      import pdb; pdb.set_trace()  # XXX BREAKPOINT
       raise NotImplementedError
     return np.array(shape)
 
@@ -1148,9 +1149,6 @@ class Model(ResConvOps):
 
 
 
-        if self.use_xyz and (not cascade_id==self.cascade_num-1):
-          outputs = tf.concat([outputs, new_xyz], axis=-1)
-          self.log_tensor_p(outputs, 'use xyz', 'cas%d'%(cascade_id))
       else:
         # already used 3D CNN to reduce map size, just reshape
         root_point_features = None
@@ -1169,6 +1167,11 @@ class Model(ResConvOps):
             outputs = tf.reshape(outputs, [batch_size,-1,outputs.shape[-1].value])
           else:
             outputs = tf.reshape(outputs, [batch_size,outputs.shape[1].value,-1])
+
+      assert False, 'check use_xyz here'
+      if self.use_xyz and (not cascade_id==self.cascade_num-1):
+        outputs = tf.concat([outputs, new_xyz], axis=-1)
+        self.log_tensor_p(outputs, 'use xyz', 'cas%d'%(cascade_id))
 
 
       return new_xyz, outputs, root_point_features
@@ -1234,11 +1237,15 @@ class Model(ResConvOps):
 
       # use max pooling to reduce map size
       outputs = tf.squeeze(inputs, 2)
-      new_xyz, grouped_xyz_feed, outputs, valid_mask = self.grouping(cascade_id, xyz,
-                        outputs, bidmap, block_bottom_center_mm)
-      assert len(outputs.shape)==4
+      if self.cascade_num > 1:
+        new_xyz, grouped_xyz_feed, outputs, valid_mask = self.grouping(cascade_id, xyz,
+                          outputs, bidmap, block_bottom_center_mm)
+        assert len(outputs.shape)==4
+        outputs = tf.reduce_max(outputs, axis=2 if self.data_format=='channels_last' else 3)
+      else:
+        outputs = tf.reduce_max(outputs, axis=1 if self.data_format=='channels_last' else 2, keepdims=True)
+        new_xyz = None
 
-      outputs = tf.reduce_max(outputs, axis=2 if self.data_format=='channels_last' else 3)
       self.log_tensor_p(outputs, 'max', 'cas%d'%(cascade_id))
       if self.use_xyz and (not cascade_id==self.cascade_num-1):
         outputs = tf.concat([outputs, new_xyz], axis=-1)
