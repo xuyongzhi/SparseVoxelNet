@@ -45,7 +45,7 @@ _NUM_IMAGES = {
 }
 
 _NUM_TRAIN_FILES = 20
-_SHUFFLE_BUFFER = 1000
+_SHUFFLE_BUFFER = 2000
 
 DATASET_NAME = 'MODELNET40'
 
@@ -76,10 +76,10 @@ def input_fn(is_training, data_dir, batch_size, data_net_configs=None, num_epoch
   filenames = get_filenames(is_training, data_dir)
   assert len(filenames)>0, (data_dir)
   #print('\ngot {} tfrecord files\n'.format(len(filenames)))
-  dataset = tf.data.TFRecordDataset(filenames)
+  dataset = tf.data.TFRecordDataset(filenames,
                                    # compression_type="",
                                    # buffer_size=_SHUFFLE_BUFFER,
-                                   # num_parallel_reads=None)
+                                   num_parallel_reads=3)
 
   if is_training:
     # Shuffle the input files
@@ -91,7 +91,7 @@ def input_fn(is_training, data_dir, batch_size, data_net_configs=None, num_epoch
   # but high enough to provide the benefits of parallelization. You may want
   # to increase this number if you have a large number of CPU cores.
   #dataset = dataset.apply(tf.contrib.data.parallel_interleave(
-  #    tf.data.TFRecordDataset, cycle_length=10))
+  #    tf.data.TFRecordDataset, cycle_length=5))
 
   return resnet_run_loop.process_record_dataset(
       dataset, is_training, batch_size, _SHUFFLE_BUFFER, parse_pl_record, data_net_configs,
@@ -125,7 +125,7 @@ def get_data_shapes_from_tfrecord(data_dir):
 def check_data():
   from ply_util import create_ply_dset
   IsCreatePly = True
-  batch_size = 2
+  batch_size = 10
   data_dir = _DATA_PARAS['data_dir']
   model_dir = _DATA_PARAS['model_dir']
   ply_dir = os.path.join(model_dir,'ply')
@@ -142,25 +142,26 @@ def check_data():
     with tf.Session() as sess:
         sess.run(iterator1.initializer)
         features, label = sess.run(next_item)
+        print('label:%s'%(label.tolist()))
 
         if IsCreatePly:
           for i in range(batch_size):
             create_ply_dset(DATASET_NAME, features['points'][i], aug_ply_fn+str(i)+'.ply')
-            if aug!='none':
-              create_ply_dset(DATASET_NAME, features['raw_points'][i], raw_ply_fn+str(i)+'.ply')
+            if aug!='N':
+              create_ply_dset(DATASET_NAME, features['points'][i], raw_ply_fn+str(i)+'.ply')
 
-
-        augs = features['augs']
-        #print('points', features['points'][0,0:5,:])
-        if 'R' in augs:
-          print('angles_yxz', augs['angles_yxz']*180.0/np.pi)
-          print('R', augs['R'][0:2])
-        if 'S' in augs:
-          print('S', features['augs']['S'][0:2])
-        if 'shifts' in augs:
-          print('shifts', augs['shifts'][0:2])
-        if 'jitter' in augs:
-          print('jitter', augs['jitter'][0][0:5])
+        if 'augs' in features:
+          augs = features['augs']
+          #print('points', features['points'][0,0:5,:])
+          if 'R' in augs:
+            print('angles_yxz', augs['angles_yxz']*180.0/np.pi)
+            print('R', augs['R'][0:2])
+          if 'S' in augs:
+            print('S', features['augs']['S'][0:2])
+          if 'shifts' in augs:
+            print('shifts', augs['shifts'][0:2])
+          if 'jitter' in augs:
+            print('jitter', augs['jitter'][0][0:5])
         import pdb; pdb.set_trace()  # XXX BREAKPOINT
         pass
 

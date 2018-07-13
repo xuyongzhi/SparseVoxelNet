@@ -154,6 +154,9 @@ def parse_pl_record(tfrecord_serialized, is_training, data_net_configs=None):
                                                 features=feature_map,
                                                 name='pl_features')
 
+    object_label = tf.cast(tfrecord_features['object/label'], tf.int32)
+    object_label = tf.expand_dims(object_label,0)
+
     points = tf.decode_raw(tfrecord_features['points/encoded'], tf.float32)
     if data_net_configs == None:
       points_shape = tf.decode_raw(tfrecord_features['points/shape'], tf.int32)
@@ -161,9 +164,6 @@ def parse_pl_record(tfrecord_serialized, is_training, data_net_configs=None):
       points_shape = data_net_configs['points']
     # the image tensor is flattened out, so we have to reconstruct the shape
     points = tf.reshape(points, points_shape)
-
-    object_label = tf.cast(tfrecord_features['object/label'], tf.int32)
-    object_label = tf.expand_dims(object_label,0)
 
     # ------------------------------------------------
     # do not need for single scale net

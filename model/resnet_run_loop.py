@@ -479,18 +479,23 @@ def resnet_main(
   else:
     total_training_cycle = (flags_obj.train_epochs //
                             flags_obj.epochs_between_evals)
-    # train for one step to check max memory usage
-    classifier.train(input_fn=input_fn_train, hooks=train_hooks, steps=10)
+    ## train for one step to check max memory usage
+    #classifier.train(input_fn=input_fn_train, hooks=train_hooks, steps=10)
 
-  with tf.Session() as sess:
-    max_memory_usage_v = sess.run(max_memory_usage)
-    tf.logging.info('\n\nmemory usage: %0.3f G\n\n'%(max_memory_usage_v*1.0/1e9))
+    #with tf.Session() as sess:
+    #  max_memory_usage_v = sess.run(max_memory_usage)
+    #  tf.logging.info('\n\nmemory usage: %0.3f G\n\n'%(max_memory_usage_v*1.0/1e9))
 
   for cycle_index in range(total_training_cycle):
     tf.logging.info('\n\n\nStarting a training cycle: %d/%d\n\n',
                     cycle_index, total_training_cycle)
     eval_train_steps = 80
     if not OnlyEval:
+      t0 = time.time()
+      classifier.train(input_fn=input_fn_train, hooks=train_hooks,
+                      max_steps=flags_obj.max_train_steps)
+      train_t = time.time()-t0
+
       if (cycle_index%3==0 and cycle_index<=10) or \
           (cycle_index%5 == 0 and cycle_index>10):
         #Temporally used before metric in training is not supported in distribution
@@ -500,10 +505,6 @@ def resnet_main(
                                           steps=eval_train_steps, name='train')
         eval_train_t = time.time() - t0
 
-      t0 = time.time()
-      classifier.train(input_fn=input_fn_train, hooks=train_hooks,
-                      max_steps=flags_obj.max_train_steps)
-      train_t = time.time()-t0
     else:
       train_t = 0
       eval_train_t = 0
