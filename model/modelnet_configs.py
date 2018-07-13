@@ -280,12 +280,10 @@ def get_block_paras_pointnet(resnet_size, model_flag, block_style):
 
   data_flag = DEFAULTS['data_path'].split('-')[-1]
 
-  if block_style == 'PointNet':
-    rs = 9
-    block_filters[rs]  = [[64,64,128, 128,128,256, 256,512,1024]]
-  else:
-    rs = 10
-    block_filters[rs]  = [[64,64,128], [128,128,256], [256,512,1024]]
+  rs = 9
+  block_filters[rs]  = [[64,64,128, 128,128,256, 256,512,1024]]
+  rs = 10
+  block_filters[rs]  = [[64,64,128], [128,128,256], [256,512,1024]]
 
   #for k in block_kernels:
   #  # cascade_id 0 is pointnet

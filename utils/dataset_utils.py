@@ -165,6 +165,28 @@ def parse_pl_record(tfrecord_serialized, is_training, data_net_configs=None):
     object_label = tf.cast(tfrecord_features['object/label'], tf.int32)
     object_label = tf.expand_dims(object_label,0)
 
+    # ------------------------------------------------
+    # do not need for single scale net
+    is_need_bidmap = data_net_configs!=None and len(data_net_configs['block_params']['filters'])>1
+    if not is_need_bidmap:
+      features = {}
+      b_bottom_centers_mm = []
+      if is_training:
+        if data_net_configs != None and data_net_configs['aug_types']!='none':
+          points, b_bottom_centers_mm, augs = aug_main(points, b_bottom_centers_mm,
+                      data_net_configs['aug_types'],
+                      data_net_configs['data_idxs'])
+          #features['augs'] = augs
+      else:
+        if data_net_configs!=None and data_net_configs['eval_views'] > 1:
+          #features['eval_views'] = data_net_configs['eval_views']
+          points, b_bottom_centers_mm, augs = aug_views(points, b_bottom_centers_mm,
+                      data_net_configs['eval_views'],
+                      data_net_configs['data_idxs'])
+      features['points'] = points
+      return features, object_label
+    # ------------------------------------------------
+
     sg_all_bidxmaps = tf.decode_raw(tfrecord_features['sg_all_bidxmaps/encoded'], tf.int32)
     if data_net_configs == None:
       sg_all_bidxmaps_shape = tf.decode_raw(tfrecord_features['sg_all_bidxmaps/shape'], tf.int32)
@@ -189,17 +211,17 @@ def parse_pl_record(tfrecord_serialized, is_training, data_net_configs=None):
       fmap_neighbor_idis_shape = data_net_configs['fmap_neighbor_idis']
     fmap_neighbor_idis = tf.reshape(fmap_neighbor_idis, fmap_neighbor_idis_shape)
 
+    # ------------------------------------------------
     features = {}
     features['bidxmaps_flat'] = bidxmaps_flat
     features['fmap_neighbor_idis'] = fmap_neighbor_idis
 
     if is_training:
       if data_net_configs != None and data_net_configs['aug_types']!='none':
-        features['raw_points'] = points
         points, b_bottom_centers_mm, augs = aug_main(points, b_bottom_centers_mm,
                     data_net_configs['aug_types'],
                     data_net_configs['data_idxs'])
-        features['augs'] = augs
+        #features['augs'] = augs
     else:
       if data_net_configs!=None and data_net_configs['eval_views'] > 1:
         #features['eval_views'] = data_net_configs['eval_views']

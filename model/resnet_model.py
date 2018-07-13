@@ -960,6 +960,18 @@ class Model(ResConvOps):
     return tf.variable_scope('resnet_model',
                              custom_getter=self._custom_dtype_getter)
 
+
+  def pre_pro_inputs(self, inputs_dic):
+    if 'sg_bidxmaps' not in inputs_dic:
+      inputs_dic['sg_bidxmaps'] = [[]]
+      inputs_dic['b_bottom_centers_mm'] = [[]]
+      inputs_dic['bidxmaps_flat'] = [[]]
+      inputs_dic['fmap_neighbor_idis'] = [[]]
+    else:
+      self.globalb_bottom_center_mm = b_bottom_centers_mm[self.cascade_num-1]
+      globalb_bottom_center = tf.multiply( tf.cast( self.globalb_bottom_center_mm, tf.float32), 0.001, name='globalb_bottom_center' ) # gpu_0/globalb_bottom_center
+      self.max_step_stride = tf.multiply( globalb_bottom_center[:,:,3:6] - globalb_bottom_center[:,:,0:3], 2.0, name='max_step_stride') # gpu_0/max_step_stride
+
   def __call__(self, inputs_dic, training):
     """Add operations to classify a batch of input images.
 
@@ -973,7 +985,7 @@ class Model(ResConvOps):
     """
     IsMultiView = len(inputs_dic['points'].shape) == 4
     self.batch_size = inputs_dic['points'].shape[0].value
-
+    self.pre_pro_inputs(inputs_dic)
     if not IsMultiView:
       assert len(inputs_dic['points'].shape) == 3
       outputs = self._call(
@@ -1032,10 +1044,6 @@ class Model(ResConvOps):
       l_xyz = inputs[...,0:3]
       new_points = inputs
 
-      globalb_bottom_center_mm = b_bottom_centers_mm[self.cascade_num-1]
-      globalb_bottom_center = tf.multiply( tf.cast( globalb_bottom_center_mm, tf.float32), 0.001, name='globalb_bottom_center' ) # gpu_0/globalb_bottom_center
-      self.max_step_stride = tf.multiply( globalb_bottom_center[:,:,3:6] - globalb_bottom_center[:,:,0:3], 2.0, name='max_step_stride') # gpu_0/max_step_stride
-
       full_cascades = sg_bm_extract_idx.shape[0]-1
       scales_feature = []
 
@@ -1046,15 +1054,14 @@ class Model(ResConvOps):
         new_points = tf.transpose(new_points, [0, 2, 1])
 
       for k in range(self.cascade_num):
-          IsExtraGlobalLayer = False
-
           if k==self.cascade_num-1 and self.IsOnlineGlobal:
-              sg_bidxmap_k = None
-              block_bottom_center_mm = globalb_bottom_center_mm
+            sg_bidxmap_k = None
+            block_bottom_center_mm = self.globalb_bottom_center_mm
           else:
             block_bottom_center_mm = b_bottom_centers_mm[k]
             sg_bidxmap_k = sg_bidxmaps[k]
-          block_bottom_center_mm = tf.cast(block_bottom_center_mm, tf.float32, name='block_bottom_center_mm')
+          if len(block_bottom_center_mm)!=0:
+            block_bottom_center_mm = tf.cast(block_bottom_center_mm, tf.float32, name='block_bottom_center_mm')
 
           if self.block_style == 'PointNet':
             l_xyz, new_points, root_point_features = self.pointnet2_module(k, l_xyz,
