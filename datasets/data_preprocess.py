@@ -133,7 +133,6 @@ def split_fn_ls_benchmark( plsph5_folder, bxmh5_folder, nonvoid_plfn_ls, bxmh5_f
     train_num['KITTI'] = 7
     test_num['KITTI'] = 8
 
-    is_shuffle = True
     from random import shuffle
     for e in eles:
       assert len(train_fn_ls[e]) + len(test_fn_ls[e]) + void_f_n == train_num[DATASET] + test_num[DATASET]
@@ -141,12 +140,22 @@ def split_fn_ls_benchmark( plsph5_folder, bxmh5_folder, nonvoid_plfn_ls, bxmh5_f
         assert len(train_fn_ls[e]) ==  train_num[DATASET]
         assert len(test_fn_ls[e]) == test_num[DATASET]
 
-      if is_shuffle:
-        shuffle(train_fn_ls[e])
-        shuffle(test_fn_ls[e])
-      else:
-        train_fn_ls[e].sort()
-        test_fn_ls[e].sort()
+    shuffle(train_fn_ls['tfrecord'])
+    shuffle(test_fn_ls['tfrecord'])
+
+    for e in ['sph5', 'bxmh5']:
+        train_fn_ls[e] = []
+        test_fn_ls[e] = []
+    for tfrecord_fn in train_fn_ls['tfrecord']:
+        base_name = os.path.basename(tfrecord_fn)
+        base_name = os.path.splitext(base_name)[0]
+        for e in ['sph5', 'bxmh5']:
+            train_fn_ls[e].append( os.path.join(dirs[e], base_name+'.'+e))
+    for tfrecord_fn in test_fn_ls['tfrecord']:
+        base_name = os.path.basename(tfrecord_fn)
+        base_name = os.path.splitext(base_name)[0]
+        for e in ['sph5', 'bxmh5']:
+            test_fn_ls[e].append( os.path.join(dirs[e], base_name+'.'+e) )
 
     print('all files existing checked PK, start grouping')
     all_lses = {}
@@ -166,19 +175,14 @@ def split_fn_ls_benchmark( plsph5_folder, bxmh5_folder, nonvoid_plfn_ls, bxmh5_f
         end  = min( k+group_n, len(test_fn_ls[e]) )
         all_lses[e] += [test_fn_ls[e][k:end]]
         if e=='tfrecord':
-          if is_shuffle:
             fn_0 = str(k)
             fn_1 = str(end)
             all_group_name_ls += ['test_'+fn_0+'_to_'+fn_1]
-          else:
-            fn_0 = os.path.splitext( os.path.basename(test_fn_ls[e][k]) )[0]
-            fn_1 = os.path.splitext( os.path.basename(test_fn_ls[e][end-1]) )[0]
-            all_group_name_ls += ['test_'+fn_0+'_to_'+fn_1+'-'+str(end-k)]
 
     # split train ls
     group_ns = {}
     group_ns['SCANNET'] = 301
-    group_ns['MODELNET40'] = 1969
+    group_ns['MODELNET40'] = 985
     group_ns['KITTI'] = 5
     group_n = group_ns[DATASET]
     for e in eles:
@@ -186,14 +190,9 @@ def split_fn_ls_benchmark( plsph5_folder, bxmh5_folder, nonvoid_plfn_ls, bxmh5_f
         end  = min( k+group_n, len(train_fn_ls[e]) )
         all_lses[e] += [train_fn_ls[e][k:end]]
         if e=='tfrecord':
-          if is_shuffle:
             fn_0 = str(k)
             fn_1 = str(end)
             all_group_name_ls += ['train_'+fn_0+'_to_'+fn_1]
-          else:
-            fn_0 = os.path.splitext( os.path.basename(test_fn_ls[e][k]) )[0]
-            fn_1 = os.path.splitext( os.path.basename(test_fn_ls[e][end-1]) )[0]
-            all_group_name_ls += ['train_'+fn_0+'_to_'+fn_1+'-'+str(end-k)]
 
     return [all_lses['sph5'], all_lses['bxmh5'], all_lses['tfrecord']], all_group_name_ls
 
@@ -466,8 +465,8 @@ class H5Prepare():
             bxmh5_folder = 'ORG_bxmh5/240000_mgs3_gs2d4_4d6_fmn14_mvp2-4800_480_1-48_56_480-0d1_0d6-0d1_0d4-pd3-mbf-neg-2S1'
 
         if DATASET == 'MODELNET40':
-            plsph5_folder = '4096_mgs1_gs2_2-mbf-neg'
-            bxmh5_folder = '4096_mgs1_gs2_2-mbf-neg_fmn14_mvp1-1024_240_1-64_27_256-0d2_0d4-0d1_0d2-pd3-2M2pp'
+            plsph5_folder = '4096_mgs1_gs2_2-rep'
+            bxmh5_folder = '4096_mgs1_gs2_2-rep_fmn11_mvp1-1024_240_1-64_27_256-0d2_0d4-0d1_0d2-pd3-2M2ppr'
 
         if DATASET == 'KITTI':
             plsph5_folder = 'BasicData/ORG_sph5/4000_mgs10_gs5_10-mbf-neg'
@@ -618,8 +617,8 @@ def main( ):
     # data_aug_configs['delete_unlabelled'] = True
     # data_aug_configs['delete_easy_categories_num'] = 3
 
-    h5prep.GenPyramid(base_step_stride, base_step_stride, data_aug_configs,  MultiProcess)
-    #h5prep.MergeNormed( data_aug_configs )
+    #h5prep.GenPyramid(base_step_stride, base_step_stride, data_aug_configs,  MultiProcess)
+    h5prep.MergeNormed( data_aug_configs )
     print('T = %f sec'%(time.time()-t0))
 
 if __name__ == '__main__':
