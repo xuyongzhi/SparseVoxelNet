@@ -968,7 +968,7 @@ class Model(ResConvOps):
       inputs_dic['bidxmaps_flat'] = [[]]
       inputs_dic['fmap_neighbor_idis'] = [[]]
     else:
-      self.globalb_bottom_center_mm = b_bottom_centers_mm[self.cascade_num-1]
+      self.globalb_bottom_center_mm = inputs_dic['b_bottom_centers_mm'][self.cascade_num-1]
       globalb_bottom_center = tf.multiply( tf.cast( self.globalb_bottom_center_mm, tf.float32), 0.001, name='globalb_bottom_center' ) # gpu_0/globalb_bottom_center
       self.max_step_stride = tf.multiply( globalb_bottom_center[:,:,3:6] - globalb_bottom_center[:,:,0:3], 2.0, name='max_step_stride') # gpu_0/max_step_stride
 
@@ -1060,8 +1060,6 @@ class Model(ResConvOps):
           else:
             block_bottom_center_mm = b_bottom_centers_mm[k]
             sg_bidxmap_k = sg_bidxmaps[k]
-          if len(block_bottom_center_mm)!=0:
-            block_bottom_center_mm = tf.cast(block_bottom_center_mm, tf.float32, name='block_bottom_center_mm')
 
           if self.block_style == 'PointNet':
             l_xyz, new_points, root_point_features = self.pointnet2_module(k, l_xyz,
