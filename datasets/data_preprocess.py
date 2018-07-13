@@ -175,14 +175,9 @@ def split_fn_ls_benchmark( plsph5_folder, bxmh5_folder, nonvoid_plfn_ls, bxmh5_f
         end  = min( k+group_n, len(test_fn_ls[e]) )
         all_lses[e] += [test_fn_ls[e][k:end]]
         if e=='tfrecord':
-          if is_shuffle:
             fn_0 = str(k)
             fn_1 = str(end)
             all_group_name_ls += ['test_'+fn_0+'_to_'+fn_1]
-          else:
-            fn_0 = os.path.splitext( os.path.basename(test_fn_ls[e][k]) )[0]
-            fn_1 = os.path.splitext( os.path.basename(test_fn_ls[e][end-1]) )[0]
-            all_group_name_ls += ['test_'+fn_0+'_to_'+fn_1+'-'+str(end-k)]
 
     # split train ls
     group_ns = {}
@@ -195,14 +190,9 @@ def split_fn_ls_benchmark( plsph5_folder, bxmh5_folder, nonvoid_plfn_ls, bxmh5_f
         end  = min( k+group_n, len(train_fn_ls[e]) )
         all_lses[e] += [train_fn_ls[e][k:end]]
         if e=='tfrecord':
-          if is_shuffle:
             fn_0 = str(k)
             fn_1 = str(end)
             all_group_name_ls += ['train_'+fn_0+'_to_'+fn_1]
-          else:
-            fn_0 = os.path.splitext( os.path.basename(test_fn_ls[e][k]) )[0]
-            fn_1 = os.path.splitext( os.path.basename(test_fn_ls[e][end-1]) )[0]
-            all_group_name_ls += ['train_'+fn_0+'_to_'+fn_1+'-'+str(end-k)]
 
     return [all_lses['sph5'], all_lses['bxmh5'], all_lses['tfrecord']], all_group_name_ls
 
