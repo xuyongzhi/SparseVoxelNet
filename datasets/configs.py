@@ -12,7 +12,7 @@ NETCONFIG['merge_blocks_while_fix_bmap'] = True
 # 'replicate' or a negative number to be asigned in bidxmap  (<-500)
 NETCONFIG['redundant_points_in_block'] = -777
 #-------------------------------------------------------------------------------
-_gsbb_config = '2M2ppr'
+_gsbb_config = '2Mc1'
 print('\n gsbb_config:%s \n-----------------------------------------------------'%(_gsbb_config))
 
 def get_gsbb_config( gsbb_config = _gsbb_config ):
@@ -180,7 +180,7 @@ def get_gsbb_config( gsbb_config = _gsbb_config ):
         min_valid_point =       np.array( [ 1,  1,  1 ] )
         #                                      3  9
 
-    elif gsbb_config == '2Mc':
+    elif gsbb_config == '2Mc1':
         NETCONFIG['max_global_sample_rate'] = 1
         NETCONFIG['merge_blocks_while_fix_bmap'] = False
         NETCONFIG['redundant_points_in_block'] = 'replicate'
@@ -190,7 +190,7 @@ def get_gsbb_config( gsbb_config = _gsbb_config ):
         global_num_point = 1024
         flatbxmap_max_nearest_num = [1,1]
 
-        sub_block_stride_candis = np.array([0.1, 0.2]).astype(np.float)
+        sub_block_stride_candis = np.array([0.2, 0.2]).astype(np.float)
         sub_block_step_candis   = np.array([0.2, 0.4]).astype(np.float)
         nsubblock_candis =       np.array([512, 128, 1]).astype(np.int32)
         npoint_subblock_candis = np.array([32, 64, 256]).astype(np.int32)
