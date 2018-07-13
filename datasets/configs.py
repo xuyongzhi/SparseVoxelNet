@@ -190,10 +190,10 @@ def get_gsbb_config( gsbb_config = _gsbb_config ):
         global_num_point = 1024
         flatbxmap_max_nearest_num = [1,1]
 
-        sub_block_stride_candis = np.array([0.2, 0.2]).astype(np.float)
+        sub_block_stride_candis = np.array([0.1, 0.2]).astype(np.float)
         sub_block_step_candis   = np.array([0.2, 0.4]).astype(np.float)
-        nsubblock_candis =       np.array([512, 128, 1]).astype(np.int32)
-        npoint_subblock_candis = np.array([32, 64, 256]).astype(np.int32)
+        nsubblock_candis =       np.array([1024, 256, 1]).astype(np.int32)
+        npoint_subblock_candis = np.array([32, 27, 256]).astype(np.int32)
         min_valid_point =       np.array( [ 1,  1,  1 ] )
         #                                      3  9
 
