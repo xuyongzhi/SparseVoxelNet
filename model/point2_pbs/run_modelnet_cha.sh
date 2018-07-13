@@ -1,8 +1,8 @@
 #!/bin/bash
 
-export CUDA_VISIBLE_DEVICES=1
+#export CUDA_VISIBLE_DEVICES=1
 
-num_gpus=1
+num_gpus=2
 batch_size=32
 learning_rate0=0.001
 optimizer='adam'
@@ -17,10 +17,9 @@ shortcut='MZ'
 loss_lw_gama=-1
 train_epochs=81
 model_flag='m'
-aug_types='N'
-
 residual=0
-resnet_size=10
+
+resnet_size=9
 
 
 ./modelnet.sh   $aug_types  $batch_size $model_flag $learning_rate0 $num_gpus $feed_data $drop_imo  $optimizer $use_bias $lr_decay_epochs $lr_decay_rate $resnet_size $block_style $residual $shortcut $loss_lw_gama  $train_epochs

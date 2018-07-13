@@ -45,7 +45,7 @@ _NUM_IMAGES = {
 }
 
 _NUM_TRAIN_FILES = 20
-_SHUFFLE_BUFFER = 1000
+_SHUFFLE_BUFFER = 3000
 
 DATASET_NAME = 'MODELNET40'
 
@@ -81,9 +81,9 @@ def input_fn(is_training, data_dir, batch_size, data_net_configs=None, num_epoch
                                    # buffer_size=_SHUFFLE_BUFFER,
                                    # num_parallel_reads=None)
 
-  #if is_training:
-  #  # Shuffle the input files
-  #  dataset = dataset.shuffle(buffer_size=_NUM_TRAIN_FILES)
+  if is_training:
+    # Shuffle the input files
+    dataset = dataset.shuffle(buffer_size=_NUM_TRAIN_FILES)
 
   # Convert to individual records.
   # cycle_length = 10 means 10 files will be read and deserialized in parallel.

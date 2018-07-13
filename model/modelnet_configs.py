@@ -18,7 +18,7 @@ DEFAULTS['data_path'] = 'MODELNET40H5F/Merged_tfrecord/6_mgs1_gs2_2-neg_fmn14_mv
 
 
 DEFAULTS['only_eval'] = 0
-DEFAULTS['eval_views'] = 3
+DEFAULTS['eval_views'] = 1
 
 DEFAULTS['residual'] = 0
 DEFAULTS['shortcut'] = 'MC' #C, MC, AC, MZ, AZ
@@ -53,7 +53,7 @@ def get_block_paras(resnet_size, model_flag, block_style):
   elif block_style == 'Inception':
     return get_block_paras_inception(resnet_size, model_flag)
   elif block_style == 'PointNet':
-    return get_block_paras_pointnet(resnet_size, model_flag)
+    return get_block_paras_pointnet(resnet_size, model_flag, block_style)
 
 def icp_block(flag):
   def icp_by_mapsize(map_size, filters_in, filters_out):
@@ -274,14 +274,18 @@ def get_block_paras_bottle_regu(resnet_size, model_flag, block_style):
   block_params['block_sizes'] = block_sizes[resnet_size]
   return block_params
 
-def get_block_paras_pointnet(resnet_size, model_flag):
+def get_block_paras_pointnet(resnet_size, model_flag, block_style):
   num_filters0s = {}
   block_filters = {}
 
   data_flag = DEFAULTS['data_path'].split('-')[-1]
 
-  rs = 10
-  block_filters[rs]  = [[64,64,128], [128,128,256], [256,512,1024]]
+  if block_style == 'PointNet':
+    rs = 9
+    block_filters[rs]  = [[64,64,128, 128,128,256, 256,512,1024]]
+  else:
+    rs = 10
+    block_filters[rs]  = [[64,64,128], [128,128,256], [256,512,1024]]
 
   #for k in block_kernels:
   #  # cascade_id 0 is pointnet
