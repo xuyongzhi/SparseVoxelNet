@@ -181,12 +181,12 @@ def get_gsbb_config( gsbb_config = _gsbb_config ):
         #                                      3  9
 
     elif gsbb_config == '2Mc1':
-        NETCONFIG['max_global_sample_rate'] = 1
+        NETCONFIG['max_global_sample_rate'] = 1024.0/10000*2
         NETCONFIG['merge_blocks_while_fix_bmap'] = False
         NETCONFIG['redundant_points_in_block'] = 'replicate'
 
         global_stride = np.array([2,2,2]).astype(np.float)
-        global_step = np.array([2,2,2]).astype(np.float)
+        global_step = np.array([2.2,2.2,2.2]).astype(np.float)
         global_num_point = 1024
         flatbxmap_max_nearest_num = [1,1]
 
@@ -198,12 +198,12 @@ def get_gsbb_config( gsbb_config = _gsbb_config ):
         #                                      3  9
 
     elif gsbb_config == '1M':
-        NETCONFIG['max_global_sample_rate'] = 1
+        NETCONFIG['max_global_sample_rate'] = 1024.0/10000*2
         NETCONFIG['merge_blocks_while_fix_bmap'] = False
         NETCONFIG['redundant_points_in_block'] = 'replicate'
 
         global_stride = np.array([2,2,2]).astype(np.float)
-        global_step = np.array([2,2,2]).astype(np.float)
+        global_step = np.array([2.2,2.2,2.2]).astype(np.float)
         global_num_point = 1024
         flatbxmap_max_nearest_num = [1]
 

@@ -426,9 +426,9 @@ class H5Prepare():
         assert len(file_list)>0, sh5f_dir
         N = len(file_list)
         if TMPDEBUG:
-            choice = range(0,N,N//12)
-            #file_list = [ file_list[c] for c in choice ]
-            file_list = file_list[0:20]   # L
+            choice = range(0,N,N//200)
+            file_list = [ file_list[c] for c in choice ]
+            #file_list = file_list[0:320]   # L
             #file_list = file_list[750:len(file_list)] # R
             #sh5f_dir = sh5f_dir+'_parts'
             #file_list = glob.glob( os.path.join( sh5f_dir, 'untermaederbrunnen_station3_xyz_intensity_rgb--0_0_n100_10_10_100.sh5' ) )
@@ -526,7 +526,7 @@ class H5Prepare():
         if split_method == 'benchmark':
           allfn_ls, all_group_name_ls = split_fn_ls_benchmark( plsph5_folder, bxmh5_folder, nonvoid_plfn_ls, bxmh5_fn_ls, tfrecordfn_ls, void_f_n )
         else:
-          allfn_ls, all_group_name_ls = split_fn_ls( nonvoid_plfn_ls, bxmh5_fn_ls, tfrecordfn_ls, merged_n=5 )
+          allfn_ls, all_group_name_ls = split_fn_ls( nonvoid_plfn_ls, bxmh5_fn_ls, tfrecordfn_ls, merged_n=3 )
 
         for k in range( len(allfn_ls[0]) ):
             merged_file_names = ['','','']
@@ -598,7 +598,7 @@ def GenObj_sph5():
 
 def main( ):
     t0 = time.time()
-    MultiProcess = 7
+    MultiProcess = 0
     h5prep = H5Prepare()
 
     #h5prep.ParseRaw( MultiProcess )
