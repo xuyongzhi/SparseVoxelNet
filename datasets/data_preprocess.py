@@ -19,7 +19,7 @@ import json
 from  datasets_meta import DatasetsMeta
 import geometric_util as geo_util
 
-TMPDEBUG = False
+TMPDEBUG = True
 ROOT_DIR = os.path.dirname(BASE_DIR)
 DATA_DIR = os.path.join(ROOT_DIR,'data')
 
@@ -43,7 +43,7 @@ def WriteSortH5f_FromRawH5f(rawh5_file_ls,block_step_xyz,sorted_path, RotateBefo
     return rawh5_file_ls
 
 def GenPyramidSortedFlie(file_id, fn, data_aug_configs):
-
+    no_bidxmap = False
     with h5py.File(fn,'r') as f:
         sorted_h5f = Sorted_H5f(f,fn)
         Always_CreateNew_plh5 = False
@@ -51,7 +51,7 @@ def GenPyramidSortedFlie(file_id, fn, data_aug_configs):
         Always_CreateNew_bxmh5 = False
         if TMPDEBUG:
             Always_CreateNew_bmh5 = False
-            Always_CreateNew_plh5 = True
+            Always_CreateNew_plh5 = False
             Always_CreateNew_bxmh5 = False
 
         sorted_h5f.file_saveas_pyramid_feed(
@@ -61,7 +61,8 @@ def GenPyramidSortedFlie(file_id, fn, data_aug_configs):
           Always_CreateNew_bmh5 = Always_CreateNew_bmh5,
           Always_CreateNew_bxmh5=Always_CreateNew_bxmh5,
           IsGenPly=False,
-          data_aug_configs = data_aug_configs )
+          data_aug_configs = data_aug_configs,
+          no_bidxmap =  no_bidxmap )
     return fn
 
 def split_fn_ls( nonvoid_plfn_ls, bxmh5_fn_ls, tfrecordfn_ls, merged_n=2 ):
@@ -357,8 +358,8 @@ class H5Prepare():
         if len(fn_ls) == 0:
             print('no file matches %s'%( glob_fn ))
 
-        if TMPDEBUG:
-            fn_ls = fn_ls[0:1]
+        #if TMPDEBUG:
+        #    fn_ls = fn_ls[0:1]
 
         if MultiProcess < 2:
             for fn in fn_ls:
@@ -426,8 +427,8 @@ class H5Prepare():
         N = len(file_list)
         if TMPDEBUG:
             choice = range(0,N,N//12)
-            file_list = [ file_list[c] for c in choice ]
-            #file_list = file_list[0:2]   # L
+            #file_list = [ file_list[c] for c in choice ]
+            file_list = file_list[0:20]   # L
             #file_list = file_list[750:len(file_list)] # R
             #sh5f_dir = sh5f_dir+'_parts'
             #file_list = glob.glob( os.path.join( sh5f_dir, 'untermaederbrunnen_station3_xyz_intensity_rgb--0_0_n100_10_10_100.sh5' ) )
@@ -457,16 +458,16 @@ class H5Prepare():
 
 
     def MergeNormed(self, data_aug_configs):
-        split_method = 'benchmark'
-        #split_method = 'order'
+        #split_method = 'benchmark'
+        split_method = 'order'
 
         if DATASET == 'SCANNET':
             plsph5_folder = 'ORG_sph5/240000_mgs3_gs2d4_4d6'
             bxmh5_folder = 'ORG_bxmh5/240000_mgs3_gs2d4_4d6_fmn14_mvp2-4800_480_1-48_56_480-0d1_0d6-0d1_0d4-pd3-mbf-neg-2S1'
 
         if DATASET == 'MODELNET40':
-            plsph5_folder = '4096_mgs1_gs2_2-rep'
-            bxmh5_folder = '4096_mgs1_gs2_2-rep_fmn11_mvp1-1024_240_1-64_27_256-0d2_0d4-0d1_0d2-pd3-2M2ppr'
+            plsph5_folder = '1024_mgs1_gs2_2-rep'
+            bxmh5_folder = '1024_mgs1_gs2_2-rep_fmn1_mvp1-1-1024--pd3-1M'
 
         if DATASET == 'KITTI':
             plsph5_folder = 'BasicData/ORG_sph5/4000_mgs10_gs5_10-mbf-neg'
@@ -597,7 +598,7 @@ def GenObj_sph5():
 
 def main( ):
     t0 = time.time()
-    MultiProcess = 0
+    MultiProcess = 7
     h5prep = H5Prepare()
 
     #h5prep.ParseRaw( MultiProcess )

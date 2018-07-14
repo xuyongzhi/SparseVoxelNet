@@ -77,7 +77,7 @@ def float_feature(values):
   return tf.train.Feature(float_list=tf.train.FloatList(value=values))
 
 
-def pl_bxm_to_tfexample(points, object_label, sg_all_bidxmaps, bidxmaps_flat, fmap_neighbor_idis):
+def pl_bxm_to_tfexample(points, object_label, sg_all_bidxmaps, bidxmaps_flat, fmap_neighbor_idis, no_bidxmap=False):
   assert points.dtype == np.float32
   assert sg_all_bidxmaps.dtype == np.int32
   assert bidxmaps_flat.dtype == np.int32
@@ -93,17 +93,23 @@ def pl_bxm_to_tfexample(points, object_label, sg_all_bidxmaps, bidxmaps_flat, fm
   fmap_neighbor_idis_bin = fmap_neighbor_idis.tobytes()
   fmap_neighbor_idis_shape_bin = np.array(fmap_neighbor_idis.shape, np.int32).tobytes()
 
-  example = tf.train.Example(features=tf.train.Features(feature={
+  feature_map = {
       'points/encoded': bytes_feature(points_bin),
       'points/shape': bytes_feature(points_shape_bin),
-      'object/label': int64_feature(object_label),
+      'object/label': int64_feature(object_label) }
+
+  feature_map1 = {
       'sg_all_bidxmaps/encoded': bytes_feature(sg_all_bidxmaps_bin),
       'sg_all_bidxmaps/shape': bytes_feature(sg_all_bidxmaps_shape_bin),
       'bidxmaps_flat/encoded': bytes_feature(bidxmaps_flat_bin),
       'bidxmaps_flat/shape': bytes_feature(bidxmaps_flat_shape_bin),
       'fmap_neighbor_idis/encoded': bytes_feature(fmap_neighbor_idis_bin),
-      'fmap_neighbor_idis/shape': bytes_feature(fmap_neighbor_idis_shape_bin)
-  }))
+      'fmap_neighbor_idis/shape': bytes_feature(fmap_neighbor_idis_shape_bin) }
+  if not no_bidxmap:
+    feature_map.update(feature_map1)
+
+  example = tf.train.Example(features=tf.train.Features(feature=feature_map))
+
   return example
 
 def data_meta_to_tfexample(point_idxs):
@@ -121,7 +127,8 @@ def data_meta_to_tfexample(point_idxs):
 
 def write_pl_bxm_tfrecord(bxm_tfrecord_writer, tfrecord_meta_writer,\
                         datasource_name, points, point_idxs, object_labels,\
-                        sg_all_bidxmaps, bidxmaps_flat, fmap_neighbor_idis):
+                        sg_all_bidxmaps, bidxmaps_flat, fmap_neighbor_idis, \
+                        no_bidxmap=False):
   if tfrecord_meta_writer!=None:
     example = data_meta_to_tfexample(point_idxs)
     tfrecord_meta_writer.write(example)

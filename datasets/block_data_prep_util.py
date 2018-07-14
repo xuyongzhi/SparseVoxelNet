@@ -422,7 +422,11 @@ class GlobalSubBaseBLOCK():
 
         # cascade_id = cascade_num is also global. Because global has two base:
         # one is root, the other one is cascade_num-1
-        self.cascade_id_ls = cascade_id_ls = ['root']+list(range(cascade_num+1))+['global']
+        if cascade_num>0:
+          self.cascade_id_ls = cascade_id_ls = ['root']+list(range(cascade_num+1))+['global']
+        else:
+          self.cascade_id_ls = cascade_id_ls = ['root','global']
+
         base_cascade_ids = {}
         base_cascade_ids['global'] = 'root'
         for i in range(cascade_num+1):
@@ -535,14 +539,16 @@ class GlobalSubBaseBLOCK():
                 attrs = self.get_new_attrs(cascade_id)
                 attrs_all.append( attrs )
 
+            attrs = self.new_attrs['global']
             attr_candicates = ['stride_to_align', 'block_dims_N', 'xyz_scope_aligned', 'xyz_min_aligned', 'total_block_N', 'xyz_max_aligned']
             for attr in attr_candicates:
                 aim_attrs[attr] = attrs[attr]
             attr_candicates = [ 'block_stride','block_step' ]
-            for attr in attr_candicates:
-                attr_ls = [np.expand_dims(attrs[attr],0) for attrs in attrs_all]
-                attr_cas = np.concatenate( attr_ls,0 )
-                aim_attrs[attr+'_cascades'] = attr_cas
+            if self.cascade_num>0:
+              for attr in attr_candicates:
+                  attr_ls = [np.expand_dims(attrs[attr],0) for attrs in attrs_all]
+                  attr_cas = np.concatenate( attr_ls,0 )
+                  aim_attrs[attr+'_cascades'] = attr_cas
 
     def write_bxm_paras_in_txt_unused(self, bxmh5_fn, pl_sph5_filename=None ):
         assert os.path.splitext( bxmh5_fn )[1] == '.bxmh5'
@@ -3532,7 +3538,7 @@ xyz_scope_aligned: [ 3.5  2.8  2.5]
 
     def file_saveas_pyramid_feed(self, file_id, IsShowSummaryFinished=False,
         Always_CreateNew_plh5=False,Always_CreateNew_bmh5=False,
-        Always_CreateNew_bxmh5=False, IsGenPly=False, data_aug_configs={}):
+        Always_CreateNew_bxmh5=False, IsGenPly=False, data_aug_configs={},  no_bidxmap=False):
         '''
         save by global block
         '''
@@ -3540,7 +3546,8 @@ xyz_scope_aligned: [ 3.5  2.8  2.5]
         datasource_name = self.h5f.attrs['datasource_name']
         gsbb_write = GlobalSubBaseBLOCK( root_s_h5f = self.h5f, root_s_h5f_fn = self.file_name )
         aug_str = Sorted_H5f.aug_flag_str( data_aug_configs )
-
+        if no_bidxmap:
+          aug_str += 'Nmap'
 
         if datasource_name == 'MATTERPORT':
             region_name = os.path.splitext( os.path.basename(self.file_name) )[0]
@@ -3620,7 +3627,7 @@ xyz_scope_aligned: [ 3.5  2.8  2.5]
               Sorted_H5f.save_bxmap_h5f( bxmh5_fn, gsbb_write, self, pl_sph5_filename )
             else:
               tfrecord_fn = os.path.join(out_folder_tfrecord, region_name+'.tfrecord')
-              Sorted_H5f.save_bxmap_h5_tfrecord(file_id, sampled_pl, bxmh5_fn, tfrecord_fn, gsbb_write, self, pl_sph5_filename )
+              Sorted_H5f.save_bxmap_h5_tfrecord(file_id, sampled_pl, bxmh5_fn, tfrecord_fn, gsbb_write, self, pl_sph5_filename,  no_bidxmap )
         t3 = time.time()
         scope = self.h5f.attrs['xyz_max'] - self.h5f.attrs['xyz_min']
         area = scope[0] * scope[1]
@@ -3639,7 +3646,7 @@ xyz_scope_aligned: [ 3.5  2.8  2.5]
 
         global_num_point = gsbb_write.global_num_point
         assert global_num_point >= gsbb_write.max_global_num_point, "max_global_num_point=%d pl_sph5 file not exist, cannot add global_num_point=%d"%(gsbb_write.max_global_num_point,global_num_point)
-        print('\n\nstart gen tfrecord file: ',pl_sph5_filename)
+        print('\n\nstart gen sph5 file: ',pl_sph5_filename)
         t0 = time.time()
 
         with h5py.File(pl_sph5_filename,'w') as h5f:
@@ -3891,7 +3898,7 @@ xyz_scope_aligned: [ 3.5  2.8  2.5]
 
 
     @staticmethod
-    def save_bxmap_h5_tfrecord(file_id, sampled_pl, bxmh5_fn, tfrecord_fn, gsbb_write, S_H5f, pl_sph5_filename ):
+    def save_bxmap_h5_tfrecord(file_id, sampled_pl, bxmh5_fn, tfrecord_fn, gsbb_write, S_H5f, pl_sph5_filename, no_bidxmap=False ):
         '''
         bxmh5:
         '''
@@ -3963,7 +3970,8 @@ xyz_scope_aligned: [ 3.5  2.8  2.5]
                 sampled_pl['object_labels'],
                 sg_all_bidxmaps,
                 bidxmaps_flat,
-                fmap_neighbor_idis)
+                fmap_neighbor_idis,
+                no_bidxmap)
             if file_id == 0:
               tfrecord_meta_writer.close()
 
