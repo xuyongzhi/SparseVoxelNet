@@ -45,7 +45,7 @@ _NUM_IMAGES = {
 }
 
 _NUM_TRAIN_FILES = 20
-_SHUFFLE_BUFFER = 2000
+_SHUFFLE_BUFFER = 10000
 
 DATASET_NAME = 'MODELNET40'
 
@@ -76,10 +76,10 @@ def input_fn(is_training, data_dir, batch_size, data_net_configs=None, num_epoch
   filenames = get_filenames(is_training, data_dir)
   assert len(filenames)>0, (data_dir)
   #print('\ngot {} tfrecord files\n'.format(len(filenames)))
-  dataset = tf.data.TFRecordDataset(filenames,
+  dataset = tf.data.TFRecordDataset(filenames)
                                    # compression_type="",
                                    # buffer_size=_SHUFFLE_BUFFER,
-                                   num_parallel_reads=3)
+                                   #num_parallel_reads=3)
 
   if is_training:
     # Shuffle the input files

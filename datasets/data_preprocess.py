@@ -466,8 +466,8 @@ class H5Prepare():
             bxmh5_folder = 'ORG_bxmh5/240000_mgs3_gs2d4_4d6_fmn14_mvp2-4800_480_1-48_56_480-0d1_0d6-0d1_0d4-pd3-mbf-neg-2S1'
 
         if DATASET == 'MODELNET40':
-            plsph5_folder = '1024_mgs1_gs2_2-rep'
-            bxmh5_folder = '1024_mgs1_gs2_2-rep_fmn1_mvp1-1-1024--pd3-1M'
+            plsph5_folder = '1024_mgs0.2048_gs2_2d2-rep'
+            bxmh5_folder = '1024_mgs0.2048_gs2_2d2-rep_fmn1_mvp1-1-1024--pd3-1M'
 
         if DATASET == 'KITTI':
             plsph5_folder = 'BasicData/ORG_sph5/4000_mgs10_gs5_10-mbf-neg'
@@ -618,8 +618,8 @@ def main( ):
     # data_aug_configs['delete_unlabelled'] = True
     # data_aug_configs['delete_easy_categories_num'] = 3
 
-    h5prep.GenPyramid(base_step_stride, base_step_stride, data_aug_configs,  MultiProcess)
-    #h5prep.MergeNormed( data_aug_configs )
+    #h5prep.GenPyramid(base_step_stride, base_step_stride, data_aug_configs,  MultiProcess)
+    h5prep.MergeNormed( data_aug_configs )
     print('T = %f sec'%(time.time()-t0))
 
 if __name__ == '__main__':

@@ -14,7 +14,7 @@ import numpy as np
 DEFAULTS = {}
 #DEFAULTS['data_path'] = 'MODELNET40H5F/Merged_tfrecord/6_mgs1_gs2_2-mbf-neg_fmn14_mvp1-1024_240_1-64_27_256-0d2_0d4-0d1_0d2-pd3-2M2pp'
 #DEFAULTS['data_path'] = 'MODELNET40H5F/Merged_tfrecord/6_mgs1_gs2_2-neg_fmn14_mvp1-1024_240_1-64_27_256-0d2_0d4-0d1_0d2-pd3-2M2pp'
-DEFAULTS['data_path'] = 'MODELNET40H5F/Merged_tfrecord/4_mgs1_gs2_2-rep_fmn1_mvp1-1-1024--pd3-1M_SMALL'
+DEFAULTS['data_path'] = 'MODELNET40H5F/Merged_tfrecord/4_mgs0.2048_gs2_2d2-rep_fmn1_mvp1-1-1024--pd3-1M'
 #DEFAULTS['data_path'] = 'MODELNET40H5F/Merged_tfrecord/6_mgs1_gs2_2d2-neg_fmn1444_mvp1-3200_1024_48_1-18_24_56_56-0d1_0d2_0d6-0d0_0d1_0d4-pd3-3M1'
 
 
@@ -282,7 +282,7 @@ def get_block_paras_pointnet(resnet_size, model_flag, block_style):
   data_flag = DEFAULTS['data_path'].split('-')[-1]
 
   rs = 9
-  block_filters[rs]  = [[64,64,128, 128,128,256, 256,512,1024]]
+  block_filters[rs]  = [[64,64,128, 128,256, 256,512,1024]]
   rs = 10
   block_filters[rs]  = [[64,64,128], [128,128,256], [256,512,1024]]
 
