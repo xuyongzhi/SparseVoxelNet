@@ -214,7 +214,7 @@ def resnet_model_fn(model_flag, features, labels, mode, model_class,
 
 
   #features = tf.cast(features, dtype)
-
+  assert data_format == 'channels_last'
   model = model_class(model_flag, resnet_size, data_format, resnet_version=resnet_version,
                       dtype=dtype, data_net_configs=data_net_configs)
 

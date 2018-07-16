@@ -9,20 +9,20 @@ optimizer='adam'
 lr_decay_epochs=20
 lr_decay_rate=0.7
 feed_data='xyzs'
-drop_imo='0_0_5'
+drop_imo='0_0_2'
 aug_types='N'
 use_bias=1
 block_style='PointNet'
 shortcut='MZ'
 loss_lw_gama=-1
-train_epochs=81
+train_epochs=61
 model_flag='m'
 residual=0
 
 resnet_size=9
 
-batch_size=64
-#feed_data='xyzs-nxnynz'
+batch_size=32
+#feed_data='xyzrsg-nxnynz'
 
 
 ./modelnet.sh   $aug_types  $batch_size $model_flag $learning_rate0 $num_gpus $feed_data $drop_imo  $optimizer $use_bias $lr_decay_epochs $lr_decay_rate $resnet_size $block_style $residual $shortcut $loss_lw_gama  $train_epochs

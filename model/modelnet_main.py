@@ -124,8 +124,12 @@ def get_data_shapes_from_tfrecord(data_dir):
 
 def check_data():
   from ply_util import create_ply_dset
+  from datasets.all_datasets_meta.datasets_meta import DatasetsMeta
+
+  datasets_meta = DatasetsMeta(DATASET_NAME)
+
   IsCreatePly = True
-  batch_size = 10
+  batch_size = 32
   data_dir = _DATA_PARAS['data_dir']
   model_dir = _DATA_PARAS['model_dir']
   ply_dir = os.path.join(model_dir,'ply')
@@ -135,20 +139,21 @@ def check_data():
   if not os.path.exists(ply_dir):
     os.makedirs(ply_dir)
   with tf.Graph().as_default():
-    dataset = input_fn(True, data_dir, batch_size, _DATA_PARAS)
+    dataset = input_fn(False, data_dir, batch_size, _DATA_PARAS)
     iterator1 = dataset.make_initializable_iterator()
     next_item = iterator1.get_next()
 
     with tf.Session() as sess:
         sess.run(iterator1.initializer)
-        features, label = sess.run(next_item)
-        print('label:%s'%(label.tolist()))
+        features, labels = sess.run(next_item)
+        print('label:%s'%(labels.tolist()))
 
         if IsCreatePly:
           for i in range(batch_size):
-            create_ply_dset(DATASET_NAME, features['points'][i], aug_ply_fn+str(i)+'.ply')
+            category = '_'+datasets_meta.label2class[labels[i][0]]
+            create_ply_dset(DATASET_NAME, features['points'][i], aug_ply_fn+category+str(i)+'.ply')
             if aug!='N':
-              create_ply_dset(DATASET_NAME, features['points'][i], raw_ply_fn+str(i)+'.ply')
+              create_ply_dset(DATASET_NAME, features['points'][i], raw_ply_fn+category+str(i)+'.ply')
 
         if 'augs' in features:
           augs = features['augs']
@@ -493,6 +498,7 @@ def run_modelnet(flags_obj):
 
 def main(_):
   run_modelnet(flags.FLAGS)
+
 
 
 if __name__ == '__main__':

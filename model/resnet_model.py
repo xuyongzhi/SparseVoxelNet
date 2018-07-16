@@ -262,6 +262,7 @@ bnd optimizer block_config\n'
         inputs=inputs, axis=1 if self.data_format == 'channels_first' else -1,
         momentum=self.batch_norm_decay , epsilon=epsilon, center=True,
         scale=scale, training=training, fused=fused)
+
     if activation!=None:
       inputs = activation(inputs)
       if self.IsShowModel:  self.log('%30s'%('BN RELU'))
@@ -1075,8 +1076,8 @@ class Model(ResConvOps):
 
       # Only apply the BN and ReLU for model that does pre_activation in each
       # building/bottleneck block, eg resnet V2.
-      if self.pre_activation:
-        inputs = self.batch_norm(inputs, is_training, tf.nn.relu)
+      #if self.pre_activation:
+      #  inputs = self.batch_norm(inputs, is_training, tf.nn.relu)
 
       # ----------------------
       inputs = new_points
@@ -1093,12 +1094,12 @@ class Model(ResConvOps):
       inputs = tf.layers.dense(inputs, 512, None, True, KERNEL_INI )
       if self.IsShowModel: self.log( tensor_info(inputs, 'dense', 'dense0'))
       inputs = self.batch_norm(inputs, is_training, tf.nn.relu)
-      inputs = tf.layers.dropout(inputs, out_drop_rate, is_training)
+      inputs = tf.layers.dropout(inputs, out_drop_rate, training=is_training)
 
       inputs = tf.layers.dense(inputs, 256, None, True, KERNEL_INI )
       if self.IsShowModel: self.log( tensor_info(inputs, 'dense', 'dense1'))
       inputs = self.batch_norm(inputs, is_training, tf.nn.relu)
-      inputs = tf.layers.dropout(inputs, out_drop_rate, is_training)
+      inputs = tf.layers.dropout(inputs, out_drop_rate, training=is_training)
 
       inputs = tf.layers.dense(inputs, self.num_classes, None, True, KERNEL_INI )
       inputs = tf.identity(inputs, 'final_dense')
