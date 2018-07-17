@@ -34,6 +34,7 @@ from __future__ import print_function
 import tensorflow as tf
 import numpy as np
 import os, sys
+import tf_util
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT_DIR = os.path.dirname(BASE_DIR)
 sys.path.append(os.path.join(ROOT_DIR,'utils'))
@@ -251,17 +252,15 @@ bnd optimizer block_config\n'
     # We set fused=True for a significant performance boost. See
     # https://www.tensorflow.org/performance/performance_guide#common_fused_ops
     if USE_CHARLES:
-      scale = False
       epsilon = 0.001
       fused = None
     else:
-      scale = True
       epsilon = _BATCH_NORM_EPSILON
       fused = True
     inputs = tf.layers.batch_normalization(
         inputs=inputs, axis=1 if self.data_format == 'channels_first' else -1,
         momentum=self.batch_norm_decay , epsilon=epsilon, center=True,
-        scale=scale, training=training, fused=fused)
+        scale=True, training=training, fused=fused)
 
     if activation!=None:
       inputs = activation(inputs)
@@ -736,7 +735,7 @@ bnd optimizer block_config\n'
       raise NotImplementedError, scm
     return shortcut
 
-  def block_layer(self, cascade_id, inputs, block_params, block_fn, training, name):
+  def block_layer(self, cascade_id, inputs, block_params, block_fn, is_training, name):
     """Creates one layer of block_size for the ResNet model.
 
     Args:
@@ -748,7 +747,7 @@ bnd optimizer block_config\n'
       block_size: The number of block_size contained in the layer.
       strides: The stride to use for the first convolution of the layer. If
         greater than 1, this layer will ultimately downsample the input.
-      training: Either True or False, whether we are currently training the
+      is_training: Either True or False, whether we are currently training the
         model. Needed for batch norm.
       name: A string name for the tensor output of the block layer.
       data_format: The input format ('channels_last' or 'channels_first').
@@ -781,13 +780,13 @@ bnd optimizer block_config\n'
     if not self.residual:
       projection_shortcut_0 = None
     with tf.variable_scope('L0'):
-      inputs = block_fn(inputs, block_params, training, projection_shortcut_0, half_layer)
+      inputs = block_fn(inputs, block_params, is_training, projection_shortcut_0, half_layer)
 
     block_params['strides'] = 1
     block_params['padding_s1'] = 's'
     for j in range(1, block_size):
       with tf.variable_scope('L%d'%(j)):
-        inputs = block_fn(inputs, block_params, training, None)
+        inputs = block_fn(inputs, block_params, is_training, None)
 
     self._block_layers_num += 1
     return tf.identity(inputs, name)
@@ -973,17 +972,20 @@ class Model(ResConvOps):
       globalb_bottom_center = tf.multiply( tf.cast( self.globalb_bottom_center_mm, tf.float32), 0.001, name='globalb_bottom_center' ) # gpu_0/globalb_bottom_center
       self.max_step_stride = tf.multiply( globalb_bottom_center[:,:,3:6] - globalb_bottom_center[:,:,0:3], 2.0, name='max_step_stride') # gpu_0/max_step_stride
 
-  def __call__(self, inputs_dic, training):
+  def __call__(self, inputs_dic, is_training):
     """Add operations to classify a batch of input images.
 
     Args:
       inputs: A Tensor representing a batch of input images.
-      training: A boolean. Set to True to add operations required only when
+      is_training: A boolean. Set to True to add operations required only when
         training the classifier.
 
     Returns:
       A logits Tensor with shape [<batch_size>, self.num_classes].
     """
+    if USE_CHARLES:
+      print('\n\n _is_training:%s\n\n'%(is_training))
+
     IsMultiView = len(inputs_dic['points'].shape) == 4
     self.batch_size = inputs_dic['points'].shape[0].value
     self.pre_pro_inputs(inputs_dic)
@@ -995,7 +997,7 @@ class Model(ResConvOps):
             inputs_dic['b_bottom_centers_mm'],
             inputs_dic['bidxmaps_flat'],
             inputs_dic['fmap_neighbor_idis'],
-            training)
+            is_training)
     else:
       eval_views = inputs_dic['points'].shape[1].value
       batch_size = inputs_dic['points'].shape[0].value
@@ -1019,7 +1021,7 @@ class Model(ResConvOps):
             b_bottom_centers_mm,
             bidxmaps_flat,
             fmap_neighbor_idis,
-            training,
+            is_training,
             eval_views=eval_views)
       outputs = tf.reshape(outputs, [batch_size, eval_views, outputs.shape[-1].value])
       #points = tf.reshape(points,[batch_size, eval_views]+ points.shape.as_list()[1:3])
@@ -1052,6 +1054,7 @@ class Model(ResConvOps):
         # Convert the inputs from channels_last (NHWC) to channels_first (NCHW).
         # This provides a large performance boost on GPU. See
         # https://www.tensorflow.org/performance/performance_guide#data_formats
+        import pdb; pdb.set_trace()  # XXX BREAKPOINT
         new_points = tf.transpose(new_points, [0, 2, 1])
 
       for k in range(self.cascade_num):
@@ -1072,37 +1075,56 @@ class Model(ResConvOps):
               l_points[0] = root_point_features
           l_points.append(new_points)
           if self.IsShowModel: self.log(
+
             '*****************************************************************')
+      use_charles = USE_CHARLES
+      #use_charles = False
+      if use_charles:
+        batch_size = inputs.shape[0].value
+        bn_decay = self.batch_norm_decay
+        keep_prob = 0.5
+        net = tf.reshape(new_points, [batch_size, -1])
+        net = tf_util.fully_connected(net, 512, bn=True, is_training=is_training, scope='fc1', bn_decay=bn_decay)
+        if keep_prob<1:
+          net = tf_util.dropout(net, keep_prob=keep_prob, is_training=is_training, scope='dp1')
+        net = tf_util.fully_connected(net, 256, bn=True, is_training=is_training, scope='fc2', bn_decay=bn_decay)
+        if keep_prob<1:
+          net = tf_util.dropout(net, keep_prob=keep_prob, is_training=is_training, scope='dp2')
+        inputs = tf_util.fully_connected(net, 40, activation_fn=None, scope='fc3')
 
-      # Only apply the BN and ReLU for model that does pre_activation in each
-      # building/bottleneck block, eg resnet V2.
-      #if self.pre_activation:
-      #  inputs = self.batch_norm(inputs, is_training, tf.nn.relu)
-
-      # ----------------------
-      inputs = new_points
-      axes = [2] if self.data_format == 'channels_first' else [1]
-      if self.get_feature_shape(inputs)!=1:
-        inputs = tf.reduce_mean(inputs, axes)
-        if self.IsShowModel: self.log( tensor_info(inputs, 'reduce_mean', 'final') )
       else:
-        inputs = tf.squeeze(inputs)
-      inputs = tf.identity(inputs, 'final_reduce_mean')
 
-      # Fully connect layers
-      out_drop_rate=self.data_net_configs['drop_imo']['output']
-      inputs = tf.layers.dense(inputs, 512, None, True, KERNEL_INI )
-      if self.IsShowModel: self.log( tensor_info(inputs, 'dense', 'dense0'))
-      inputs = self.batch_norm(inputs, is_training, tf.nn.relu)
-      inputs = tf.layers.dropout(inputs, out_drop_rate, training=is_training)
+        # Only apply the BN and ReLU for model that does pre_activation in each
+        # building/bottleneck block, eg resnet V2.
+        if self.pre_activation:
+          inputs = self.batch_norm(inputs, is_training, tf.nn.relu)
 
-      inputs = tf.layers.dense(inputs, 256, None, True, KERNEL_INI )
-      if self.IsShowModel: self.log( tensor_info(inputs, 'dense', 'dense1'))
-      inputs = self.batch_norm(inputs, is_training, tf.nn.relu)
-      inputs = tf.layers.dropout(inputs, out_drop_rate, training=is_training)
+        # ----------------------
+        inputs = new_points
+        axes = [2] if self.data_format == 'channels_first' else [1]
+        if self.get_feature_shape(inputs)!=1:
+          import pdb; pdb.set_trace()  # XXX BREAKPOINT
+          inputs = tf.reduce_mean(inputs, axes)
+          if self.IsShowModel: self.log( tensor_info(inputs, 'reduce_mean', 'final') )
+        else:
+          inputs = tf.squeeze(inputs)
+        inputs = tf.identity(inputs, 'final_reduce_mean')
 
-      inputs = tf.layers.dense(inputs, self.num_classes, None, True, KERNEL_INI )
-      inputs = tf.identity(inputs, 'final_dense')
+        # Fully connect layers
+
+        out_drop_rate=self.data_net_configs['drop_imo']['output']
+        inputs = tf.layers.dense(inputs, 512, None, True, KERNEL_INI )
+        if self.IsShowModel: self.log( tensor_info(inputs, 'dense', 'dense0'))
+        inputs = self.batch_norm(inputs, is_training, tf.nn.relu)
+        inputs = tf.layers.dropout(inputs, out_drop_rate, training=is_training)
+
+        inputs = tf.layers.dense(inputs, 256, None, True, KERNEL_INI )
+        if self.IsShowModel: self.log( tensor_info(inputs, 'dense', 'dense1'))
+        inputs = self.batch_norm(inputs, is_training, tf.nn.relu)
+        inputs = tf.layers.dropout(inputs, out_drop_rate, training=is_training)
+
+        inputs = tf.layers.dense(inputs, self.num_classes, None, True, KERNEL_INI )
+        inputs = tf.identity(inputs, 'final_dense')
 
       if self.IsShowModel:
         self.log( tensor_info(inputs, 'dense', 'final1') +'\n\n' )
@@ -1229,27 +1251,34 @@ class Model(ResConvOps):
   def pointnet2_module(self, cascade_id, xyz, points, bidmap, block_bottom_center_mm):
     with tf.variable_scope('sa_%d'%(cascade_id)):
       batch_size = xyz.shape[0].value
-      inputs = tf.expand_dims(xyz, 2)
-
+      inputs = tf.expand_dims(xyz, 1)
+      use_charles = USE_CHARLES
+      #use_charles = False
       if self.IsShowModel:
         self.log('-------------------  cascade_id %d  ---------------------'%(cascade_id))
       filters = self.block_params['filters'][cascade_id]
       with tf.variable_scope('c%d'%(cascade_id)):
         for i,filter in enumerate(filters):
           with tf.variable_scope('l%d'%(i)):
-            inputs = self.conv2d3d(inputs, filter, 1, 1, 'v')
-            self.log_tensor_c(inputs, 1, 1, 'v', tf.get_variable_scope().name)
-            inputs = self.batch_norm(inputs, self.is_training, tf.nn.relu)
+            if use_charles:
+              inputs = tf_util.conv2d(inputs, filter, [1,1], padding='VALID', stride=[1,1],
+                             bn=True, is_training=self.is_training,
+                             scope='conv%d'%(i), bn_decay=self.batch_norm_decay,
+                             data_format='NHWC')
+            else:
+              inputs = self.conv2d3d(inputs, filter, 1, 1, 'v')
+              self.log_tensor_c(inputs, 1, 1, 'v', tf.get_variable_scope().name)
+              inputs = self.batch_norm(inputs, self.is_training, tf.nn.relu)
 
       # use max pooling to reduce map size
-      outputs = tf.squeeze(inputs, 2)
+      outputs = tf.squeeze(inputs, 1)
       if self.cascade_num > 1:
         new_xyz, grouped_xyz_feed, outputs, valid_mask = self.grouping(cascade_id, xyz,
                           outputs, bidmap, block_bottom_center_mm)
         assert len(outputs.shape)==4
-        outputs = tf.reduce_max(outputs, axis=2 if self.data_format=='channels_last' else 3)
+        outputs = tf.reduce_max(outputs, axis=[2] if self.data_format=='channels_last' else 3)
       else:
-        outputs = tf.reduce_max(outputs, axis=1 if self.data_format=='channels_last' else 2, keepdims=True)
+        outputs = tf.reduce_max(outputs, axis=[1] if self.data_format=='channels_last' else 2, keepdims=True)
         new_xyz = None
 
       self.log_tensor_p(outputs, 'max', 'cas%d'%(cascade_id))

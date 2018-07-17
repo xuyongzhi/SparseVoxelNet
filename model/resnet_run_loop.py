@@ -490,7 +490,7 @@ def resnet_main(
   for cycle_index in range(total_training_cycle):
     tf.logging.info('\n\n\nStarting a training cycle: %d/%d\n\n',
                     cycle_index, total_training_cycle)
-    eval_train_steps = 80
+    eval_train_steps = None
     if not OnlyEval:
       t0 = time.time()
       classifier.train(input_fn=input_fn_train, hooks=train_hooks,
