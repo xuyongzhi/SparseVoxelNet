@@ -38,6 +38,8 @@ from official.utils.logs import logger
 from official.utils.misc import model_helpers
 # pylint: enable=g-bad-import-order
 
+USE_CHARLES = True
+
 ################################################################################
 # Functions for input processing.
 ################################################################################
@@ -250,8 +252,12 @@ def resnet_model_fn(model_flag, features, labels, mode, model_class,
     weights = 1
   else:
     weights = tf.gather( data_net_configs['label_num_weights'], labels)
-  cross_entropy = tf.losses.sparse_softmax_cross_entropy(
-      logits=logits, labels=labels, weights=weights)
+  if USE_CHARLES:
+    cross_entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=logits, labels=labels)
+    cross_entropy = tf.reduce_mean(cross_entropy)
+  else:
+    cross_entropy = tf.losses.sparse_softmax_cross_entropy(
+        logits=logits, labels=labels, weights=weights)
 
   # Create a tensor named cross_entropy for logging purposes.
   tf.identity(cross_entropy, name='cross_entropy')
@@ -269,12 +275,15 @@ def resnet_model_fn(model_flag, features, labels, mode, model_class,
       l2loss = tf.nn.l2_loss(tf.cast(v, tf.float32))
     except:
       print(v)
-  l2_loss = weight_decay * tf.add_n(
-      # loss is computed using fp32 for numerical stability.
-      [tf.nn.l2_loss(tf.cast(v, tf.float32)) for v in tf.trainable_variables()
-       if loss_filter_fn(v.name)])
-  tf.summary.scalar('l2_loss', l2_loss)
-  loss = cross_entropy + l2_loss
+  if USE_CHARLES:
+    loss = cross_entropy
+  else:
+    l2_loss = weight_decay * tf.add_n(
+        # loss is computed using fp32 for numerical stability.
+        [tf.nn.l2_loss(tf.cast(v, tf.float32)) for v in tf.trainable_variables()
+        if loss_filter_fn(v.name)])
+    tf.summary.scalar('l2_loss', l2_loss)
+    loss = cross_entropy + l2_loss
 
   if mode == tf.estimator.ModeKeys.TRAIN:
     global_step = tf.train.get_or_create_global_step()
@@ -378,6 +387,10 @@ def per_device_batch_size(batch_size, num_gpus):
     raise ValueError(err)
   return int(batch_size / num_gpus)
 
+
+def pointnet_main(
+    flags_obj, model_function, input_function, dataset_name, data_net_configs):
+  pass
 
 def resnet_main(
     flags_obj, model_function, input_function, dataset_name, data_net_configs):
@@ -490,7 +503,7 @@ def resnet_main(
   for cycle_index in range(total_training_cycle):
     tf.logging.info('\n\n\nStarting a training cycle: %d/%d\n\n',
                     cycle_index, total_training_cycle)
-    eval_train_steps = None
+    eval_train_steps = 80
     if not OnlyEval:
       t0 = time.time()
       classifier.train(input_fn=input_fn_train, hooks=train_hooks,

@@ -21,7 +21,7 @@ residual=0
 
 resnet_size=9
 
-batch_size=32
+#batch_size=64
 #feed_data='xyzrsg-nxnynz'
 
 
