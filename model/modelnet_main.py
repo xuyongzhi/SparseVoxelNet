@@ -46,6 +46,7 @@ _NUM_IMAGES = {
 
 _NUM_TRAIN_FILES = 20
 _SHUFFLE_BUFFER = 10000
+_SHUFFLE_BUFFER = 1000
 
 DATASET_NAME = 'MODELNET40'
 
@@ -97,6 +98,76 @@ def input_fn(is_training, data_dir, batch_size, data_net_configs=None, num_epoch
       dataset, is_training, batch_size, _SHUFFLE_BUFFER, parse_pl_record, data_net_configs,
       num_epochs
   )
+
+
+def input_fn_h5(is_training, data_dir, batch_size, data_net_configs=None, num_epochs=1):
+  """Input function which provides batches for train or eval.
+
+  Args:
+    is_training: A boolean denoting whether the input is for training.
+    data_dir: The directory containing the input data.
+    batch_size: The number of samples per batch.
+    num_epochs: The number of epochs to repeat the dataset.
+
+  Returns:
+    A dataset that can be used for iteration.
+  """
+  import h5py
+
+  class generator_h5:
+    def __call__(self, fn):
+      with h5py.File(fn,'r') as h5f:
+        d_size = h5f['data'].shape[0]
+        for i in range(d_size):
+          data = h5f['data'][i,:,:]
+          label = h5f['label'][i,:]
+          label = label.astype(np.int32)
+          yield data, label
+
+  data_dir = '/DS/MODELNET/charles/modelnet40_ply_hdf5_2048'
+  filenames = glob.glob(data_dir+'/*.h5')
+
+  dataset = tf.data.Dataset.from_tensor_slices(filenames)
+  dataset = dataset.interleave(lambda fn: tf.data.Dataset.from_generator(
+    generator_h5(),
+    (tf.float32, tf.int32),
+    (tf.TensorShape([2048,3]), tf.TensorShape([1])),
+    args=(fn,) ),
+    cycle_length=6, block_length=16)
+
+  if is_training:
+    # Shuffle the input files
+    dataset = dataset.shuffle(buffer_size=_NUM_TRAIN_FILES)
+  dataset = dataset.prefetch(buffer_size=batch_size)
+  if is_training:
+    # Shuffle the input files
+    dataset = dataset.shuffle(buffer_size=_SHUFFLE_BUFFER)
+  dataset = dataset.repeat(num_epochs)
+  dataset = dataset.apply(tf.contrib.data.batch_and_drop_remainder(batch_size))
+  dataset = dataset.prefetch(buffer_size=tf.contrib.data.AUTOTUNE)
+
+
+  DEBUG = False
+  if DEBUG:
+    from ply_util import create_ply_dset
+    from datasets.all_datasets_meta.datasets_meta import DatasetsMeta
+    datasets_meta = DatasetsMeta(DATASET_NAME)
+
+    model_dir = _DATA_PARAS['model_dir']
+    ply_dir = os.path.join(model_dir,'ply')
+    aug = _DATA_PARAS['aug_types']
+    aug_ply_fn = os.path.join(ply_dir, aug)
+
+    next_item = dataset.make_one_shot_iterator().get_next()
+    with tf.Session() as sess:
+      datas, labels = sess.run(next_item)
+      for i in range(batch_size):
+        category = '_'+datasets_meta.label2class[labels[i][0]]
+        create_ply_dset(DATASET_NAME, datas[i], aug_ply_fn+category+str(i)+'.ply')
+        import pdb; pdb.set_trace()  # XXX BREAKPOINT
+        pass
+
+  return dataset
 
 
 def get_synth_input_fn():
@@ -492,6 +563,9 @@ def run_modelnet(flags_obj):
   define_net_configs(flags_obj)
   input_function = (flags_obj.use_synthetic_data and get_synth_input_fn()
                     or input_fn)
+  use_charles = True
+  if use_charles:
+    input_function = input_fn_h5
   #check_data()
   resnet_run_loop.resnet_main(
       flags_obj, modelnet_model_fn, input_function, DATASET_NAME, _DATA_PARAS)

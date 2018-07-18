@@ -962,6 +962,11 @@ class Model(ResConvOps):
 
 
   def pre_pro_inputs(self, inputs_dic):
+    if type(inputs_dic) !=dict:
+      points = inputs_dic
+      inputs_dic = {}
+      inputs_dic['points'] = points
+
     if 'sg_bidxmaps' not in inputs_dic:
       inputs_dic['sg_bidxmaps'] = [[]]
       inputs_dic['b_bottom_centers_mm'] = [[]]
@@ -971,6 +976,8 @@ class Model(ResConvOps):
       self.globalb_bottom_center_mm = inputs_dic['b_bottom_centers_mm'][self.cascade_num-1]
       globalb_bottom_center = tf.multiply( tf.cast( self.globalb_bottom_center_mm, tf.float32), 0.001, name='globalb_bottom_center' ) # gpu_0/globalb_bottom_center
       self.max_step_stride = tf.multiply( globalb_bottom_center[:,:,3:6] - globalb_bottom_center[:,:,0:3], 2.0, name='max_step_stride') # gpu_0/max_step_stride
+
+    return inputs_dic
 
   def __call__(self, inputs_dic, is_training):
     """Add operations to classify a batch of input images.
@@ -986,9 +993,9 @@ class Model(ResConvOps):
     if USE_CHARLES:
       print('\n\n _is_training:%s\n\n'%(is_training))
 
+    inputs_dic = self.pre_pro_inputs(inputs_dic)
     IsMultiView = len(inputs_dic['points'].shape) == 4
     self.batch_size = inputs_dic['points'].shape[0].value
-    self.pre_pro_inputs(inputs_dic)
     if not IsMultiView:
       assert len(inputs_dic['points'].shape) == 3
       outputs = self._call(
