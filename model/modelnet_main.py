@@ -114,36 +114,52 @@ def input_fn_h5(is_training, data_dir, batch_size, data_net_configs=None, num_ep
   """
   import h5py
 
+  bunch = batch_size // 8
   class generator_h5:
     def __call__(self, fn):
       with h5py.File(fn,'r') as h5f:
         d_size = h5f['data'].shape[0]
-        for i in range(d_size):
-          data = h5f['data'][i,:,:]
-          label = h5f['label'][i,:]
+        for i in range(0, d_size//bunch):
+          start = i*bunch
+          end = (i+1)*bunch
+          data = h5f['data'][start:end,:,:]
+          label = h5f['label'][start:end,:]
           label = label.astype(np.int32)
           yield data, label
 
+  def parse_pl_h5(datas, labels):
+    datas = tf.reshape(datas, [-1, datas.shape[-2], datas.shape[-1]])
+    labels = tf.reshape(labels, [-1, labels.shape[-1]])
+    return datas, labels
+
+  is_shuffle = False
   data_dir = '/DS/MODELNET/charles/modelnet40_ply_hdf5_2048'
-  filenames = glob.glob(data_dir+'/*.h5')
+  if is_training:
+    fn_glob = data_dir + '/*train*.h5'
+  else:
+    fn_glob = data_dir + '/*test*.h5'
+  filenames = glob.glob(fn_glob)
 
   dataset = tf.data.Dataset.from_tensor_slices(filenames)
   dataset = dataset.interleave(lambda fn: tf.data.Dataset.from_generator(
     generator_h5(),
     (tf.float32, tf.int32),
-    (tf.TensorShape([2048,3]), tf.TensorShape([1])),
+    (tf.TensorShape([bunch,2048,3]), tf.TensorShape([bunch,1])),
     args=(fn,) ),
-    cycle_length=6, block_length=16)
+    cycle_length=5, block_length=32)
 
-  if is_training:
+  batch_size = batch_size // bunch
+  if is_training and is_shuffle:
     # Shuffle the input files
     dataset = dataset.shuffle(buffer_size=_NUM_TRAIN_FILES)
   dataset = dataset.prefetch(buffer_size=batch_size)
-  if is_training:
+  dataset = dataset.apply(tf.contrib.data.batch_and_drop_remainder(batch_size))
+  dataset = dataset.map( parse_pl_h5, num_parallel_calls=3 )
+  if is_training and is_shuffle:
     # Shuffle the input files
     dataset = dataset.shuffle(buffer_size=_SHUFFLE_BUFFER)
+
   dataset = dataset.repeat(num_epochs)
-  dataset = dataset.apply(tf.contrib.data.batch_and_drop_remainder(batch_size))
   dataset = dataset.prefetch(buffer_size=tf.contrib.data.AUTOTUNE)
 
 
