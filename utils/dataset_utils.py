@@ -140,6 +140,21 @@ def write_pl_bxm_tfrecord(bxm_tfrecord_writer, tfrecord_meta_writer,\
     bxm_tfrecord_writer.write(example.SerializeToString())
 
 
+def pc_normalize(points):
+  has_normal = points.shape[-1].value == 6
+  points_xyz = points[:,0:3]
+  if has_normal:
+    points_normal = points[:,3:6]
+  centroid = tf.reduce_mean(points_xyz, axis=0)
+  points_xyz -= centroid
+  m = tf.reduce_max(tf.reduce_sum(tf.pow(points_xyz, 2),axis=1))
+  points_xyz /= m
+  if has_normal:
+    points = tf.concat([points_xyz, points_normal], 0)
+  else:
+    points = points_xyz
+  return points
+
 def parse_pl_record(tfrecord_serialized, is_training, data_net_configs=None):
     from aug_data_tf import aug_main, aug_views
     #if data_net_configs!=None:
@@ -171,6 +186,8 @@ def parse_pl_record(tfrecord_serialized, is_training, data_net_configs=None):
       points_shape = data_net_configs['points']
     # the image tensor is flattened out, so we have to reconstruct the shape
     points = tf.reshape(points, points_shape)
+    if data_net_configs != None:
+      points = pc_normalize(points)
 
     # ------------------------------------------------
     # do not need for single scale net
