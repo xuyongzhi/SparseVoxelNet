@@ -147,8 +147,8 @@ def pc_normalize(points):
     points_normal = points[:,3:6]
   centroid = tf.reduce_mean(points_xyz, axis=0)
   points_xyz -= centroid
-  m = tf.reduce_max(tf.reduce_sum(tf.pow(points_xyz, 2),axis=1))
-  points_xyz /= m
+  m = tf.reduce_max(tf.sqrt(tf.reduce_sum(tf.pow(points_xyz, 2),axis=1)))
+  points_xyz = points_xyz / m
   if has_normal:
     points = tf.concat([points_xyz, points_normal], 0)
   else:
