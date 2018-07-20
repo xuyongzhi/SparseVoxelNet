@@ -97,6 +97,10 @@ def input_fn_h5(is_training, data_dir, batch_size, data_net_configs=None, num_ep
   return dataset
 
 
+
+PrePlDownSample = False
+NUM_POINT = 1024
+
 def load_h5(fns):
   t0 = time.time()
   print('\n\nstart loading all modelnet h5')
@@ -106,6 +110,9 @@ def load_h5(fns):
     with h5py.File(fn,'r') as h5f:
       print(os.path.basename(fn))
       data = h5f['data'][:]
+      if PrePlDownSample:
+        indices = np.random.choice(data.shape[-2], NUM_POINT)
+        data = np.take(data, indices, axis=-2)
       label = h5f['label'][:]
       label = label.astype(np.int32)
       datas.append(data)
@@ -117,6 +124,7 @@ def load_h5(fns):
 
 def load_h5_all():
   data_dir = '/DS/MODELNET/charles/modelnet40_ply_hdf5_2048'
+  #data_dir = '/DS/MODELNET/charles/modelnet40_normal_resampled'
   fn_globs = {}
   fn_globs['train'] = data_dir + '/*train*.h5'
   fn_globs['test'] = data_dir + '/*test*.h5'
@@ -143,9 +151,10 @@ def input_fn_h5_(is_training, data_dir, batch_size, data_net_configs=None, num_e
   """
 
   def preprocess_pl_h5(datas, labels):
-    shape = datas.shape.as_list()
-    shape[-2] = 1024
-    datas = tf.random_crop(datas, shape)
+    if not PrePlDownSample:
+      shape = datas.shape.as_list()
+      shape[-2] = 1024
+      datas = tf.random_crop(datas, shape)
     return datas, labels
 
   is_shuffle = True
@@ -164,7 +173,6 @@ def input_fn_h5_(is_training, data_dir, batch_size, data_net_configs=None, num_e
 
   dataset = dataset.repeat(num_epochs)
   dataset = dataset.prefetch(buffer_size=tf.contrib.data.AUTOTUNE)
-
 
   DEBUG = False
   if DEBUG:

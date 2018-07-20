@@ -129,7 +129,7 @@ def check_data():
 
   datasets_meta = DatasetsMeta(DATASET_NAME)
 
-  IsCreatePly = True
+  IsCreatePly = False
   batch_size = 32
   data_dir = _DATA_PARAS['data_dir']
   model_dir = _DATA_PARAS['model_dir']
@@ -331,7 +331,7 @@ def define_net_configs(flags_obj):
   flags_obj.model_dir = model_dir
 
   flags_obj.steps_per_epoch = _NUM_IMAGES['train'] / flags_obj.batch_size
-  flags_obj.max_train_steps = int(flags_obj.train_epochs * flags_obj.steps_per_epoch)+2
+  flags_obj.max_train_steps = int(flags_obj.train_epochs * flags_obj.steps_per_epoch)
 
   # read summary
   dataset_summary = get_dataset_summary(DATASET_NAME, _DATA_PARAS['data_dir'],

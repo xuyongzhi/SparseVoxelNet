@@ -544,7 +544,6 @@ def resnet_main(
       #  pass
 
       eval_results = classifier.evaluate(input_fn=input_fn_eval,
-                                         steps=flags_obj.max_train_steps,
                                          name='test')
       eval_t = time.time() - t0
 
