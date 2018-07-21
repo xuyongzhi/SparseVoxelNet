@@ -493,7 +493,7 @@ def run_modelnet(flags_obj):
   define_net_configs(flags_obj)
   input_function = (flags_obj.use_synthetic_data and get_synth_input_fn()
                     or input_fn)
-  use_charles = True
+  use_charles = False
   if use_charles:
     from modelnet_feed import input_fn_h5, input_fn_h5_
     input_function = input_fn_h5_

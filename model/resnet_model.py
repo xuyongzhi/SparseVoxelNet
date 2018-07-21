@@ -42,6 +42,7 @@ sys.path.append(os.path.join(ROOT_DIR,'utils'))
 DEBUG_TMP = False
 
 _BATCH_NORM_EPSILON = 1e-5
+_BATCH_NORM_EPSILON = 1e-4
 DEFAULT_VERSION = 2
 DEFAULT_DTYPE = tf.float32
 CASTABLE_TYPES = (tf.float16,)
@@ -49,7 +50,7 @@ CASTABLE_TYPES = (tf.float16,)
 ALLOWED_TYPES = (DEFAULT_DTYPE,) + CASTABLE_TYPES
 #ALLOWED_TYPES = (DEFAULT_DTYPE,)
 
-USE_CHARLES = True
+USE_CHARLES = False
 NoRes_InceptionReduction = True
 
 if USE_CHARLES:
@@ -1084,9 +1085,7 @@ class Model(ResConvOps):
           if self.IsShowModel: self.log(
 
             '*****************************************************************')
-      use_charles = USE_CHARLES
-      #use_charles = False
-      if use_charles:
+      if USE_CHARLES:
         batch_size = inputs.shape[0].value
         bn_decay = self.batch_norm_decay
         keep_prob = 0.5
@@ -1259,15 +1258,13 @@ class Model(ResConvOps):
     with tf.variable_scope('sa_%d'%(cascade_id)):
       batch_size = xyz.shape[0].value
       inputs = tf.expand_dims(xyz, 1)
-      use_charles = USE_CHARLES
-      #use_charles = False
       if self.IsShowModel:
         self.log('-------------------  cascade_id %d  ---------------------'%(cascade_id))
       filters = self.block_params['filters'][cascade_id]
       with tf.variable_scope('c%d'%(cascade_id)):
         for i,filter in enumerate(filters):
           with tf.variable_scope('l%d'%(i)):
-            if use_charles:
+            if USE_CHARLES:
               inputs = tf_util.conv2d(inputs, filter, [1,1], padding='VALID', stride=[1,1],
                              bn=True, is_training=self.is_training,
                              scope='conv%d'%(i), bn_decay=self.batch_norm_decay,

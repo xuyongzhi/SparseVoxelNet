@@ -16,7 +16,7 @@ block_style='PointNet'
 shortcut='MZ'
 loss_lw_gama=-1
 train_epochs=161
-model_flag='mH5D'
+model_flag='m'
 residual=0
 
 resnet_size=9
