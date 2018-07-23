@@ -74,7 +74,7 @@ def process_record_dataset(dataset, is_training, batch_size, shuffle_buffer,
   # dataset for the appropriate number of epochs.
   dataset = dataset.repeat(num_epochs)
 
-  if is_training and num_gpus and examples_per_epoch:
+  if is_training and num_gpus>1 and examples_per_epoch:
     total_examples = examples_per_epoch*num_epochs
     total_batches = total_examples // batch_size // num_gpus * num_gpus
     dataset.take(total_batches * batch_size)
@@ -87,7 +87,7 @@ def process_record_dataset(dataset, is_training, batch_size, shuffle_buffer,
           lambda value: parse_record_fn(value, is_training, data_net_configs),
           batch_size=batch_size,
           num_parallel_batches=1,
-          drop_remainder=False))
+          drop_remainder=False if num_gpus>1 else True))
   # Operations between the final prefetch and the get_next call to the iterator
   # will happen synchronously during run time. We prefetch here again to
   # background all of the above processing work and keep it out of the

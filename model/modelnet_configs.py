@@ -19,7 +19,7 @@ DEFAULTS['data_path'] = 'MODELNET40H5F/Merged_tfrecord/4_mgs0.2048_gs2_2d2-rep_f
 
 
 DEFAULTS['only_eval'] = 0
-DEFAULTS['eval_views'] = 3
+DEFAULTS['eval_views'] = 1
 
 DEFAULTS['residual'] = 0
 DEFAULTS['shortcut'] = 'MC' #C, MC, AC, MZ, AZ
@@ -48,7 +48,7 @@ DEFAULTS['gpu_id'] = 1
 DEFAULTS['train_epochs'] = 31
 DEFAULTS['data_format'] = 'channels_last'
 
-DEFAULTS['weight_decay'] = 0.0  # res official is 1e-4, charles is 0.0
+DEFAULTS['weight_decay'] = 0  # res official is 1e-4, charles is 0.0
 
 def get_block_paras(resnet_size, model_flag, block_style):
   if block_style == 'Bottleneck' or block_style == 'Regular':
