@@ -61,6 +61,7 @@ def get_filenames(is_training, data_dir):
   else:
     return glob.glob(os.path.join(data_dir, 'test_*.tfrecord'))
 
+
 def input_fn(is_training, data_dir, batch_size, data_net_configs=None, num_epochs=1):
   """Input function which provides batches for train or eval.
 
@@ -97,7 +98,6 @@ def input_fn(is_training, data_dir, batch_size, data_net_configs=None, num_epoch
       dataset, is_training, batch_size, _SHUFFLE_BUFFER, parse_pl_record, data_net_configs,
       num_epochs
   )
-
 
 
 def get_synth_input_fn():

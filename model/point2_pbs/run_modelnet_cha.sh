@@ -15,7 +15,7 @@ use_bias=1
 block_style='PointNet'
 shortcut='MZ'
 loss_lw_gama=-1
-train_epochs=101
+train_epochs=151
 model_flag='m'
 residual=0
 

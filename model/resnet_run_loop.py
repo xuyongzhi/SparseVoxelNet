@@ -504,6 +504,9 @@ def resnet_main(
       train_eval_results = classifier.evaluate(input_fn=input_fn_train,
                                         steps=eval_train_steps, name='train')
       eval_train_t = time.time() - t0
+      if train_eval_results['global_step'] >= flags_obj.max_train_steps:
+        print('global_step: {} reaches max stop now'.format(train_eval_results['global_step']))
+        break
 
     else:
       train_t = 0
@@ -511,7 +514,6 @@ def resnet_main(
       train_eval_results = {}
       train_eval_results['accuracy'] = 0
       train_eval_results['loss'] = 0
-
 
     tf.logging.info('Starting to evaluate.')
     # flags_obj.max_train_steps is generally associated with testing and
@@ -545,6 +547,7 @@ def resnet_main(
 
     if model_helpers.past_stop_threshold(
         flags_obj.stop_threshold, eval_results['accuracy']):
+      import pdb; pdb.set_trace()  # XXX BREAKPOINT
       break
 
   if flags_obj.export_dir is not None:
