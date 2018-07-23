@@ -317,7 +317,7 @@ def resnet_model_fn(model_flag, features, labels, mode, model_class,
 
   if not tf.contrib.distribute.has_distribution_strategy():
     if eval_views>1:
-      labels_ = tf.tile(labels, [1,eval_views])
+      labels_ = tf.tile(tf.expand_dims(labels,1), [1,eval_views])
     else:
       labels_ = labels
     accuracy = tf.metrics.accuracy(labels_, predictions['classes'])
@@ -379,10 +379,6 @@ def per_device_batch_size(batch_size, num_gpus):
     raise ValueError(err)
   return int(batch_size / num_gpus)
 
-
-def pointnet_main(
-    flags_obj, model_function, input_function, dataset_name, data_net_configs):
-  pass
 
 def resnet_main(
     flags_obj, model_function, input_function, dataset_name, data_net_configs):
@@ -500,16 +496,14 @@ def resnet_main(
       t0 = time.time()
       classifier.train(input_fn=input_fn_train, hooks=train_hooks,
                       max_steps=flags_obj.max_train_steps)
-      train_t = time.time()-t0
+      train_t = (time.time()-t0)/flags_obj.epochs_between_evals
 
-      if (cycle_index%3==0 and cycle_index<=10) or \
-          (cycle_index%5 == 0 and cycle_index>10):
-        #Temporally used before metric in training is not supported in distribution
-        tf.logging.info('Starting to evaluate train data.')
-        t0 = time.time()
-        train_eval_results = classifier.evaluate(input_fn=input_fn_train,
-                                          steps=eval_train_steps, name='train')
-        eval_train_t = time.time() - t0
+      #Temporally used before metric in training is not supported in distribution
+      tf.logging.info('Starting to evaluate train data.')
+      t0 = time.time()
+      train_eval_results = classifier.evaluate(input_fn=input_fn_train,
+                                        steps=eval_train_steps, name='train')
+      eval_train_t = time.time() - t0
 
     else:
       train_t = 0
@@ -519,46 +513,39 @@ def resnet_main(
       train_eval_results['loss'] = 0
 
 
-    if  (cycle_index%3==0 and cycle_index<=10) or \
-        (cycle_index%5 == 0 and cycle_index>10) or OnlyEval:
-      tf.logging.info('Starting to evaluate.')
-      # flags_obj.max_train_steps is generally associated with testing and
-      # profiling. As a result it is frequently called with synthetic data, which
-      # will iterate forever. Passing steps=flags_obj.max_train_steps allows the
-      # eval (which is generally unimportant in those circumstances) to terminate.
-      # Note that eval will run for max_train_steps each loop, regardless of the
-      # global_step count.
-      t0 = time.time()
+    tf.logging.info('Starting to evaluate.')
+    # flags_obj.max_train_steps is generally associated with testing and
+    # profiling. As a result it is frequently called with synthetic data, which
+    # will iterate forever. Passing steps=flags_obj.max_train_steps allows the
+    # eval (which is generally unimportant in those circumstances) to terminate.
+    # Note that eval will run for max_train_steps each loop, regardless of the
+    # global_step count.
+    t0 = time.time()
 
-      #eval_pred = classifier.predict(input_fn=input_fn_eval)
-      #for e in eval_pred:
-      #  import pdb; pdb.set_trace()  # XXX BREAKPOINT
-      #  pass
+    eval_results = classifier.evaluate(input_fn=input_fn_eval,
+                                        name='test')
+    eval_t = time.time() - t0
 
-      eval_results = classifier.evaluate(input_fn=input_fn_eval,
-                                         name='test')
-      eval_t = time.time() - t0
+    benchmark_logger.log_evaluation_result(eval_results)
+    if IsMetricLog:
+      if eval_views>1:
+        eval_acu_str = '{:.3f}-{}_{:.3f}'.format(eval_results['accuracy0'], eval_views, eval_results['accuracy'])
+      else:
+        eval_acu_str = '{:.3f}'.format(eval_results['accuracy'])
+      metric_log_f.write('epoch loss accuracy global_step: {} {:.3f}/{:.3f}--{:.3f}/{}\n'.format(\
+          int(eval_results['global_step']/flags_obj.steps_per_epoch), train_eval_results['loss'], eval_results['loss'],\
+          train_eval_results['accuracy'], eval_acu_str))
+      if eval_views>1:
+        accuracies = [eval_results['accuracy%d'%(i)] for i in range(eval_views)]
+        accuracies_str = ['%0.3f'%(a) for a in accuracies]
+        metric_log_f.write('eval multi view: %s\n'%(accuracies_str))
+      metric_log_f.write('train t:{:.3f}sec    eval train t:{:.3f}sec({}steps)    eval t:{:.3f} eval_views:{}\n\n'.format(
+            train_t, eval_train_t, eval_train_steps, eval_t, eval_views))
+      metric_log_f.flush()
 
-      benchmark_logger.log_evaluation_result(eval_results)
-      if IsMetricLog:
-        if eval_views>1:
-          eval_acu_str = '{:.3f}-{}_{:.3f}'.format(eval_results['accuracy0'], eval_views, eval_results['accuracy'])
-        else:
-          eval_acu_str = '{:.3f}'.format(eval_results['accuracy'])
-        metric_log_f.write('epoch loss accuracy global_step: {} {:.3f}/{:.3f}--{:.3f}/{}\n'.format(\
-            int(eval_results['global_step']/flags_obj.steps_per_epoch), train_eval_results['loss'], eval_results['loss'],\
-            train_eval_results['accuracy'], eval_acu_str))
-        if eval_views>1:
-          accuracies = [eval_results['accuracy%d'%(i)] for i in range(eval_views)]
-          accuracies_str = ['%0.3f'%(a) for a in accuracies]
-          metric_log_f.write('eval multi view: %s\n'%(accuracies_str))
-        metric_log_f.write('train t:{:.3f}sec    eval train t:{:.3f}sec({}steps)    eval t:{:.3f} eval_views:{}\n\n'.format(
-              train_t, eval_train_t, eval_train_steps, eval_t, eval_views))
-        metric_log_f.flush()
-
-      if model_helpers.past_stop_threshold(
-          flags_obj.stop_threshold, eval_results['accuracy']):
-        break
+    if model_helpers.past_stop_threshold(
+        flags_obj.stop_threshold, eval_results['accuracy']):
+      break
 
   if flags_obj.export_dir is not None:
     # Exports a saved model for the given classifier.

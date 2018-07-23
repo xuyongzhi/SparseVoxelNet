@@ -1,5 +1,5 @@
 batch_norm_decay0=0.5
-
+epochs_between_evals=5
 
 modelnet()
 {
@@ -20,8 +20,9 @@ modelnet()
   shortcut=${15}
   loss_lw_gama=${16}
   train_epochs=${17}
+  gpu_id=${18}
 
-  python ../modelnet_main.py  --resnet_size $resnet_size --model_flag $model_flag --num_gpus 2 --batch_size $batch_size --feed_data $feed_data --aug_types $aug_types --learning_rate0 $learning_rate0 --optimizer $optimizer --batch_norm_decay0 $batch_norm_decay0 --learning_rate0 $learning_rate0 --num_gpus $num_gpus --drop_imo $drop_imo --residual $residual --use_bias $use_bias --lr_decay_epochs $lr_decay_epochs --lr_decay_rate $lr_decay_rate --block_style $block_style --shortcut $shortcut --loss_lw_gama $loss_lw_gama --train_epochs $train_epochs
+  python ../modelnet_main.py  --resnet_size $resnet_size --model_flag $model_flag --num_gpus 2 --batch_size $batch_size --feed_data $feed_data --aug_types $aug_types --learning_rate0 $learning_rate0 --optimizer $optimizer --batch_norm_decay0 $batch_norm_decay0 --learning_rate0 $learning_rate0 --num_gpus $num_gpus --drop_imo $drop_imo --residual $residual --use_bias $use_bias --lr_decay_epochs $lr_decay_epochs --lr_decay_rate $lr_decay_rate --block_style $block_style --shortcut $shortcut --loss_lw_gama $loss_lw_gama --train_epochs $train_epochs --gpu_id ${18} --epochs_between_evals $epochs_between_evals
 }
 
-modelnet $1 $2 $3 $4 $5 $6 $7 $8 $9 ${10} ${11} ${12} ${13} ${14} ${15} ${16} ${17}
+modelnet $1 $2 $3 $4 $5 $6 $7 $8 $9 ${10} ${11} ${12} ${13} ${14} ${15} ${16} ${17} ${18}

@@ -441,8 +441,8 @@ def add_log_file(model_dir):
 
 def define_modelnet_flags():
   global _DATA_PARAS
-  if DEFAULTS['num_gpus']==1:
-    os.environ['CUDA_VISIBLE_DEVICES'] = str(DEFAULTS['gpu_id'])
+  #if DEFAULTS['num_gpus']==1:
+  #  os.environ['CUDA_VISIBLE_DEVICES'] = str(DEFAULTS['gpu_id'])
 
   _DATA_PARAS = {}
   flags.DEFINE_integer('only_eval', DEFAULTS['only_eval'], '1, 0')
@@ -494,9 +494,9 @@ def run_modelnet(flags_obj):
   input_function = (flags_obj.use_synthetic_data and get_synth_input_fn()
                     or input_fn)
   use_charles = False
-  if use_charles:
-    from modelnet_feed import input_fn_h5, input_fn_h5_
-    input_function = input_fn_h5_
+  #if use_charles:
+  #  from modelnet_feed import input_fn_h5, input_fn_h5_
+  #  input_function = input_fn_h5_
   #check_data()
   resnet_run_loop.resnet_main(
       flags_obj, modelnet_model_fn, input_function, DATASET_NAME, _DATA_PARAS)

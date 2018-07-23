@@ -1,0 +1,80 @@
+\documentclass[,table,dvipsnames]{article}
+\usepackage[usenames, dvipsnames]{color}
+\usepackage{graphicx}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{hyperref}
+\usepackage{longtable}
+\usepackage{float}
+\usepackage{tikz}
+\usetikzlibrary{shapes.geometric, arrows}
+\usepackage{xcolor}
+
+\graphicspath{ {images/} {images/mat60_1AG/} }
+\title{PointNet++}
+\author{xyz}
+\date{July 2018}
+
+
+\begin{document}
+\noindent
+\begin{titlepage}
+	\maketitle
+\end{titlepage}	
+
+\section{ply h5 dataset, 1024}
+\noindent\begin{tabular}{|p{10cm}|p{5.5cm}| }	
+\hline
+\rowcolor{green!20}
+SingeScale-Bs32-AugN-SfY-Kp5-DSply-Np1024\par . \par
+aug='N', batch\_size=32, decay\_rate=0.7, decay\_step=200000, keep\_prob=0.5, learning\_rate=0.001, log\_dir='log', max\_epoch=251, model='pointnet2\_cls\_ssg', momentum=0.9, no\_shuffle=False, normal    =False, num\_gpus=1, num\_point=1024, optimizer='adam', single\_scale=True& 
+0: 0.775/0.737\par 10: 0.887/0.844\par 20: 0.921/0.861\par 40: 0.953/0.876\par  60: 0.973/0.886\par 80: 0.982/0.879\par 145: 0.996/0.888\par 250: 1.000/0.882\\	
+
+\rowcolor{red!20}
+SingeScale-Bs32-AugN-SfY-Kp5-DSply-Np2048 \par .\par 
+aug='N', batch\_size=32, decay\_rate=0.7, decay\_step=200000, ds='ply', keep\_prob=0.5, learning\_rate=0.001, log\_dir='log', max\_epoch=251, model='pointnet2\_cls\_ssg', momentum=0.9, no\_shuffle=Fal    se, normal=False, num\_gpus=1, num\_point=2048, optimizer='adam', single\_scale=True &
+0: 0.787/0.752\par 20: 0.920/0.869\par 70: 0.975/0.884\par 110: 0.986/0.887 \par 210: 0.998/0.883\\
+
+\rowcolor{green!20}
+All Aug\par 
+aug='A', batch\_size=32, decay\_rate=0.7, decay\_step=200000, keep\_prob=0.5, learning\_rate=0.001, log\_dir='log', max\_epoch=251, model='pointnet2\_cls\_ssg', momentum=0.9, no\_shuffle=False, normal    =False, num\_gpus=1, num\_point=1024, optimizer='adam', single\_scale=True& 
+0: 0.611/0.575\par  10: 0.789/0.744\par 20: 0.838/0.808\par 60: 0.880/0.833\\
+
+\rowcolor{red!20}
+SingeScale-Bs32-AugN-SfN-Kp5-DSply-Np1024 &
+0: 0.758/0.709\par 20: 0.921/0.856\par 80: 0.975/0.871\par 130: 0.989/0.875\par 150: 0.991/0.872\\
+
+\rowcolor{green!20}
+SingeScale-Bs32-AugN-SfY-Kp5-DSply-Np1024& 
+0: 0.770/0.724\par 35: 0.944/0.878\par 45: 0.957/0.881\par 150: 0.997/0.883 \\
+
+ \rowcolor{red!20}
+SingeScale-Bs32-AugA-SfY-Kp5-DSply-Np1024&
+0: 0.594/0.539\par 30: 0.855/0.827\par  100: 0.899/0.854 \par 150: 0.917/0.868 \\
+\hline 	
+\end{tabular}
+
+
+
+\section{norm dataset, 1024}
+\noindent\begin{tabular}{|p{10cm}|p{5.5cm}| }	
+\hline
+\rowcolor{green!20}
+SingeScale-Bs32-AugN-SfY-Kp5-DSnorm-Np1024&
+0: 0.756/0.726\par 10: 0.883/0.833\par 40: 0.948/0.869\par 45: 0.953/0.880\par 95: 0.985/0.882\par 100: 0.982/0.869\par  250: 1.000/0.881\\
+
+\rowcolor{red!20}
+SingeScale-Bs32-AugA-SfY-Kp2-DSnorm-Np1024&
+0: 0.327/0.248\par 20: 0.742/0.726\par 60: 0.812/0.781\par 150: 0.855/0.822\\
+
+\rowcolor{green!20}
+SingeScale-Bs32-AugA-SfY-Kp5-DSnorm-Np1024&
+0: 0.606/0.542\par 10: 0.810/0.774\par 150: 0.912/0.868\\
+
+
+ 
+\hline 	
+\end{tabular}
+
+
+\end{document}

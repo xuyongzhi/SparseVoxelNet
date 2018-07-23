@@ -19,7 +19,7 @@ DEFAULTS['data_path'] = 'MODELNET40H5F/Merged_tfrecord/4_mgs0.2048_gs2_2d2-rep_f
 
 
 DEFAULTS['only_eval'] = 0
-DEFAULTS['eval_views'] = 1
+DEFAULTS['eval_views'] = 3
 
 DEFAULTS['residual'] = 0
 DEFAULTS['shortcut'] = 'MC' #C, MC, AC, MZ, AZ
@@ -29,6 +29,7 @@ DEFAULTS['block_style'] = 'Bottleneck' # Regular, Bottleneck, Inception
 DEFAULTS['block_style'] = 'Inception' # Regular, Bottleneck, Inception
 DEFAULTS['block_style'] = 'Regular'
 DEFAULTS['block_style'] = 'PointNet'
+
 DEFAULTS['optimizer'] = 'adam'
 DEFAULTS['learning_rate0'] = 0.001
 DEFAULTS['lr_decay_rate'] = 0.7
@@ -43,7 +44,7 @@ DEFAULTS['aug_types'] = 'N' # 'rpsfj-360_0_0'
 DEFAULTS['drop_imo'] = '0_0_5'
 DEFAULTS['batch_size'] = 32
 DEFAULTS['num_gpus'] = 1
-DEFAULTS['gpu_id'] = 0
+DEFAULTS['gpu_id'] = 1
 DEFAULTS['train_epochs'] = 31
 DEFAULTS['data_format'] = 'channels_last'
 

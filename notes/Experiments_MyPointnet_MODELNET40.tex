@@ -1,0 +1,69 @@
+\documentclass[,table,dvipsnames]{article}
+\usepackage[usenames, dvipsnames]{color}
+\usepackage{graphicx}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{hyperref}
+\usepackage{longtable}
+\usepackage{float}
+\usepackage{tikz}
+\usetikzlibrary{shapes.geometric, arrows}
+\usepackage{xcolor}
+
+\graphicspath{ {images/} {images/mat60_1AG/} }
+\title{PointNet++}
+\author{xyz}
+\date{July 2018}
+
+
+\begin{document}
+\noindent
+\begin{titlepage}
+	\maketitle
+\end{titlepage}	
+
+\section{1024, normalize}
+\noindent\begin{tabular}{|p{10cm}|p{5.5cm}| }	
+\hline
+model bs aug feed drop\_imo loss\_weight lr0\_drate\_depoch bnd optimizer block\_config& \\
+\hline
+\rowcolor{green!20}
+(DEFAULT) P\_P9m 32 N xyzs 0\_0\_5 No 0.001\_0.7\_20 0.5 ada par pointnet& 0 0.846/0.996--0.758/0.719\par 9 0.335/0.500--0.896/0.841\par 30 0.132/0.448--0.950/0.865\par 40 0.072/0.435--0.974/0.882\par 45 0.054/0.453--0.981/0.886 \par 100 0.009/0.675--0.997/0.871\\
+
+\rowcolor{blue!20}
+(Use Charles) P\_P9mCha 32 N xyzs 0\_0\_5 No 0.001\_0.7\_20 0.5 ada par pointnet& 0 0.866/1.012--0.759/0.713\par 30 0.125/0.440--0.962/0.873 \par 40 0.074/0.449--0.976/0.872 \par 55 0.043/0.507--0.988/0.878 \par 100 0.006/0.626--0.998/0.869\\
+
+\rowcolor{red!20}
+(LR) P\_P9m 32 N xyzs 0\_0\_5 No 0.001\_0.7\_10 0.5 ada par pointnet& 0 0.789/0.912--0.781/0.748\par 30 0.094/0.446--0.972/0.873 \par 45 0.041/0.492--0.986/0.879\par 65 0.018/0.546--0.993/0.882\par 100 0.003/0.600--1.000/0.879\\
+
+\rowcolor{green!20}
+(DROP) P\_P9m 32 N xyzs 0\_0\_2 No 0.001\_0.7\_20 0.5 ada par pointnet&
+0 0.700/0.848--0.801/0.741\par 30 0.030/0.567--0.993/0.865 \par 65 0.002/0.704--1.000/0.873 \par 100 0.000/0.794--1.000/0.875\\
+
+\rowcolor{red!20}
+(BS)  P\_P9m 128 N xyzs 0\_0\_5 No 0.001\_0.7\_20 0.5 ada par pointnet& 0 1.021/1.179--0.747/0.704\par 30 0.084/0.481--0.974/0.871\par 99 0.007/0.699--0.998/0.854\\
+
+\rowcolor{green!20}
+(LR) 0 P\_P9m 32 N xyzs 0\_0\_5 No 0.0002\_0.7\_20 0.5 ada par pointnet& 0 1.243/1.461--0.706/0.653\par 30 0.065/0.441--0.981/0.875\par 100 0.001/0.620--1.000/0.867 \\
+
+\rowcolor{red!20}
+(lR) P\_P9m 32 N xyzs 0\_0\_5 3.0 0.001\_0.7\_20 0.5 ada par pointnet& 90 0.053/2.475--0.994/0.877\\
+
+\rowcolor{green!20}
+(LossW) P\_P9m 32 N xyzs 0\_0\_5 3.0 0.001\_0.7\_20 0.5 ada par pointnet& 90 0.053/2.475--0.994/0.877\\
+
+\rowcolor{red!20}
+(AUG psfj) P\_P9m 32 psfj xyzs 0\_0\_5 No 0.001\_0.7\_20 0.5 ada par pointnet& 70 0.217/0.412--0.927/0.880\par 90 0.180/0.411--0.938/0.883\\
+
+\rowcolor{green!20}
+(AUG r)P\_P9m 32 r-360\_0\_0 xyzs 0\_0\_5 No 0.001\_0.7\_20 0.5 ada par pointnet & 0 1.276/1.355--0.633/0.608\par 30 0.375/0.581--0.877/0.815 \par 90 0.157/0.468--0.943/0.869\par 100 0.150/0.457--0.949/0.864\\
+
+\rowcolor{red!20}
+(AUG all)  P\_P9m 32 rpsfj-360\_0\_0 xyzs 0\_0\_5 No 0.001\_0.7\_20 0.5 ada par pointnet& 0 1.701/1.611--0.504/0.541\par 30 0.610/0.638--0.797/0.804\par 40 0.527/0.582--0.832/0.818\par 100 0.387/0.515--0.868/0.845\\
+
+\rowcolor{green!20}
+(Norm) P\_P9m 32 N xyzs-n 0\_0\_5 No 0.001\_0.7\_20 0.5 ada par pointnet& 55 0.049/0.488--0.983/0.880\par 100 0.006/0.619--0.999/0.874\\
+
+\hline 	
+\end{tabular}
+\end{document}

@@ -1,7 +1,7 @@
 #!/bin/bash
 
-export CUDA_VISIBLE_DEVICES=1
-
+export CUDA_VISIBLE_DEVICES=0
+gpu_id=0
 num_gpus=1
 batch_size=32
 learning_rate0=0.001
@@ -15,7 +15,7 @@ use_bias=1
 block_style='PointNet'
 shortcut='MZ'
 loss_lw_gama=-1
-train_epochs=161
+train_epochs=101
 model_flag='m'
 residual=0
 
@@ -25,7 +25,22 @@ resnet_size=9
 #feed_data='xyzrsg-nxnynz'
 
 
-./modelnet.sh   $aug_types  $batch_size $model_flag $learning_rate0 $num_gpus $feed_data $drop_imo  $optimizer $use_bias $lr_decay_epochs $lr_decay_rate $resnet_size $block_style $residual $shortcut $loss_lw_gama  $train_epochs
+
+aug_types='rpsfj-360_0_0'
+./modelnet.sh   $aug_types  $batch_size $model_flag $learning_rate0 $num_gpus $feed_data $drop_imo  $optimizer $use_bias $lr_decay_epochs $lr_decay_rate $resnet_size $block_style $residual $shortcut $loss_lw_gama  $train_epochs $gpu_id
+#
+#
+#aug_types='r-360_0_0'
+#./modelnet.sh   $aug_types  $batch_size $model_flag $learning_rate0 $num_gpus $feed_data $drop_imo  $optimizer $use_bias $lr_decay_epochs $lr_decay_rate $resnet_size $block_style $residual $shortcut $loss_lw_gama  $train_epochs  $gpu_id
+#
+#
+#aug_types='psfj'
+#./modelnet.sh   $aug_types  $batch_size $model_flag $learning_rate0 $num_gpus $feed_data $drop_imo  $optimizer $use_bias $lr_decay_epochs $lr_decay_rate $resnet_size $block_style $residual $shortcut $loss_lw_gama  $train_epochs  $gpu_id
+#aug_types='N'
+
+
+
+
 
 
 #----------------------------------------

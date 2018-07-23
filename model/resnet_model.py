@@ -1016,12 +1016,20 @@ class Model(ResConvOps):
         #b_bottom_centers_mm[c] = inputs_dic['b_bottom_centers_mm'][c][:,v,:,:]
 
         tmp = inputs_dic['b_bottom_centers_mm'][c]
-        b_bottom_centers_mm[c] = tf.reshape(tmp, [-1]+tmp.shape[2:4].as_list())
+        if tmp!=[]:
+          b_bottom_centers_mm[c] = tf.reshape(tmp, [-1]+tmp.shape[2:4].as_list())
+          sg_bidxmaps[c] = mytile(inputs_dic['sg_bidxmaps'][c], 1, eval_views)
+        else: # single scale pointnet
+          b_bottom_centers_mm[c] = []
+          sg_bidxmaps[c] = []
 
-        sg_bidxmaps[c] = mytile(inputs_dic['sg_bidxmaps'][c], 1, eval_views)
       points = tf.reshape(inputs_dic['points'], [-1]+inputs_dic['points'].shape[2:4].as_list())
-      bidxmaps_flat = mytile(inputs_dic['bidxmaps_flat'], 1, eval_views)
-      fmap_neighbor_idis = mytile(inputs_dic['fmap_neighbor_idis'], 1, eval_views)
+      if inputs_dic['bidxmaps_flat'][0]!=[]:
+        bidxmaps_flat = mytile(inputs_dic['bidxmaps_flat'], 1, eval_views)
+        fmap_neighbor_idis = mytile(inputs_dic['fmap_neighbor_idis'], 1, eval_views)
+      else:
+        bidxmaps_flat = []
+        fmap_neighbor_idis = []
 
       outputs = self._call(
             points,
@@ -1032,8 +1040,6 @@ class Model(ResConvOps):
             is_training,
             eval_views=eval_views)
       outputs = tf.reshape(outputs, [batch_size, eval_views, outputs.shape[-1].value])
-      #points = tf.reshape(points,[batch_size, eval_views]+ points.shape.as_list()[1:3])
-      #sg_bidxmaps0 = tf.reshape(sg_bidxmaps[0],[batch_size, eval_views]+ sg_bidxmaps[0].shape.as_list()[1:3])
 
     if self.IsShowModel:
       self.model_log_f.close()
