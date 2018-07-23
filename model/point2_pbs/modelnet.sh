@@ -1,5 +1,5 @@
 batch_norm_decay0=0.5
-epochs_between_evals=2
+epochs_between_evals=5
 
 modelnet()
 {

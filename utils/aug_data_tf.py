@@ -23,6 +23,14 @@ def rotate(max_angles_yxz, style):
   R = tf_EulerRotate(angles, 'yxz')
   return R, angles
 
+def flip(is_flip_yxz='011'):
+  yxz = [1 if int(e)==0 else -1 for e in is_flip_yxz]
+  R_Flip = tf.concat([[[  yxz[1], 0.0,    0.0   ],
+                    [  0.0,   yxz[0], 0     ],
+                    [  0.0,   0,      yxz[2]]]],
+                    axis=0)
+  return R_Flip
+
 def rotate_perturbation(angle_sigma=0.06, angle_clip=0.18):
   '''
       Rotate the whole object by a random angle 3D
@@ -84,6 +92,10 @@ def aug_data(points, b_bottom_centers_mm, data_idxs, \
     augs['R'] = R
     augs['angles_yxz'] = angles
 
+  if 'flip' in aug_items:
+    R_Flip = flip()
+    RS = tf.matmul(RS, R_Flip)
+
   if 'perturbation' in aug_items:
     pR, p_angles = rotate_perturbation()
     RS = tf.matmul(RS, pR)
@@ -130,13 +142,13 @@ def aug_data(points, b_bottom_centers_mm, data_idxs, \
 def parse_augtypes(aug_types):
   tmp = aug_types.split('-')
   for s in tmp[0]:
-    assert s in 'Nvrpsfj', ('%s not in Nvrsfj'%(s))
+    assert s in 'Nvrlpsfj', ('%s not in Nvrsfj'%(s))
   if 'N' in tmp[0]:
     assert tmp[0]=='N'
     aug_items=[]
   else:
-    to_aug_items = {'r':'rotation', 'p':'perturbation', 's':'scaling',
-                    'f':'shifts', 'j':'jitter', 'v':'multi_views'}
+    to_aug_items = {'r':'rotation', 'l':'flip', 'p':'perturbation',
+                    's':'scaling','f':'shifts', 'j':'jitter', 'v':'multi_views'}
     aug_items = [to_aug_items[e] for e in tmp[0]]
   aug_metas = {}
   if len(tmp)>1:
