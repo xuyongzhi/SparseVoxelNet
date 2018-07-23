@@ -71,9 +71,13 @@ def tensor_info(tensor_ls, tensor_name_ls=None, layer_name=None,
     if tensor_ls[i] == None:
         tensor_sum += 'None'
     else:
+      if batch_size!=None:
+        map_size = tensor_ls[i].shape[0].value / batch_size
+      else:
+        map_size = 1
       shape_i = tensor_ls[i].shape.as_list()[1:]
       activation_shape_str = str(shape_i)
-      activation_size = np.prod(shape_i)  * tensor_ls[i].dtype.size
+      activation_size = np.prod(shape_i)  * tensor_ls[i].dtype.size * map_size
       activation_size_str = '(%0.1fK)'%(activation_size/1024.0)
       tensor_sum += '%-40s'%(str( activation_shape_str + activation_size_str ))
 
@@ -1153,11 +1157,9 @@ class Model(ResConvOps):
           root_point_features = None
         assert len(outputs.shape)==4
 
-        outputs = self.batch_norm(outputs, is_training, tf.nn.relu)
+        outputs = self.batch_norm(outputs, self.is_training, tf.nn.relu)
         outputs = tf.reduce_max(outputs, axis=2 if self.data_format=='channels_last' else 3)
         self.log_tensor_p(outputs, 'max', 'cas%d'%(cascade_id))
-
-
 
       else:
         # already used 3D CNN to reduce map size, just reshape
@@ -1178,11 +1180,9 @@ class Model(ResConvOps):
           else:
             outputs = tf.reshape(outputs, [batch_size,outputs.shape[1].value,-1])
 
-      assert False, 'check use_xyz here'
       if self.use_xyz and (not cascade_id==self.cascade_num-1):
         outputs = tf.concat([outputs, new_xyz], axis=-1)
         self.log_tensor_p(outputs, 'use xyz', 'cas%d'%(cascade_id))
-
 
       return new_xyz, outputs, root_point_features
 
