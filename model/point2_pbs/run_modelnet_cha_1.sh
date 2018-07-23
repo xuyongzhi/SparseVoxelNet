@@ -21,7 +21,7 @@ use_bias=1
 block_style='PointNet'
 shortcut='MZ'
 loss_lw_gama=-1
-train_epochs=101
+train_epochs=81
 model_flag='m'
 residual=0
 resnet_size=9
@@ -41,7 +41,7 @@ gpu_id=1
 
 learning_rate0=0.001
 optimizer='adam'
-lr_decay_epochs=20
+lr_decay_epochs=15
 ./modelnet.sh   $aug_types  $batch_size $model_flag $learning_rate0 $num_gpus $feed_data $drop_imo  $optimizer $use_bias $lr_decay_epochs $lr_decay_rate $resnet_size $block_style $residual $shortcut $loss_lw_gama  $train_epochs  $batch_norm_decay0 $gpu_id
 
 learning_rate0=0.001

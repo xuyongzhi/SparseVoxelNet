@@ -124,7 +124,6 @@ def unique_nd( inputs, axis=-1, unit=3 ):
 ################################################################################
 
 
-
 def conv3d_fixed_padding(inputs, filters, kernel_size, strides, padding, data_format):
   """Strided 3-D convolution with explicit padding."""
   # The padding is consistent and is based only on `kernel_size`, not on the
@@ -138,8 +137,6 @@ def conv3d_fixed_padding(inputs, filters, kernel_size, strides, padding, data_fo
       padding=padding, use_bias=False,
       kernel_initializer=KERNEL_INI,
       data_format=data_format)
-
-
 
 
 class ResConvOps(object):

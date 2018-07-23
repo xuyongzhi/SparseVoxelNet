@@ -34,7 +34,7 @@ DEFAULTS['optimizer'] = 'adam'
 DEFAULTS['learning_rate0'] = 0.001
 DEFAULTS['lr_decay_rate'] = 0.7
 DEFAULTS['lr_decay_epochs'] = 20
-DEFAULTS['lr_warmup'] = 0
+DEFAULTS['lr_warmup'] = 1
 DEFAULTS['batch_norm_decay0'] = 0.7
 
 DEFAULTS['model_flag'] = 'm'
