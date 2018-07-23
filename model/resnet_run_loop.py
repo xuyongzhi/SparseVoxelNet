@@ -540,7 +540,7 @@ def resnet_main(
         eval_acu_str = '{:.3f}-{}_{:.3f}'.format(eval_results['accuracy0'], eval_views, eval_results['accuracy'])
       else:
         eval_acu_str = '{:.3f}'.format(eval_results['accuracy'])
-      metric_log_f.write('epoch loss accuracy global_step: {} {:.3f}/{:.3f}--{:.3f}/{}\n'.format(\
+      metric_log_f.write('epoch loss accuracy: {} {:.3f}/{:.3f}--{:.3f}/{}\n'.format(\
           int(eval_results['global_step']/flags_obj.steps_per_epoch), train_eval_results['loss'], eval_results['loss'],\
           train_eval_results['accuracy'], eval_acu_str))
       if eval_views>1:

@@ -1,11 +1,11 @@
 #!/bin/bash
 
-export CUDA_VISIBLE_DEVICES=0,1
-gpu_id=0
-num_gpus=2
+gpu_id=1
+num_gpus=1
 batch_size=32
 learning_rate0=0.001
 optimizer='adam'
+optimizer='momentum'
 lr_decay_epochs=20
 lr_decay_rate=0.7
 feed_data='xyzs'
@@ -18,12 +18,7 @@ loss_lw_gama=-1
 train_epochs=151
 model_flag='m'
 residual=0
-
 resnet_size=9
-
-#batch_size=64
-#feed_data='xyzrsg-nxnynz'
-
 
 
 aug_types='rpsfj-360_0_0'
