@@ -34,7 +34,7 @@ DEFAULTS['optimizer'] = 'adam'
 DEFAULTS['learning_rate0'] = 0.001
 DEFAULTS['lr_decay_rate'] = 0.7
 DEFAULTS['lr_decay_epochs'] = 20
-DEFAULTS['lr_warmup'] = 1
+DEFAULTS['lr_warmup'] = 0
 DEFAULTS['batch_norm_decay0'] = 0.7
 
 DEFAULTS['model_flag'] = 'm'
@@ -48,7 +48,7 @@ DEFAULTS['gpu_id'] = 1
 DEFAULTS['train_epochs'] = 31
 DEFAULTS['data_format'] = 'channels_last'
 
-DEFAULTS['weight_decay'] = 0  # res official is 1e-4, charles is 0.0
+DEFAULTS['weight_decay'] = 0.0  # res official is 1e-4, charles is 0.0
 
 def get_block_paras(resnet_size, model_flag, block_style):
   if block_style == 'Bottleneck' or block_style == 'Regular':

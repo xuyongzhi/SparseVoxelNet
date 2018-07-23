@@ -1,16 +1,16 @@
 #!/bin/bash
 
-gpu_id=0
+gpu_id=1
 num_gpus=1
 batch_size=32
 
-#learning_rate0=0.001
-#optimizer='adam'
-#lr_decay_epochs=20
+learning_rate0=0.001
+optimizer='adam'
+lr_decay_epochs=20
 
-learning_rate0=0.01
-optimizer='momentum'
-lr_decay_epochs=15
+#learning_rate0=0.01
+#optimizer='momentum'
+#lr_decay_epochs=15
 
 lr_decay_rate=0.7
 batch_norm_decay0=0.5

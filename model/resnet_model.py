@@ -50,13 +50,9 @@ CASTABLE_TYPES = (tf.float16,)
 ALLOWED_TYPES = (DEFAULT_DTYPE,) + CASTABLE_TYPES
 #ALLOWED_TYPES = (DEFAULT_DTYPE,)
 
-USE_CHARLES = False
 NoRes_InceptionReduction = True
 
-if USE_CHARLES:
-  KERNEL_INI = tf.contrib.layers.xavier_initializer()   # charles
-else:
-  KERNEL_INI = tf.variance_scaling_initializer()       # res official
+KERNEL_INI = tf.variance_scaling_initializer()       # res official
 
 def tensor_info(tensor_ls, tensor_name_ls=None, layer_name=None,
                 weight_num_bytes_shapes=None, batch_size=None):
@@ -247,12 +243,8 @@ bnd optimizer block_config\n'
     """Performs a batch normalization using a standard set of parameters."""
     # We set fused=True for a significant performance boost. See
     # https://www.tensorflow.org/performance/performance_guide#common_fused_ops
-    if USE_CHARLES:
-      epsilon = 0.001
-      fused = None
-    else:
-      epsilon = _BATCH_NORM_EPSILON
-      fused = True
+    epsilon = _BATCH_NORM_EPSILON
+    fused = True
     inputs = tf.layers.batch_normalization(
         inputs=inputs, axis=1 if self.data_format == 'channels_first' else -1,
         momentum=self.batch_norm_decay , epsilon=epsilon, center=True,
@@ -986,8 +978,6 @@ class Model(ResConvOps):
     Returns:
       A logits Tensor with shape [<batch_size>, self.num_classes].
     """
-    if USE_CHARLES:
-      print('\n\n _is_training:%s\n\n'%(is_training))
 
     inputs_dic = self.pre_pro_inputs(inputs_dic)
     IsMultiView = len(inputs_dic['points'].shape) == 4
@@ -1087,51 +1077,36 @@ class Model(ResConvOps):
           l_points.append(new_points)
           if self.IsShowModel: self.log(
             '*****************************************************************')
-      if USE_CHARLES:
-        batch_size = inputs.shape[0].value
-        bn_decay = self.batch_norm_decay
-        keep_prob = 0.5
-        net = tf.reshape(new_points, [batch_size, -1])
-        net = tf_util.fully_connected(net, 512, bn=True, is_training=is_training, scope='fc1', bn_decay=bn_decay)
-        if keep_prob<1:
-          net = tf_util.dropout(net, keep_prob=keep_prob, is_training=is_training, scope='dp1')
-        net = tf_util.fully_connected(net, 256, bn=True, is_training=is_training, scope='fc2', bn_decay=bn_decay)
-        if keep_prob<1:
-          net = tf_util.dropout(net, keep_prob=keep_prob, is_training=is_training, scope='dp2')
-        inputs = tf_util.fully_connected(net, 40, activation_fn=None, scope='fc3')
+      # Only apply the BN and ReLU for model that does pre_activation in each
+      # building/bottleneck block, eg resnet V2.
+      if self.pre_activation:
+        inputs = self.batch_norm(inputs, is_training, tf.nn.relu)
 
+      # ----------------------
+      inputs = new_points
+      axes = [2] if self.data_format == 'channels_first' else [1]
+      if self.get_feature_shape(inputs)!=1:
+        import pdb; pdb.set_trace()  # XXX BREAKPOINT
+        inputs = tf.reduce_mean(inputs, axes)
+        if self.IsShowModel: self.log( tensor_info(inputs, 'reduce_mean', 'final') )
       else:
+        inputs = tf.squeeze(inputs, 1)
+      inputs = tf.identity(inputs, 'final_reduce_mean')
 
-        # Only apply the BN and ReLU for model that does pre_activation in each
-        # building/bottleneck block, eg resnet V2.
-        if self.pre_activation:
-          inputs = self.batch_norm(inputs, is_training, tf.nn.relu)
+      # Fully connect layers
+      out_drop_rate=self.data_net_configs['drop_imo']['output']
+      inputs = tf.layers.dense(inputs, 512, None, True, KERNEL_INI )
+      if self.IsShowModel: self.log( tensor_info(inputs, 'dense', 'dense0'))
+      inputs = self.batch_norm(inputs, is_training, tf.nn.relu)
+      inputs = tf.layers.dropout(inputs, out_drop_rate, training=is_training)
 
-        # ----------------------
-        inputs = new_points
-        axes = [2] if self.data_format == 'channels_first' else [1]
-        if self.get_feature_shape(inputs)!=1:
-          import pdb; pdb.set_trace()  # XXX BREAKPOINT
-          inputs = tf.reduce_mean(inputs, axes)
-          if self.IsShowModel: self.log( tensor_info(inputs, 'reduce_mean', 'final') )
-        else:
-          inputs = tf.squeeze(inputs, 1)
-        inputs = tf.identity(inputs, 'final_reduce_mean')
+      inputs = tf.layers.dense(inputs, 256, None, True, KERNEL_INI )
+      if self.IsShowModel: self.log( tensor_info(inputs, 'dense', 'dense1'))
+      inputs = self.batch_norm(inputs, is_training, tf.nn.relu)
+      inputs = tf.layers.dropout(inputs, out_drop_rate, training=is_training)
 
-        # Fully connect layers
-        out_drop_rate=self.data_net_configs['drop_imo']['output']
-        inputs = tf.layers.dense(inputs, 512, None, True, KERNEL_INI )
-        if self.IsShowModel: self.log( tensor_info(inputs, 'dense', 'dense0'))
-        inputs = self.batch_norm(inputs, is_training, tf.nn.relu)
-        inputs = tf.layers.dropout(inputs, out_drop_rate, training=is_training)
-
-        inputs = tf.layers.dense(inputs, 256, None, True, KERNEL_INI )
-        if self.IsShowModel: self.log( tensor_info(inputs, 'dense', 'dense1'))
-        inputs = self.batch_norm(inputs, is_training, tf.nn.relu)
-        inputs = tf.layers.dropout(inputs, out_drop_rate, training=is_training)
-
-        inputs = tf.layers.dense(inputs, self.num_classes, None, True, KERNEL_INI )
-        inputs = tf.identity(inputs, 'final_dense')
+      inputs = tf.layers.dense(inputs, self.num_classes, None, True, KERNEL_INI )
+      inputs = tf.identity(inputs, 'final_dense')
 
       if self.IsShowModel:
         self.log( tensor_info(inputs, 'dense', 'final1') +'\n\n' )
@@ -1265,15 +1240,9 @@ class Model(ResConvOps):
       with tf.variable_scope('c%d'%(cascade_id)):
         for i,filter in enumerate(filters):
           with tf.variable_scope('l%d'%(i)):
-            if USE_CHARLES:
-              inputs = tf_util.conv2d(inputs, filter, [1,1], padding='VALID', stride=[1,1],
-                             bn=True, is_training=self.is_training,
-                             scope='conv%d'%(i), bn_decay=self.batch_norm_decay,
-                             data_format='NHWC')
-            else:
-              inputs = self.conv2d3d(inputs, filter, 1, 1, 'v')
-              self.log_tensor_c(inputs, 1, 1, 'v', tf.get_variable_scope().name)
-              inputs = self.batch_norm(inputs, self.is_training, tf.nn.relu)
+            inputs = self.conv2d3d(inputs, filter, 1, 1, 'v')
+            self.log_tensor_c(inputs, 1, 1, 'v', tf.get_variable_scope().name)
+            inputs = self.batch_norm(inputs, self.is_training, tf.nn.relu)
 
       # use max pooling to reduce map size
       outputs = tf.squeeze(inputs, 1)
