@@ -76,12 +76,7 @@ def input_fn(is_training, data_dir, batch_size, data_net_configs=None, num_epoch
   """
   filenames = get_filenames(is_training, data_dir)
   assert len(filenames)>0, (data_dir)
-  #print('\ngot {} tfrecord files\n'.format(len(filenames)))
-  dataset = tf.data.TFRecordDataset(filenames)
-                                   # compression_type="",
-                                   # buffer_size=_SHUFFLE_BUFFER,
-                                   #num_parallel_reads=3)
-
+  dataset = tf.data.Dataset.from_tensor_slices(filenames)
   if is_training:
     # Shuffle the input files
     dataset = dataset.shuffle(buffer_size=_NUM_TRAIN_FILES)
@@ -91,12 +86,13 @@ def input_fn(is_training, data_dir, batch_size, data_net_configs=None, num_epoch
   # This number is low enough to not cause too much contention on small systems
   # but high enough to provide the benefits of parallelization. You may want
   # to increase this number if you have a large number of CPU cores.
-  #dataset = dataset.apply(tf.contrib.data.parallel_interleave(
-  #    tf.data.TFRecordDataset, cycle_length=5))
+  dataset = dataset.apply(tf.contrib.data.parallel_interleave(
+      tf.data.TFRecordDataset, cycle_length=5))
 
   return resnet_run_loop.process_record_dataset(
       dataset, is_training, batch_size, _SHUFFLE_BUFFER, parse_pl_record, data_net_configs,
-      num_epochs
+      num_epochs, data_net_configs['num_gpus'] if is_training else None,
+      _NUM_IMAGES['train'] if is_training else None
   )
 
 
@@ -286,6 +282,7 @@ def define_net_configs(flags_obj):
   global _DATA_PARAS
   if DEFAULTS['num_gpus']==1:
     assert flags_obj.num_gpus == 1
+  _DATA_PARAS['num_gpus'] = flags_obj.num_gpus
   _DATA_PARAS['only_eval'] = flags_obj.only_eval == 1
   _DATA_PARAS['eval_views'] = flags_obj.eval_views
   _DATA_PARAS['residual'] = flags_obj.residual == 1

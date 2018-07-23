@@ -1,8 +1,8 @@
 #!/bin/bash
 
-export CUDA_VISIBLE_DEVICES=0
+export CUDA_VISIBLE_DEVICES=0,1
 gpu_id=0
-num_gpus=1
+num_gpus=2
 batch_size=32
 learning_rate0=0.001
 optimizer='adam'

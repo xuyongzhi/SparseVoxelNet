@@ -75,13 +75,11 @@ def tensor_info(tensor_ls, tensor_name_ls=None, layer_name=None,
     if tensor_ls[i] == None:
         tensor_sum += 'None'
     else:
-        if batch_size==None:
-          batch_size = tensor_ls[i].shape[0].value
-        activation_shape_str = str([s.value for s in tensor_ls[i].shape])
-        activation_size = np.prod(tensor_ls[i].shape.as_list()) \
-                          * tensor_ls[i].dtype.size / batch_size
-        activation_size_str = '(%0.1fK)'%(activation_size/1024.0)
-        tensor_sum += '%-40s'%(str( activation_shape_str + activation_size_str ))
+      shape_i = tensor_ls[i].shape.as_list()[1:]
+      activation_shape_str = str(shape_i)
+      activation_size = np.prod(shape_i)  * tensor_ls[i].dtype.size
+      activation_size_str = '(%0.1fK)'%(activation_size/1024.0)
+      tensor_sum += '%-40s'%(str( activation_shape_str + activation_size_str ))
 
     if weight_num_bytes_shapes!=None:
       weight_num, weight_bytes, weight_shapes = weight_num_bytes_shapes
@@ -1009,6 +1007,8 @@ class Model(ResConvOps):
     else:
       eval_views = inputs_dic['points'].shape[1].value
       batch_size = inputs_dic['points'].shape[0].value
+      if batch_size==None:
+        batch_size  = -1
       b_bottom_centers_mm = {}
       sg_bidxmaps = {}
       cascade_num = len(inputs_dic['b_bottom_centers_mm'])
@@ -1089,7 +1089,6 @@ class Model(ResConvOps):
               l_points[0] = root_point_features
           l_points.append(new_points)
           if self.IsShowModel: self.log(
-
             '*****************************************************************')
       if USE_CHARLES:
         batch_size = inputs.shape[0].value
@@ -1119,11 +1118,10 @@ class Model(ResConvOps):
           inputs = tf.reduce_mean(inputs, axes)
           if self.IsShowModel: self.log( tensor_info(inputs, 'reduce_mean', 'final') )
         else:
-          inputs = tf.squeeze(inputs)
+          inputs = tf.squeeze(inputs, 1)
         inputs = tf.identity(inputs, 'final_reduce_mean')
 
         # Fully connect layers
-
         out_drop_rate=self.data_net_configs['drop_imo']['output']
         inputs = tf.layers.dense(inputs, 512, None, True, KERNEL_INI )
         if self.IsShowModel: self.log( tensor_info(inputs, 'dense', 'dense0'))
