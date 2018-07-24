@@ -157,8 +157,8 @@ class ResConvOps(object):
     self.data_net_configs= data_net_configs
     self.residual = data_net_configs['residual']
     self.voxel3d = 'V' in data_net_configs['model_flag']
-    global_step = tf.train.get_or_create_global_step()
-    self.batch_norm_decay = data_net_configs['bndecay_fn'](global_step)
+    train_global_step = tf.train.get_or_create_global_step()
+    self.batch_norm_decay = data_net_configs['bndecay_fn'](train_global_step)
     tf.summary.scalar('batch_norm_decay', self.batch_norm_decay)
     self.use_bias = data_net_configs['use_bias']
     self.shortcut_method = data_net_configs['shortcut'] #'C' 'PC' 'PZ'
@@ -885,7 +885,8 @@ class Model(ResConvOps):
     #self.log('cascade_num:{}'.format(self.cascade_num))
     self.IsOnlineGlobal = self.model_flag[-1] == 'G'
     for key in ['feed_data', 'data_idxs','flatten_bm_extract_idx',
-                'sub_block_step_candis','xyz_elements']:
+                'sub_block_step_candis','xyz_elements','sub_block_stride_candis',
+                'dataset_name','global_step']:
       setattr(self, key, self.data_net_configs[key])
 
     for e in self.feed_data:
