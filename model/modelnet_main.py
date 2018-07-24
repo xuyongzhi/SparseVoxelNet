@@ -113,6 +113,7 @@ def get_data_shapes_from_tfrecord(data_dir):
 
       for key in features:
         _DATA_PARAS[key] = features[key][0].shape
+        print('{}:{}'.format(key, _DATA_PARAS[key]))
       points_raw = features['points'][0]
       print('\n\nget shape from tfrecord OK:\n %s\n\n'%(_DATA_PARAS))
       #print('points', features['points'][0,0:5,:])

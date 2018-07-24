@@ -150,10 +150,10 @@ def pc_normalize(points):
   m = tf.reduce_max(tf.sqrt(tf.reduce_sum(tf.pow(points_xyz, 2),axis=1)))
   points_xyz = points_xyz / m
   if has_normal:
-    points = tf.concat([points_xyz, points_normal], 0)
+    points_normed = tf.concat([points_xyz, points_normal], -1)
   else:
-    points = points_xyz
-  return points
+    points_normed = points_xyz
+  return points_normed
 
 def parse_pl_record(tfrecord_serialized, is_training, data_net_configs=None):
     from aug_data_tf import aug_main, aug_views

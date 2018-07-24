@@ -23,7 +23,7 @@ shortcut='MZ'
 loss_lw_gama=-1
 train_epochs=91
 residual=0
-resnet_size=31
+resnet_size=14
 
 model_flag='m'
 
