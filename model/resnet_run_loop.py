@@ -87,7 +87,7 @@ def process_record_dataset(dataset, is_training, batch_size, shuffle_buffer,
           lambda value: parse_record_fn(value, is_training, data_net_configs),
           batch_size=batch_size,
           num_parallel_batches=1,
-          drop_remainder=False if num_gpus>1 else True))
+          drop_remainder=True if num_gpus>1 else True))
   # Operations between the final prefetch and the get_next call to the iterator
   # will happen synchronously during run time. We prefetch here again to
   # background all of the above processing work and keep it out of the
