@@ -71,7 +71,7 @@ def tensor_info(tensor_ls, tensor_name_ls=None, layer_name=None,
     if tensor_ls[i] == None:
         tensor_sum += 'None'
     else:
-      if batch_size!=None:
+      if tensor_ls[i].shape[0].value!=None and batch_size!=None:
         map_size = tensor_ls[i].shape[0].value / batch_size
       else:
         map_size = 1
@@ -836,7 +836,8 @@ class Model(ResConvOps):
     super(Model, self).__init__(data_net_configs, data_format)
     self.model_flag = model_flag
     self.resnet_size = resnet_size
-
+    self.batch_size = data_net_configs['batch_size']//data_net_configs['num_gpus']
+    self.num_gpus = data_net_configs['num_gpus']
 
     self.resnet_version = resnet_version
     if resnet_version not in (1, 2):
@@ -883,7 +884,8 @@ class Model(ResConvOps):
     assert self.cascade_num <= self.data_net_configs['sg_bm_extract_idx'].shape[0]-1
     #self.log('cascade_num:{}'.format(self.cascade_num))
     self.IsOnlineGlobal = self.model_flag[-1] == 'G'
-    for key in self.data_net_configs:
+    for key in ['feed_data', 'data_idxs','flatten_bm_extract_idx',
+                'sub_block_step_candis','xyz_elements']:
       setattr(self, key, self.data_net_configs[key])
 
     for e in self.feed_data:
@@ -985,7 +987,7 @@ class Model(ResConvOps):
 
     inputs_dic = self.pre_pro_inputs(inputs_dic)
     IsMultiView = len(inputs_dic['points'].shape) == 4
-    self.batch_size = inputs_dic['points'].shape[0].value
+    #self.batch_size = inputs_dic['points'].shape[0].value
     if not IsMultiView:
       assert len(inputs_dic['points'].shape) == 3
       outputs = self._call(
@@ -1267,7 +1269,6 @@ class Model(ResConvOps):
     if self.data_format == 'channels_first':
       points = tf.transpose(points, [0, 2, 1])
 
-    batch_size = xyz.get_shape()[0].value
     assert self.cascade_num == self.flatten_bm_extract_idx.shape[0]-1  # include global here (Note: cascade_num does not include global in block_pre_util )
     assert self.sub_block_step_candis.size == self.cascade_num-1
     #if cascade_id==0:
@@ -1284,6 +1285,7 @@ class Model(ResConvOps):
         new_xyz = None
         valid_mask = None
     else:
+        batch_size = self.batch_size
         batch_idx = tf.reshape( tf.range(batch_size),[batch_size,1,1,1] )
         nsubblock = bidmap.get_shape()[1].value
         npoint_subblock = bidmap.get_shape()[2].value
