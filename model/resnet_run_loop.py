@@ -87,7 +87,7 @@ def process_record_dataset(dataset, is_training, batch_size, shuffle_buffer,
           lambda value: parse_record_fn(value, is_training, data_net_configs),
           batch_size=batch_size,
           num_parallel_batches=1,
-          drop_remainder=True))
+          drop_remainder=True if num_gpus>1 else False))
   # Operations between the final prefetch and the get_next call to the iterator
   # will happen synchronously during run time. We prefetch here again to
   # background all of the above processing work and keep it out of the
@@ -487,12 +487,12 @@ def resnet_main(
   else:
     total_training_cycle = (flags_obj.train_epochs //
                             flags_obj.epochs_between_evals)
-    ## train for one step to check max memory usage
-    #classifier.train(input_fn=input_fn_train, hooks=train_hooks, steps=10)
+    # train for one step to check max memory usage
+    classifier.train(input_fn=input_fn_train, hooks=train_hooks, steps=10)
 
-    #with tf.Session() as sess:
-    #  max_memory_usage_v = sess.run(max_memory_usage)
-    #  tf.logging.info('\n\nmemory usage: %0.3f G\n\n'%(max_memory_usage_v*1.0/1e9))
+    with tf.Session() as sess:
+      max_memory_usage_v = sess.run(max_memory_usage)
+      tf.logging.info('\n\nmemory usage: %0.3f G\n\n'%(max_memory_usage_v*1.0/1e9))
 
   for cycle_index in range(total_training_cycle):
     tf.logging.info('\n\n\nStarting a training cycle: %d/%d\n\n',
