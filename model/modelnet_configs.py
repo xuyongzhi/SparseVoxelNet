@@ -231,6 +231,14 @@ def get_block_paras_bottle_regu(resnet_size, model_flag, block_style):
 
   if data_flag == '3M1':
     if block_style == 'Regular':
+      rs = 6
+      num_filters0s[rs] = 8
+      block_sizes[rs]    = [[0.5],    [0.5],    [0.5,0.5],      [0.5,0.5]]
+      block_filters[rs]  = [[13], [16],  [18,18],[32,32]]
+      block_kernels[rs]  = [[],       [3],    [3,3],      [3,3]]
+      block_strides[rs]  = [[],       [1],    [1,1],      [1,1]]
+      block_paddings[rs] = [[],       ['v'],['v','v'],['v','v']]
+
       rs = 14
       num_filters0s[rs] = 64
       block_sizes[rs]    = [[1],    [1],    [1,1],      [1,1,0.5]]

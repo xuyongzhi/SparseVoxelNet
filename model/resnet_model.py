@@ -1069,6 +1069,7 @@ class Model(ResConvOps):
           else:
             block_bottom_center_mm = b_bottom_centers_mm[k]
             sg_bidxmap_k = sg_bidxmaps[k]
+          block_bottom_center_mm = tf.cast(block_bottom_center_mm, tf.float32)
 
           if self.block_style == 'PointNet':
             l_xyz, new_points, root_point_features = self.pointnet2_module(k, l_xyz,
