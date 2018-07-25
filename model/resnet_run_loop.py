@@ -236,6 +236,11 @@ def resnet_model_fn(model_flag, features, labels, mode, model_class,
       'classes': tf.argmax(logits, axis=-1),
       'probabilities': tf.nn.softmax(logits, name='softmax_tensor')
   }
+
+  IsCheckNet = True
+  if IsCheckNet:
+    add_check(predictions)
+
   if len(logits.shape)==3: # eval multi views
     eval_views = logits.shape[1].value
     logits = tf.reduce_min(logits, 1)
@@ -386,6 +391,39 @@ def per_device_batch_size(batch_size, num_gpus):
   return int(batch_size / num_gpus)
 
 
+def add_check(predictions):
+  inputs = tf.get_collection('inputs')
+  predictions['inputs'] = inputs[0]
+  new_xyz_COLCs = tf.get_collection('new_xyz_COLC')
+  grouped_xyz_COLCs = tf.get_collection('grouped_xyz_COLC')
+  cascade_num = len(new_xyz_COLCs)
+  for i in range(cascade_num):
+    predictions['new_xyz_%d'%(i)] = new_xyz_COLCs[i]
+    predictions['grouped_xyz_%d'%(i)] = grouped_xyz_COLCs[i]
+
+def check_net(classifier, input_fn_eval, dataset_name, data_net_configs):
+  N = 3
+  res_dir = '/tmp/check_net'
+  if not os.path.exists(res_dir):
+    os.makedirs(res_dir)
+  from ply_util import create_ply_dset
+  pred_results = classifier.predict(input_fn=input_fn_eval)
+  check_items = ['inputs']
+  cascade_num = len( data_net_configs['block_params']['filters'])
+  for i in range(cascade_num):
+    check_items.append('new_xyz_%d'%(i))
+    check_items.append('grouped_xyz_%d'%(i))
+  for j,pred in enumerate(pred_results):
+    checks = {}
+    for item in check_items:
+      checks[item] = pred[item]
+      ply_fn = '{}/{}_{}.ply'.format(res_dir, j, item)
+      create_ply_dset(dataset_name, checks[item], ply_fn)
+    if j==N-1:
+      break
+  import pdb; pdb.set_trace()  # XXX BREAKPOINT
+  pass
+
 def resnet_main(
     flags_obj, model_function, input_function, dataset_name, data_net_configs):
   """Shared main loop for ResNet Models.
@@ -403,6 +441,7 @@ def resnet_main(
     shape: list of ints representing the shape of the images used for training.
       This is only used if flags_obj.export_dir is passed.
   """
+
   IsMetricLog = True   # temporally used
   OnlyEval = data_net_configs['only_eval']
   if IsMetricLog:
@@ -487,8 +526,10 @@ def resnet_main(
   else:
     total_training_cycle = (flags_obj.train_epochs //
                             flags_obj.epochs_between_evals)
+
+    #check_net(classifier, input_fn_eval, dataset_name, data_net_configs)
     # train for one step to check max memory usage
-    classifier.train(input_fn=input_fn_train, hooks=train_hooks, steps=10)
+    train_res = classifier.train(input_fn=input_fn_train, hooks=train_hooks, steps=10)
 
     with tf.Session() as sess:
       max_memory_usage_v = sess.run(max_memory_usage)
@@ -503,6 +544,7 @@ def resnet_main(
       classifier.train(input_fn=input_fn_train, hooks=train_hooks,
                       max_steps=flags_obj.max_train_steps)
       train_t = (time.time()-t0)/flags_obj.epochs_between_evals
+
 
       #Temporally used before metric in training is not supported in distribution
       tf.logging.info('Starting to evaluate train data.')

@@ -1042,6 +1042,7 @@ class Model(ResConvOps):
   def _call(self, inputs, sg_bidxmaps, b_bottom_centers_mm, bidxmaps_flat,
             fmap_neighbor_idis, is_training, eval_views=-1):
 
+    tf.add_to_collection('inputs', inputs)
     if self.IsShowModel: self.log('')
     self.is_training = is_training
     sg_bm_extract_idx = self.data_net_configs['sg_bm_extract_idx']
@@ -1236,7 +1237,6 @@ class Model(ResConvOps):
 
   def pointnet2_module(self, cascade_id, xyz, points, bidmap, block_bottom_center_mm):
     with tf.variable_scope('sa_%d'%(cascade_id)):
-      batch_size = xyz.shape[0].value
       inputs = tf.expand_dims(xyz, 1)
       if self.IsShowModel:
         self.log('-------------------  cascade_id %d  ---------------------'%(cascade_id))
@@ -1312,6 +1312,8 @@ class Model(ResConvOps):
         new_xyz = tf.reduce_mean(grouped_xyz,-2)
     else:
         new_xyz = block_bottom_center_mm[:,:,3:6] * tf.constant( 0.001, tf.float32 )
+    tf.add_to_collection('grouped_xyz_COLC', grouped_xyz)
+    tf.add_to_collection('new_xyz_COLC', new_xyz)
     # the mid can be mean or block center, decided by configs['mean_grouping_position']
     sub_block_mid = tf.expand_dims( new_xyz,-2, name = 'sub_block_mid' )   # gpu_1/sa_layer0/sub_block_mid
     global_block_mid = tf.reduce_mean( sub_block_mid,1, keepdims=True, name = 'global_block_mid' )

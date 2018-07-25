@@ -22,8 +22,10 @@
 	\maketitle
 \end{titlepage}	
 
-\section{1024, normalize}
+\section{1M: 1024, normalize}
 \noindent\begin{tabular}{|p{10cm}|p{5.5cm}| }	
+\hline
+4\_mgs0.2048\_gs2\_2d2-rep\_fmn1\_mvp1-1-1024--pd3-1M &\\	
 \hline
 model bs aug feed drop\_imo loss\_weight lr0\_drate\_depoch bnd optimizer block\_config& \\
 \hline
@@ -64,6 +66,21 @@ model bs aug feed drop\_imo loss\_weight lr0\_drate\_depoch bnd optimizer block\
 \rowcolor{green!20}
 (Norm) P\_P9m 32 N xyzs-n 0\_0\_5 No 0.001\_0.7\_20 0.5 ada par pointnet& 55 0.049/0.488--0.983/0.880\par 100 0.006/0.619--0.999/0.874\\
 
+\hline 	
+\end{tabular}
+
+\section{2M2pp: 4096 single scale}
+\noindent\begin{tabular}{|p{10cm}|p{5.5cm}| }	
+\hline
+6\_mgs1\_gs2\_2-neg\_fmn14\_mvp1-1024\_240\_1-64\_27\_256-0d2\_0d4-0d1\_0d2-pd3-2M2pp & \\
+\hline
+model bs aug feed drop\_imo loss\_weight lr0\_drate\_depoch bnd optimizer block\_config&\\
+
+\rowcolor{green!20}
+P\_P9m 32 N xyzs 0\_0\_5 No 0.001\_0.7\_20 0.5 ada par pointnet& 3 0.553/0.660--0.832/0.802\par 30 0.205/0.427--0.930/0.860\par 60 0.111/0.464--0.957/0.877\par 81 0.060/0.488--0.978/0.884\par 149 0.020/0.642--0.991/0.878\\
+
+\rowcolor{red!20}
+(LR Decay)P\_P9m 32 N xyzs 0\_0\_5 No 0.001\_0.7\_10 0.5 ada par pointnet \par label\_num\_weights:1 \par no lr warm& 44 0.111/0.429--0.961/0.880 \par 74 0.054/0.465--0.980/0.884\par 125 0.027/0.527--0.989/0.882\\
 \hline 	
 \end{tabular}
 \end{document}
