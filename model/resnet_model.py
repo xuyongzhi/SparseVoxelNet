@@ -443,7 +443,8 @@ bnd optimizer block_config\n'
     return inputs
 
 
-  def building_block_v2(self, inputs, block_params, training, projection_shortcut, half_layer=None):
+  def building_block_v2(self, inputs, block_params, training, projection_shortcut,
+                        half_layer=None, no_ini_bn=False):
     """A single block for ResNet v2, without a bottleneck.
 
     Batch normalization then ReLu then convolution as described by:
@@ -472,7 +473,8 @@ bnd optimizer block_config\n'
     padding_s1 = block_params['padding_s1']
 
     shortcut = inputs
-    inputs = self.batch_norm(inputs, training, tf.nn.relu)
+    if not no_ini_bn:
+      inputs = self.batch_norm(inputs, training, tf.nn.relu)
     if projection_shortcut == 'FirstResUnit':
       # For pointnet, projection shortcut is not needed at the First ResUnit.
       # However, BN and Activation is still required at the First ResUnit for
@@ -510,7 +512,8 @@ bnd optimizer block_config\n'
     else:
       return inputs
 
-  def bottleneck_block_v2(self, inputs, block_params, training, projection_shortcut, half_layer=None):
+  def bottleneck_block_v2(self, inputs, block_params, training, projection_shortcut,
+                          half_layer=None, no_ini_bn=False):
     """A single block for ResNet v2, with a bottleneck.
 
     Similar to building_block_v2(), except using the "bottleneck" blocks
@@ -547,7 +550,8 @@ bnd optimizer block_config\n'
     padding_s1 = block_params['padding_s1']
 
     shortcut = inputs
-    inputs = self.batch_norm(inputs, training, tf.nn.relu)
+    if not no_ini_bn:
+      inputs = self.batch_norm(inputs, training, tf.nn.relu)
 
     # The projection shortcut should come after the first batch norm and ReLU
     # since it performs a 1x1 convolution.
@@ -600,7 +604,7 @@ bnd optimizer block_config\n'
     return net
 
   def inception_block_v2(self, inputs, block_params, training,
-                         projection_shortcut, half_layer=None):
+                         projection_shortcut, half_layer=None, no_ini_bn=False):
     """A single block for ResNet v2, with inception structure
 
 
@@ -620,7 +624,8 @@ bnd optimizer block_config\n'
       The output tensor of the block; shape should match inputs.
     """
     shortcut = inputs
-    inputs = self.batch_norm(inputs, training, tf.nn.relu)
+    if not no_ini_bn:
+      inputs = self.batch_norm(inputs, training, tf.nn.relu)
 
     # The projection shortcut should come after the first batch norm and ReLU
     # since it performs a 1x1 convolution.
@@ -772,7 +777,9 @@ bnd optimizer block_config\n'
     if not self.residual:
       projection_shortcut_0 = None
     with tf.variable_scope('L0'):
-      inputs = block_fn(inputs, block_params, is_training, projection_shortcut_0, half_layer)
+      no_ini_bn = cascade_id==1
+      inputs = block_fn(inputs, block_params, is_training, projection_shortcut_0,
+                        half_layer, no_ini_bn=no_ini_bn)
 
     block_params['strides'] = 1
     block_params['padding_s1'] = 's'
@@ -1088,8 +1095,9 @@ class Model(ResConvOps):
             '*****************************************************************')
       # Only apply the BN and ReLU for model that does pre_activation in each
       # building/bottleneck block, eg resnet V2.
-      if self.pre_activation:
-        inputs = self.batch_norm(inputs, is_training, tf.nn.relu)
+      if self.block_style != 'PointNet':
+        if self.pre_activation:
+          inputs = self.batch_norm(inputs, is_training, tf.nn.relu)
 
       # ----------------------
       inputs = new_points
