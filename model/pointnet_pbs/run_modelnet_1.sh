@@ -6,7 +6,7 @@ batch_size=32
 
 learning_rate0=0.001
 optimizer='adam'
-lr_decay_epochs=15
+lr_decay_epochs=20
 
 #learning_rate0=0.01
 #optimizer='momentum'
@@ -23,7 +23,7 @@ shortcut='MZ'
 loss_lw_gama=-1
 train_epochs=101
 residual=0
-resnet_size=10
+resnet_size=14
 
 model_flag='m'
 batch_size=32
@@ -34,21 +34,18 @@ batch_size=32
 #batch_norm_decay0=0.8
 #./modelnet.sh   $aug_types  $batch_size $model_flag $learning_rate0 $num_gpus $feed_data $drop_imo  $optimizer $use_bias $lr_decay_epochs $lr_decay_rate $resnet_size $block_style $residual $shortcut $loss_lw_gama  $train_epochs  $batch_norm_decay0 $gpu_id
 #batch_norm_decay0=0.5
-#
-#feed_data='xyzs-nxnynz'
-#./modelnet.sh   $aug_types  $batch_size $model_flag $learning_rate0 $num_gpus $feed_data $drop_imo  $optimizer $use_bias $lr_decay_epochs $lr_decay_rate $resnet_size $block_style $residual $shortcut $loss_lw_gama  $train_epochs  $batch_norm_decay0 $gpu_id
-#feed_data='xyzs'
+
 
 
 gpu_id=0
 
-aug_types='r-360_0_0'
+learning_rate0=0.01
 ./modelnet.sh   $aug_types  $batch_size $model_flag $learning_rate0 $num_gpus $feed_data $drop_imo  $optimizer $use_bias $lr_decay_epochs $lr_decay_rate $resnet_size $block_style $residual $shortcut $loss_lw_gama  $train_epochs  $batch_norm_decay0 $gpu_id
+learning_rate0=0.001
 
-aug_types='l'
-./modelnet.sh   $aug_types  $batch_size $model_flag $learning_rate0 $num_gpus $feed_data $drop_imo  $optimizer $use_bias $lr_decay_epochs $lr_decay_rate $resnet_size $block_style $residual $shortcut $loss_lw_gama  $train_epochs  $batch_norm_decay0 $gpu_id
-
-aug_types='rlpsfj-360_0_0'
+learning_rate0=0.01
+optimizer='momentum'
+lr_decay_epochs=15
 ./modelnet.sh   $aug_types  $batch_size $model_flag $learning_rate0 $num_gpus $feed_data $drop_imo  $optimizer $use_bias $lr_decay_epochs $lr_decay_rate $resnet_size $block_style $residual $shortcut $loss_lw_gama  $train_epochs  $batch_norm_decay0 $gpu_id
 
 #----------------------------------------

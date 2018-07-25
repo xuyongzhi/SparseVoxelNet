@@ -295,6 +295,8 @@ def get_block_paras_pointnet(resnet_size, model_flag, block_style):
   block_filters[rs]  = [[64,64,128, 128,256, 256,512,1024]]
   rs = 10
   block_filters[rs]  = [[64,64,128], [128,128,256], [256,512,1024]]
+  rs = 14
+  block_filters[rs]  = [[32,32,64,64,128], [128,128,256,256,256], [256,512,512,1024]]
 
   #for k in block_kernels:
   #  # cascade_id 0 is pointnet
