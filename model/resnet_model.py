@@ -318,7 +318,6 @@ bnd optimizer block_config\n'
     """Strided 2-D or 3-D convolution with explicit padding.
       padding_s1:  only used when strides==1
     """
-    assert strides == 1 # temporaly
     if len(inputs.shape)==5:
       conv_fn = tf.layers.conv3d
       self._conv3d_num += 1
@@ -327,7 +326,6 @@ bnd optimizer block_config\n'
       self._conv2d_num += 1
 
     inputs, padding = self.padding2d3d(inputs, kernels, strides, padding_s1)
-
 
     outputs = conv_fn(
         inputs=inputs, filters=filters, kernel_size=kernels, strides=strides,
@@ -394,7 +392,7 @@ bnd optimizer block_config\n'
     padding = self._padding[padding_s1]
     if strides > 1:
       assert padding == 'valid'
-      inputs = self.fixed_padding_2d3d(inputs, kernels, self.data_format)
+      inputs = self.fixed_padding_2d3d(inputs, kernels)
     if padding == 'same':
       self.check_kernel_waste(inputs, kernels, True)
     return inputs, padding
