@@ -22,7 +22,7 @@ modelnet()
   batch_norm_decay0=${18}
   gpu_id=${19}
 
-  if [$num_gpus = 1]
+  if [ $num_gpus == 1 ]
   then
     export CUDA_VISIBLE_DEVICES=$gpu_id
   fi
