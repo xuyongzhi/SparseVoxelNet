@@ -392,7 +392,7 @@ def per_device_batch_size(batch_size, num_gpus):
 
 
 def add_check(predictions):
-  inputs = tf.get_collection('inputs')
+  inputs = tf.get_collection('raw_inputs')
   predictions['inputs'] = inputs[0]
   new_xyz_COLCs = tf.get_collection('new_xyz_COLC')
   grouped_xyz_COLCs = tf.get_collection('grouped_xyz_COLC')

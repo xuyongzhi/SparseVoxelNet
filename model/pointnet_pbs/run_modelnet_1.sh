@@ -1,6 +1,6 @@
 #!/bin/bash
 
-gpu_id=1
+gpu_id=0
 num_gpus=1
 batch_size=32
 
@@ -23,7 +23,7 @@ shortcut='MZ'
 loss_lw_gama=-1
 train_epochs=91
 residual=0
-resnet_size=14
+resnet_size=10
 
 model_flag='V'
 

@@ -1042,7 +1042,7 @@ class Model(ResConvOps):
   def _call(self, inputs, sg_bidxmaps, b_bottom_centers_mm, bidxmaps_flat,
             fmap_neighbor_idis, is_training, eval_views=-1):
 
-    tf.add_to_collection('inputs', inputs)
+    tf.add_to_collection('raw_inputs', inputs)
     if self.IsShowModel: self.log('')
     self.is_training = is_training
     sg_bm_extract_idx = self.data_net_configs['sg_bm_extract_idx']
@@ -1093,10 +1093,9 @@ class Model(ResConvOps):
 
       # ----------------------
       inputs = new_points
-      axes = [2] if self.data_format == 'channels_first' else [1]
+      axis = [2] if self.data_format == 'channels_first' else [1]
       if self.get_feature_shape(inputs)!=1:
-        import pdb; pdb.set_trace()  # XXX BREAKPOINT
-        inputs = tf.reduce_mean(inputs, axes)
+        inputs = tf.reduce_mean(inputs, axis)
         if self.IsShowModel: self.log( tensor_info(inputs, 'reduce_mean', 'final') )
       else:
         inputs = tf.squeeze(inputs, 1)
@@ -1135,11 +1134,8 @@ class Model(ResConvOps):
   def res_sa_module(self, cascade_id, xyz, points, bidmap, block_bottom_center_mm):
     with tf.variable_scope('sa_%d'%(cascade_id)):
       batch_size = xyz.shape[0].value
-      if cascade_id > 0:
-        new_xyz, grouped_xyz, inputs, valid_mask = self.grouping(cascade_id, xyz,
+      new_xyz, grouped_xyz, inputs, valid_mask = self.grouping(cascade_id, xyz,
                           points, bidmap, block_bottom_center_mm)
-      else:
-        inputs = tf.expand_dims(xyz, 2)
 
       if cascade_id == 0:
         inputs = self.initial_layer(inputs)
@@ -1147,16 +1143,13 @@ class Model(ResConvOps):
         inputs = self.grouped_points_to_voxel_points( cascade_id, inputs,
                             valid_mask, block_bottom_center_mm, grouped_xyz)
 
-      outputs= self.res_sa_model(cascade_id, inputs, block_bottom_center_mm)
+      outputs = self.res_sa_model(cascade_id, inputs, block_bottom_center_mm)
 
 
       if cascade_id == 0 or (not self.voxel3d):
         # use max pooling to reduce map size
         if cascade_id==0:
           #outputs = self.feature_uncompress_block(outputs, 2, 1)
-          outputs = tf.squeeze(outputs, 2)
-          new_xyz, grouped_xyz, outputs, valid_mask = self.grouping(cascade_id, xyz,
-                            outputs, bidmap, block_bottom_center_mm)
           root_point_features = outputs
         else:
           root_point_features = None
@@ -1184,10 +1177,6 @@ class Model(ResConvOps):
             outputs = tf.reshape(outputs, [batch_size,-1,outputs.shape[-1].value])
           else:
             outputs = tf.reshape(outputs, [batch_size,outputs.shape[1].value,-1])
-
-      if self.use_xyz and (not cascade_id==self.cascade_num-1):
-        outputs = tf.concat([outputs, new_xyz], axis=-1)
-        self.log_tensor_p(outputs, 'use xyz', 'cas%d'%(cascade_id))
 
       return new_xyz, outputs, root_point_features
 
@@ -1237,9 +1226,16 @@ class Model(ResConvOps):
 
   def pointnet2_module(self, cascade_id, xyz, points, bidmap, block_bottom_center_mm):
     with tf.variable_scope('sa_%d'%(cascade_id)):
-      inputs = tf.expand_dims(xyz, 1)
       if self.IsShowModel:
         self.log('-------------------  cascade_id %d  ---------------------'%(cascade_id))
+      if self.cascade_num > 1:
+        new_xyz, grouped_xyz_feed, inputs, valid_mask = self.grouping(cascade_id, xyz,
+                          points, bidmap, block_bottom_center_mm)
+        assert len(inputs.shape)==4
+      else:
+        inputs = tf.expand_dims(xyz, 1)
+        new_xyz = None
+
       filters = self.block_params['filters'][cascade_id]
       with tf.variable_scope('c%d'%(cascade_id)):
         for i,filter in enumerate(filters):
@@ -1249,20 +1245,8 @@ class Model(ResConvOps):
             inputs = self.batch_norm(inputs, self.is_training, tf.nn.relu)
 
       # use max pooling to reduce map size
-      outputs = tf.squeeze(inputs, 1)
-      if self.cascade_num > 1:
-        new_xyz, grouped_xyz_feed, outputs, valid_mask = self.grouping(cascade_id, xyz,
-                          outputs, bidmap, block_bottom_center_mm)
-        assert len(outputs.shape)==4
-        outputs = tf.reduce_max(outputs, axis=[2] if self.data_format=='channels_last' else 3)
-      else:
-        outputs = tf.reduce_max(outputs, axis=[1] if self.data_format=='channels_last' else 2, keepdims=True)
-        new_xyz = None
-
+      outputs = tf.reduce_max(inputs, axis=[2] if self.data_format=='channels_last' else 3)
       self.log_tensor_p(outputs, 'max', 'cas%d'%(cascade_id))
-      if self.use_xyz and (not cascade_id==self.cascade_num-1):
-        outputs = tf.concat([outputs, new_xyz], axis=-1)
-        self.log_tensor_p(outputs, 'use xyz', 'cas%d'%(cascade_id))
 
       return new_xyz, outputs, None
 
@@ -1332,6 +1316,7 @@ class Model(ResConvOps):
     if cascade_id==0:
         # xyz must be at the first in feed_data_elements !!!!
         grouped_points = tf.concat( [grouped_xyz_feed, grouped_points[...,3:]],-1 )
+        tf.add_to_collection('inputs', grouped_points)
 
         #if len(indrop_keep_mask.get_shape()) != 0:
         #    if InDropMethod == 'set1st':
@@ -1346,10 +1331,10 @@ class Model(ResConvOps):
         #    elif InDropMethod == 'set0':
         #        valid_mask = tf.logical_and( valid_mask, tf.equal(grouped_indrop_keep_mask,0), name='valid_mask_droped' )   # gpu_1/sa_layer0/valid_mask_droped
 
-    #else:
-    #  if self.use_xyz and (not cascade_id==self.cascade_num-1):
-    #      assert False, "not here"
-    #      grouped_points = tf.concat([grouped_xyz_feed, grouped_points],axis=-1)
+    else:
+      if self.use_xyz and (not cascade_id==self.cascade_num-1):
+          grouped_points = tf.concat([grouped_points, grouped_xyz_feed],axis=-1)
+          self.log_tensor_p(grouped_points, 'use xyz', 'cas%d'%(cascade_id))
 
     if self.IsShowModel:
       sc = 'grouping %d'%(cascade_id)
