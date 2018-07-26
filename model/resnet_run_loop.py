@@ -404,21 +404,42 @@ def add_check(predictions):
 def check_net(classifier, input_fn_eval, dataset_name, data_net_configs):
   N = 3
   res_dir = '/tmp/check_net'
+  gen_inputs = True
+  gen_new_xyz = False
+  gen_grouped = False
+  gen_grouped_subblock = True
   if not os.path.exists(res_dir):
     os.makedirs(res_dir)
   from ply_util import create_ply_dset
   pred_results = classifier.predict(input_fn=input_fn_eval)
-  check_items = ['inputs']
+  check_items = []
+  if gen_inputs:
+    check_items.append('inputs')
   cascade_num = len( data_net_configs['block_params']['filters'])
   for i in range(cascade_num):
-    check_items.append('new_xyz_%d'%(i))
-    check_items.append('grouped_xyz_%d'%(i))
+    if gen_new_xyz:
+      check_items.append('new_xyz_%d'%(i))
+    if gen_grouped or gen_grouped_subblock:
+      check_items.append('grouped_xyz_%d'%(i))
   for j,pred in enumerate(pred_results):
     checks = {}
     for item in check_items:
       checks[item] = pred[item]
       ply_fn = '{}/{}_{}.ply'.format(res_dir, j, item)
-      create_ply_dset(dataset_name, checks[item], ply_fn)
+
+      if 'grouped' in item and gen_grouped_subblock:
+        data = checks[item]
+        for k in range(min(20,data.shape[0])):
+          dir_k = res_dir+'/%d_%s'%(j,item)
+          if not os.path.exists(dir_k):
+            os.makedirs(dir_k)
+          ply_fn = '{}/{}.ply'.format(dir_k, k)
+          create_ply_dset(dataset_name, checks[item][k], ply_fn, extra='random_same_color')
+
+      if 'grouped' in item and not gen_grouped:
+        pass
+      else:
+        create_ply_dset(dataset_name, checks[item], ply_fn)
     if j==N-1:
       break
   import pdb; pdb.set_trace()  # XXX BREAKPOINT
