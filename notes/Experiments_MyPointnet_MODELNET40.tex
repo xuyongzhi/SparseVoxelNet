@@ -83,4 +83,30 @@ P\_P9m 32 N xyzs 0\_0\_5 No 0.001\_0.7\_20 0.5 ada par pointnet& 3 0.553/0.660--
 (LR Decay)P\_P9m 32 N xyzs 0\_0\_5 No 0.001\_0.7\_10 0.5 ada par pointnet \par label\_num\_weights:1 \par no lr warm& 44 0.111/0.429--0.961/0.880 \par 74 0.054/0.465--0.980/0.884\par 125 0.027/0.527--0.989/0.882\\
 \hline 	
 \end{tabular}
+
+\section{2M2pp: 4096 multi scale, P10}
+\noindent\begin{tabular}{|p{10cm}|p{5.5cm}| }	
+\hline
+\rowcolor{green!20}
+P\_P10m 32 N xyzs 0\_0\_5 No 0.001\_0.7\_20 0.5 ada par pointnet& 15 0.282/0.490--0.906/0.850\par 66 0.006/0.655--0.999/0.876\\
+\hline 	
+\end{tabular}
+
+\section{2M2pp: 4096 multi scale, P14}
+\noindent\begin{tabular}{|p{10cm}|p{5.5cm}| }	
+\hline
+\rowcolor{green!20}
+P\_P14m 32 N xyzg 0\_0\_5 No 0.001\_0.7\_10 0.5 ada par pointnet& 53 0.136/0.721--0.957/0.819\\
+\rowcolor{red!20}
+P\_P14m 32 N xyzg-n 0\_0\_5 No 0.001\_0.7\_10 0.5 ada par pointnet& 18 0.403/0.668--0.874/0.805\\
+\rowcolor{green!20}
+ P\_P14m 32 N xyzsg 0\_0\_5 No 0.001\_0.7\_10 0.5 ada par pointnet& 24 0.341/0.656--0.886/0.814\par  53 0.141/0.740--0.954/0.806\\
+ \rowcolor{red!20}
+ P14m 32 N xyzs 0\_0\_5 No 0.01\_0.7\_20 0.5 ada par pointnet& 50 0.306/0.587--0.897/0.837\\
+ \rowcolor{green!20}
+ P14m 32 N xyzs 0\_0\_5 No 0.001\_0.7\_20 0.5 ada par pointnet&38 0.101/0.554--0.962/0.857 \par 71 0.009/0.728--0.998/0.868\par 98 0.003/0.820--0.999/0.862\\
+ \rowcolor{red!20}
+ P14m 32 N xyzs 0\_0\_5 No 0.001\_0.7\_20 0.8 ada par pointnet& 80 0.003/0.770--1.000/0.870 \\
+\hline 	
+\end{tabular}
 \end{document}

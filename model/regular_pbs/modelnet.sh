@@ -1,4 +1,4 @@
-epochs_between_evals=3
+epochs_between_evals=1
 
 modelnet()
 {

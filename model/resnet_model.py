@@ -1354,7 +1354,7 @@ class Model(ResConvOps):
     new_points = grouped_points
     if self.data_format == 'channels_first':
       new_points = tf.transpose(new_points, [0, 3, 1, 2])
-    return new_xyz, grouped_xyz_feed, new_points, valid_mask
+    return new_xyz, grouped_xyz, new_points, valid_mask
 
   def grouped_points_to_voxel_points (self, cascade_id, new_points, valid_mask, block_bottom_center_mm, grouped_xyz):
     IS_merge_blocks_while_fix_bmap = True

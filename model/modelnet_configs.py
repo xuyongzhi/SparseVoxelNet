@@ -175,7 +175,7 @@ def get_block_paras_bottle_regu(resnet_size, model_flag, block_style):
       rs = 10
       num_filters0s[rs] = 32
       block_sizes[rs]    = [[1], [1], [1,1]]
-      block_filters[rs] = [[32], [64], [128,256]]
+      block_filters[rs] = [[64], [128], [256,512]]
       block_kernels[rs]  = [[], [3], [3,3]]
       block_strides[rs]  = [[], [1], [1,1]]
       block_paddings[rs] = [[], ['v'], ['v','v']]
@@ -294,9 +294,9 @@ def get_block_paras_pointnet(resnet_size, model_flag, block_style):
   rs = 9
   block_filters[rs]  = [[64,64,128, 128,256, 256,512,1024]]
   rs = 10
-  block_filters[rs]  = [[64,64,128, 128,256], [256,256,512,1024]]
+  block_filters[rs]  = [[32,64,64,128], [128,2128,256], [256,512,1024]]
   rs = 14
-  block_filters[rs]  = [[32,32,64,64,128], [128,128,256,256,256], [256,512,512,1024]]
+  block_filters[rs]  = [[64,64,128,128,256], [256,256,256,512], [512,512,1024]]
 
   #for k in block_kernels:
   #  # cascade_id 0 is pointnet

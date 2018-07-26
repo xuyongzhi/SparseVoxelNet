@@ -22,14 +22,16 @@ block_style='PointNet'
 shortcut='MZ'
 loss_lw_gama=-1
 train_epochs=61
-residual=1
+residual=0
 resnet_size=14
-resnet_size=10
 
 model_flag='m'
 batch_size=32
+feed_data='xyzsg'
 
+./modelnet.sh   $aug_types  $batch_size $model_flag $learning_rate0 $num_gpus $feed_data $drop_imo  $optimizer $use_bias $lr_decay_epochs $lr_decay_rate $resnet_size $block_style $residual $shortcut $loss_lw_gama  $train_epochs  $batch_norm_decay0 $gpu_id
 
+feed_data='xyzsg-nxnynz'
 ./modelnet.sh   $aug_types  $batch_size $model_flag $learning_rate0 $num_gpus $feed_data $drop_imo  $optimizer $use_bias $lr_decay_epochs $lr_decay_rate $resnet_size $block_style $residual $shortcut $loss_lw_gama  $train_epochs  $batch_norm_decay0 $gpu_id
 
 #batch_norm_decay0=0.8
