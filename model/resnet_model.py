@@ -1234,7 +1234,7 @@ class Model(ResConvOps):
     with tf.variable_scope('sa_%d'%(cascade_id)):
       if self.IsShowModel:
         self.log('-------------------  cascade_id %d  ---------------------'%(cascade_id))
-      if self.cascade_num > 1:
+      if self.cascade_num > 1+cascade_id:
         new_xyz, grouped_xyz_feed, inputs, valid_mask = self.grouping(cascade_id, xyz,
                           points, bidmap, block_bottom_center_mm)
         assert len(inputs.shape)==4
@@ -1260,8 +1260,8 @@ class Model(ResConvOps):
     if self.data_format == 'channels_first':
       points = tf.transpose(points, [0, 2, 1])
 
-    assert self.cascade_num == self.flatten_bm_extract_idx.shape[0]-1  # include global here (Note: cascade_num does not include global in block_pre_util )
-    assert self.sub_block_step_candis.size == self.cascade_num-1
+    assert self.cascade_num <= self.flatten_bm_extract_idx.shape[0]-1  # include global here (Note: cascade_num does not include global in block_pre_util )
+    assert self.sub_block_step_candis.size >= self.cascade_num-1
     #if cascade_id==0:
     #    indrop_keep_mask = tf.get_default_graph().get_tensor_by_name('indrop_keep_mask:0') # indrop_keep_mask:0
 

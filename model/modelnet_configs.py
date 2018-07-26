@@ -294,7 +294,7 @@ def get_block_paras_pointnet(resnet_size, model_flag, block_style):
   rs = 9
   block_filters[rs]  = [[64,64,128, 128,256, 256,512,1024]]
   rs = 10
-  block_filters[rs]  = [[64,64,128], [128,128,256], [256,512,1024]]
+  block_filters[rs]  = [[64,64,128, 128,256], [256,256,512,1024]]
   rs = 14
   block_filters[rs]  = [[32,32,64,64,128], [128,128,256,256,256], [256,512,512,1024]]
 
