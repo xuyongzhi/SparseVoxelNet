@@ -1,7 +1,7 @@
 #!/bin/bash
 
 gpu_id=1
-num_gpus=1
+num_gpus=2
 batch_size=32
 
 learning_rate0=0.001
@@ -27,7 +27,7 @@ resnet_size=10
 
 model_flag='V'
 
-feed_data='xyzs'
+feed_data='xyzsg'
 batch_norm_decay0=0.8
 
 

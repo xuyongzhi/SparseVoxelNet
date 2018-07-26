@@ -237,7 +237,7 @@ def resnet_model_fn(model_flag, features, labels, mode, model_class,
       'probabilities': tf.nn.softmax(logits, name='softmax_tensor')
   }
 
-  IsCheckNet = True
+  IsCheckNet = False # must be False when num_gpus>1
   if IsCheckNet:
     add_check(predictions)
 
