@@ -1497,6 +1497,7 @@ class Model(ResConvOps):
     if self.data_format == 'channels_first':
       voxel_points = tf.transpose(voxel_points, [0, 4, 1, 2, 3])
     self.log_tensor_p(voxel_points, 'voxel', 'cas%d'%(cascade_id))
+    import pdb; pdb.set_trace()  # XXX BREAKPOINT
     return voxel_points
 
 
