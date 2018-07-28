@@ -38,8 +38,8 @@ from official.utils.logs import logger
 from official.utils.misc import model_helpers
 # pylint: enable=g-bad-import-order
 
-
-IsCheckNet = False # must be False when num_gpus>1
+# must be False when num_gpus>1
+IsCheckNet = True
 
 ################################################################################
 # Functions for input processing.
@@ -407,17 +407,18 @@ def add_check(predictions):
     predictions['voxel_indices_%d'%(i)] = voxel_indices_COLC[i]
 
 def check_net(classifier, input_fn_eval, dataset_name, data_net_configs):
-  N = 1
+  N = 2
   res_dir = '/tmp/check_net'
   gen_inputs = True
   gen_new_xyz = False
-  gen_grouped = False
+  gen_grouped = True
   gen_grouped_subblock = True
   gen_voxel_indices = True
+  max_subblock_num = 1000
 
   if not os.path.exists(res_dir):
     os.makedirs(res_dir)
-  from ply_util import create_ply_dset
+  from ply_util import create_ply_dset, draw_points_and_voxel_indices
   pred_results = classifier.predict(input_fn=input_fn_eval)
   check_items = []
   if gen_inputs:
@@ -428,29 +429,36 @@ def check_net(classifier, input_fn_eval, dataset_name, data_net_configs):
       check_items.append('new_xyz_%d'%(i))
     if gen_grouped or gen_grouped_subblock:
       check_items.append('grouped_xyz_%d'%(i))
-    if gen_voxel_indices and i<cascade_num-1:
-      check_items.append('voxel_indices_%d'%(i))
+    #if gen_voxel_indices and i<cascade_num-1:
+    #  check_items.append('voxel_indices_%d'%(i))
 
   for j,pred in enumerate(pred_results):
 
-    # fuse voxel indices into grouped points
+    # gen voxel edges *****************************************************
     if 'voxel_indices_0' in pred:
       for v in range(cascade_num-1):
-        grouped_xyz = pred['grouped_xyz_%d'%(v+1)]
-        voxel_indices = pred['voxel_indices_%d'%(v)]
-        grouped_xyz_vertex = gen_vertex(grouped_xyz, voxel_indices)
-        import pdb; pdb.set_trace()  # XXX BREAKPOINT
-        pass
+        grouped_xyz = pred['grouped_xyz_%d'%(v+1)] # (240, 27, 3)
+        grouped_voxel_indices = pred['voxel_indices_%d'%(v)] # (240, 27, 3)
+
+        dir_k = res_dir+'/%d_grouped_xyz_%d'%(j,v+1)
+        if not os.path.exists(dir_k):
+          os.makedirs(dir_k)
+
+        for k in range(min(grouped_xyz.shape[0], max_subblock_num)):
+          ply_fn = '{}/edge_{}.ply'.format(dir_k, k)
+          draw_points_and_voxel_indices(ply_fn, grouped_xyz[k], grouped_voxel_indices[k])
 
     checks = {}
     for item in check_items:
+      if item not in pred:
+        continue
       checks[item] = pred[item]
       if item=='inputs':
         assert checks['inputs'].shape[-1]==3
       # gen_grouped_subblock *******************************************
       if 'grouped' in item and gen_grouped_subblock:
         data = checks[item]
-        for k in range(min(20,data.shape[0])):
+        for k in range(min(max_subblock_num,data.shape[0])):
           dir_k = res_dir+'/%d_%s'%(j,item)
           if not os.path.exists(dir_k):
             os.makedirs(dir_k)
@@ -462,7 +470,7 @@ def check_net(classifier, input_fn_eval, dataset_name, data_net_configs):
         pass
       else:
         ply_fn = '{}/{}_{}.ply'.format(res_dir, j, item)
-        create_ply_dset(dataset_name, checks[item], ply_fn)
+        create_ply_dset(dataset_name, checks[item], ply_fn,  extra = 'random_same_color')
 
 
     if j==N-1:

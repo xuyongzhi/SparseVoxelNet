@@ -39,8 +39,11 @@ def test_plyfile():
     print('write tmp/test_ascii.ply')
 
 
-def gen_box_pl( ply_fn, box_vertexes, pl_xyz=None ):
+def gen_box_and_pl( ply_fn, box_vertexes, pl_xyz=None ):
     '''
+    Generate box and points together in the same file. box_vertexes and pl_xyz
+      independently. The 8 vertexs are included automatically in the box.
+      pl_xyz is used to provide other points.
     box_vertexes:[num_box,8,3]
     pl_xyz:  [num_point,3]
     '''
@@ -66,6 +69,7 @@ def gen_box_pl( ply_fn, box_vertexes, pl_xyz=None ):
 
     el_vertex = PlyElement.describe(vertex,'vertex')
 
+    # define the order of the 8 vertexs for a box
     edge_basic = np.array([ (0, 1, 255, 0, 0),
                             (1, 2, 255, 0, 0),
                             (2, 3, 255, 0, 0),
@@ -123,7 +127,7 @@ def gen_box_8vertexs( bxyz_min, bxyz_max ):
 
 def gen_box_norotation( ply_fn, bxyz_min, bxyz_max ):
     box_vertexes = gen_box_8vertexs( bxyz_min, bxyz_max )
-    gen_box_pl( ply_fn, box_vertexes )
+    gen_box_and_pl( ply_fn, box_vertexes )
 
 def test_box( pl_xyz=None ):
     box_vertex0_a = np.array( [(0,0,0),(0,1,0),(1,1,0),(1,0,0)] )
@@ -138,8 +142,9 @@ def test_box( pl_xyz=None ):
     bxyz_max = np.array([[1,2,1], [1,4,6]])
     box_vertexes = gen_box_8vertexs( bxyz_min, bxyz_max )
     pl_xyz = box_vertexes + np.array([-0.2,-0.3,0.2])
+    pl_xyz = None
 
-    gen_box_pl( '/tmp/box_pl.ply',box_vertexes, pl_xyz )
+    gen_box_and_pl( '/tmp/box_pl.ply',box_vertexes, pl_xyz )
 
 def cut_xyz( xyz, cut_threshold = [1,1,1] ):
     xyz = np.reshape( xyz,[-1,xyz.shape[-1]] )
@@ -157,6 +162,7 @@ def cut_xyz( xyz, cut_threshold = [1,1,1] ):
         is_keep[i] = tmp[i].all()
     xyz_new = xyz[is_keep,:]
     return xyz_new, is_keep
+
 
 def create_ply( xyz0, ply_fn, label=None, label2color=None, force_color=None, box=None, cut_threshold=[1,1,1] ):
     '''
@@ -230,9 +236,61 @@ def create_ply_dset( dataset_name, xyz, ply_fn, label=None, cut_threshold=[1,1,1
       label = label.astype(np.int32)
     create_ply( xyz, ply_fn, label = label, label2color = DatasetsMeta.g_label2color[dataset_name], cut_threshold=cut_threshold )
 
+def draw_points_and_edges(ply_fn, xyz, edge_indices):
+  '''
+  xyz: (num_point, 3)
+  edge_indices:(num_edge,2)
+  '''
+  #
+  vertex = np.zeros( shape=(xyz.shape[0]) ).astype([('x', 'f8'), ('y', 'f8'),('z', 'f8')])
+  for i in range(xyz.shape[0]):
+      vertex[i] = ( xyz[i,0],xyz[i,1],xyz[i,2] )
+
+  #
+  num_edge = edge_indices.shape[0]
+  edge_val = np.zeros(shape=(num_edge, 5))
+  edge_val[:,0:2] = edge_indices
+  edge_val[:,2:5] = np.array([0,0,255])
+
+  edge = np.zeros( shape=(edge_val.shape[0]) ).astype(
+                  dtype=[('vertex1', 'i4'), ('vertex2','i4'),
+                          ('red', 'u1'), ('green', 'u1'),('blue', 'u1')])
+  for i in range(edge_val.shape[0]):
+      edge[i] = ( edge_val[i,0], edge_val[i,1], edge_val[i,2], edge_val[i,3], edge_val[i,4] )
+
+  el_vertex = PlyElement.describe(vertex,'vertex')
+  el_edge = PlyElement.describe(edge,'edge')
+  PlyData([el_vertex, el_edge],text=True).write(ply_fn)
+  print('write %s ok'%(ply_fn))
+
+def draw_points_and_voxel_indices(ply_fn, xyz, voxel_indices):
+  '''
+  xyz:(num_point,3)
+  voxel_indices:(num_point,3)
+  '''
+  # create edges
+  num_point = xyz.shape[0]
+  voxel_w = voxel_indices.max() + 1
+  edge_indices = [ ]
+  for i in range(num_point):
+    for j in range(num_point):
+      x_neib = (voxel_indices[j] == voxel_indices[i] + np.array([1,0,0])).all()
+      y_neib = (voxel_indices[j] == voxel_indices[i] + np.array([0,1,0])).all()
+      z_neib = (voxel_indices[j] == voxel_indices[i] + np.array([0,0,1])).all()
+      if x_neib or y_neib or z_neib:
+        edge_indices.append(np.array([[i,j]]))
+  edge_indices = np.concatenate(edge_indices, 0)
+
+  draw_points_and_edges(ply_fn, xyz, edge_indices)
+
+
+
+
 if __name__ == '__main__':
     #test_plyfile()
     test_box()
 
     #sg_bidxmap_i0 = np.arange( sg_bidxmap_i1.shape[0] ).reshape([-1,1,1,1])
     #sg_bidxmap_i0 = np.tile( sg_bidxmap_i0, [0,sg_bidxmap_i1.shape[1], sg_bidxmap_i1.shape[2],1] )
+
+

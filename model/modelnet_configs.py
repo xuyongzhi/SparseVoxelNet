@@ -37,13 +37,13 @@ DEFAULTS['lr_decay_epochs'] = 20
 DEFAULTS['lr_warmup'] = 0
 DEFAULTS['batch_norm_decay0'] = 0.7
 
-DEFAULTS['model_flag'] = 'V'
-DEFAULTS['resnet_size'] = 14
+DEFAULTS['model_flag'] = 'm'
+DEFAULTS['resnet_size'] = 26
 DEFAULTS['feed_data'] = 'xyzs'
 DEFAULTS['aug_types'] = 'N' # 'rpsfj-360_0_0'
 DEFAULTS['drop_imo'] = '0_0_5'
 DEFAULTS['batch_size'] = 32
-DEFAULTS['num_gpus'] = 2
+DEFAULTS['num_gpus'] = 1
 DEFAULTS['gpu_id'] = 0
 DEFAULTS['train_epochs'] = 31
 DEFAULTS['data_format'] = 'channels_last'

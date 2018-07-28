@@ -1322,8 +1322,8 @@ class Model(ResConvOps):
 
     if cascade_id==0:
         # xyz must be at the first in feed_data_elements !!!!
-        grouped_points = tf.concat( [grouped_xyz_feed, grouped_points[...,3:]],-1 )
         tf.add_to_collection('raw_inputs_COLC', grouped_points)
+        grouped_points = tf.concat( [grouped_xyz_feed, grouped_points[...,3:]],-1 )
 
         #if len(indrop_keep_mask.get_shape()) != 0:
         #    if InDropMethod == 'set1st':
