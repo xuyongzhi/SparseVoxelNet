@@ -213,8 +213,9 @@ def create_ply( xyz0, ply_fn, label=None, label2color=None, force_color=None, bo
         for i in range(xyz.shape[0]):
             vertex[i] = ( xyz[i,0],xyz[i,1],xyz[i,2],xyz[i,3],xyz[i,4],xyz[i,5] )
     else:
-        import pdb; pdb.set_trace()  # XXX BREAKPOINT
-        pass
+      raise NotImplementedError
+      import pdb; pdb.set_trace()  # XXX BREAKPOINT
+      pass
 
     el_vertex = PlyElement.describe(vertex,'vertex')
     PlyData([el_vertex],text=True).write(ply_fn)

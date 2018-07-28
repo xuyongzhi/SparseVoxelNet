@@ -39,6 +39,8 @@ from official.utils.misc import model_helpers
 # pylint: enable=g-bad-import-order
 
 
+IsCheckNet = False # must be False when num_gpus>1
+
 ################################################################################
 # Functions for input processing.
 ################################################################################
@@ -158,7 +160,7 @@ def learning_rate_with_decay(
 
   # Multiply the learning rate by 0.1 at 100, 150, and 200 epochs.
   boundaries = [int(batches_per_epoch * epoch) for epoch in boundary_epochs]
-  lr_vals = [max(initial_learning_rate * decay, 5e-6) for decay in lr_decay_rates]
+  lr_vals = [max(initial_learning_rate * decay, 1e-5) for decay in lr_decay_rates]
 
   lr_warmup = lr_decay_rates[0] < lr_decay_rates[1]
   bndecay_vals = [min( 1-(1-initial_bndecay) * decay, 0.99) for decay in bn_decay_rates]
@@ -237,7 +239,6 @@ def resnet_model_fn(model_flag, features, labels, mode, model_class,
       'probabilities': tf.nn.softmax(logits, name='softmax_tensor')
   }
 
-  IsCheckNet = False # must be False when num_gpus>1
   if IsCheckNet:
     add_check(predictions)
 
@@ -392,7 +393,7 @@ def per_device_batch_size(batch_size, num_gpus):
 
 
 def add_check(predictions):
-  inputs = tf.get_collection('raw_inputs')
+  inputs = tf.get_collection('raw_inputs_COLC')
   predictions['inputs'] = inputs[0]
   new_xyz_COLCs = tf.get_collection('new_xyz_COLC')
   grouped_xyz_COLCs = tf.get_collection('grouped_xyz_COLC')
@@ -401,13 +402,19 @@ def add_check(predictions):
     predictions['new_xyz_%d'%(i)] = new_xyz_COLCs[i]
     predictions['grouped_xyz_%d'%(i)] = grouped_xyz_COLCs[i]
 
+  voxel_indices_COLC = tf.get_collection('voxel_indices_COLC')
+  for i in range( len(voxel_indices_COLC) ):
+    predictions['voxel_indices_%d'%(i)] = voxel_indices_COLC[i]
+
 def check_net(classifier, input_fn_eval, dataset_name, data_net_configs):
-  N = 3
+  N = 1
   res_dir = '/tmp/check_net'
   gen_inputs = True
   gen_new_xyz = False
   gen_grouped = False
   gen_grouped_subblock = True
+  gen_voxel_indices = True
+
   if not os.path.exists(res_dir):
     os.makedirs(res_dir)
   from ply_util import create_ply_dset
@@ -421,12 +428,26 @@ def check_net(classifier, input_fn_eval, dataset_name, data_net_configs):
       check_items.append('new_xyz_%d'%(i))
     if gen_grouped or gen_grouped_subblock:
       check_items.append('grouped_xyz_%d'%(i))
+    if gen_voxel_indices and i<cascade_num-1:
+      check_items.append('voxel_indices_%d'%(i))
+
   for j,pred in enumerate(pred_results):
+
+    # fuse voxel indices into grouped points
+    if 'voxel_indices_0' in pred:
+      for v in range(cascade_num-1):
+        grouped_xyz = pred['grouped_xyz_%d'%(v+1)]
+        voxel_indices = pred['voxel_indices_%d'%(v)]
+        grouped_xyz_vertex = gen_vertex(grouped_xyz, voxel_indices)
+        import pdb; pdb.set_trace()  # XXX BREAKPOINT
+        pass
+
     checks = {}
     for item in check_items:
       checks[item] = pred[item]
-      ply_fn = '{}/{}_{}.ply'.format(res_dir, j, item)
-
+      if item=='inputs':
+        assert checks['inputs'].shape[-1]==3
+      # gen_grouped_subblock *******************************************
       if 'grouped' in item and gen_grouped_subblock:
         data = checks[item]
         for k in range(min(20,data.shape[0])):
@@ -436,10 +457,14 @@ def check_net(classifier, input_fn_eval, dataset_name, data_net_configs):
           ply_fn = '{}/{}.ply'.format(dir_k, k)
           create_ply_dset(dataset_name, checks[item][k], ply_fn, extra='random_same_color')
 
+      # gen_grouped, gen_new_xyz ****************************************
       if 'grouped' in item and not gen_grouped:
         pass
       else:
+        ply_fn = '{}/{}_{}.ply'.format(res_dir, j, item)
         create_ply_dset(dataset_name, checks[item], ply_fn)
+
+
     if j==N-1:
       break
   import pdb; pdb.set_trace()  # XXX BREAKPOINT
@@ -548,7 +573,8 @@ def resnet_main(
     total_training_cycle = (flags_obj.train_epochs //
                             flags_obj.epochs_between_evals)
 
-    #check_net(classifier, input_fn_eval, dataset_name, data_net_configs)
+    if IsCheckNet:
+      check_net(classifier, input_fn_eval, dataset_name, data_net_configs)
     # train for one step to check max memory usage
     train_res = classifier.train(input_fn=input_fn_train, hooks=train_hooks, steps=10)
 

@@ -207,7 +207,7 @@ def get_block_paras_bottle_regu(resnet_size, model_flag, block_style):
       rs = 26
       num_filters0s[rs] = 32
       block_sizes[rs]    = [[2,1,1],  [1,2],      [1,1,1,1]]
-      block_filters[rs] = [[32,64,125], [128,253],  [256,256,512,1024]]
+      block_filters[rs] = [[32,64,125], [128,256],  [256,256,512,1024]]
       block_kernels[rs]  = [[],     [3,1],      [3,3,2,2]]
       block_strides[rs]  = [[],     [1,1],      [2,1,1,1]]
       block_paddings[rs] = [[],     ['v','s'],  ['v','v','v','v']]

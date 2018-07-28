@@ -75,8 +75,9 @@ def tensor_info(tensor_ls, tensor_name_ls=None, layer_name=None,
         map_size = tensor_ls[i].shape[0].value / batch_size
       else:
         map_size = 1
-      shape_i = tensor_ls[i].shape.as_list()[1:]
+      shape_i = tensor_ls[i].shape.as_list()
       activation_shape_str = str(shape_i)
+      shape_i = shape_i[1:]
       activation_size = np.prod(shape_i)  * tensor_ls[i].dtype.size * map_size
       activation_size_str = '(%0.1fK)'%(activation_size/1024.0)
       tensor_sum += '%-40s'%(str( activation_shape_str + activation_size_str ))
@@ -1322,7 +1323,7 @@ class Model(ResConvOps):
     if cascade_id==0:
         # xyz must be at the first in feed_data_elements !!!!
         grouped_points = tf.concat( [grouped_xyz_feed, grouped_points[...,3:]],-1 )
-        tf.add_to_collection('inputs', grouped_points)
+        tf.add_to_collection('raw_inputs_COLC', grouped_points)
 
         #if len(indrop_keep_mask.get_shape()) != 0:
         #    if InDropMethod == 'set1st':
@@ -1464,6 +1465,7 @@ class Model(ResConvOps):
                                       point_indices_min, data=[cascade_id,point_indices_min], name='check_min_indice' )
     tf.add_to_collection( 'check', check_min_indice )
     # ------------------------------------------------------------------
+    tf.add_to_collection('voxel_indices_COLC', point_indices)
     point_indices = tf.cast( point_indices, tf.int32, name='point_indices' )    # gpu_0/sa_layer1/point_indices_1:0
     batch_idx = tf.reshape( tf.range(batch_size),[batch_size,1,1,1] )
     batch_idx = tf.tile( batch_idx, [1,block_num,point_num,1] )
@@ -1497,7 +1499,6 @@ class Model(ResConvOps):
     if self.data_format == 'channels_first':
       voxel_points = tf.transpose(voxel_points, [0, 4, 1, 2, 3])
     self.log_tensor_p(voxel_points, 'voxel', 'cas%d'%(cascade_id))
-    import pdb; pdb.set_trace()  # XXX BREAKPOINT
     return voxel_points
 
 
