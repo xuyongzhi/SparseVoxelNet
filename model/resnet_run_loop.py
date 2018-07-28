@@ -411,10 +411,12 @@ def check_net(classifier, input_fn_eval, dataset_name, data_net_configs):
   res_dir = '/tmp/check_net'
   gen_inputs = True
   gen_new_xyz = False
-  gen_grouped = True
-  gen_grouped_subblock = True
+  gen_grouped_xyz = True
+  if gen_grouped_xyz:
+    gen_box_to_grouped = True
+  gen_grouped_xyz_subblock = True
   gen_voxel_indices = True
-  max_subblock_num = 1000
+  max_subblock_num = 10
 
   if not os.path.exists(res_dir):
     os.makedirs(res_dir)
@@ -427,10 +429,8 @@ def check_net(classifier, input_fn_eval, dataset_name, data_net_configs):
   for i in range(cascade_num):
     if gen_new_xyz:
       check_items.append('new_xyz_%d'%(i))
-    if gen_grouped or gen_grouped_subblock:
+    if gen_grouped_xyz or gen_grouped_xyz_subblock:
       check_items.append('grouped_xyz_%d'%(i))
-    #if gen_voxel_indices and i<cascade_num-1:
-    #  check_items.append('voxel_indices_%d'%(i))
 
   for j,pred in enumerate(pred_results):
 
@@ -455,8 +455,8 @@ def check_net(classifier, input_fn_eval, dataset_name, data_net_configs):
       checks[item] = pred[item]
       if item=='inputs':
         assert checks['inputs'].shape[-1]==3
-      # gen_grouped_subblock *******************************************
-      if 'grouped' in item and gen_grouped_subblock:
+      # gen_grouped_xyz_subblock *******************************************
+      if 'grouped' in item and gen_grouped_xyz_subblock:
         data = checks[item]
         for k in range(min(max_subblock_num,data.shape[0])):
           dir_k = res_dir+'/%d_%s'%(j,item)
@@ -465,11 +465,12 @@ def check_net(classifier, input_fn_eval, dataset_name, data_net_configs):
           ply_fn = '{}/{}.ply'.format(dir_k, k)
           create_ply_dset(dataset_name, checks[item][k], ply_fn, extra='random_same_color')
 
-      # gen_grouped, gen_new_xyz ****************************************
-      if 'grouped' in item and not gen_grouped:
+      # gen_grouped_xyz, gen_new_xyz ****************************************
+      ply_fn = '{}/{}_{}.ply'.format(res_dir, j, item)
+      if 'grouped_xyz' in item and gen_box_to_grouped:
+        import pdb; pdb.set_trace()  # XXX BREAKPOINT
         pass
       else:
-        ply_fn = '{}/{}_{}.ply'.format(res_dir, j, item)
         create_ply_dset(dataset_name, checks[item], ply_fn,  extra = 'random_same_color')
 
 
