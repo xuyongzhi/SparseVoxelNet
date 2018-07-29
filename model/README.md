@@ -1,7 +1,9 @@
 # Key large items to be developed
 - [ ] Add Voxception Res architecture
 - [ ] Average multiple rotation views in test
-- [ ] Calculate the size of SVNET
+- [x] Calculate the size of SVNET
+- [ ] Check if the zero will lead to error in the net again!
+- [ ] Block_bottom_center is incorrect in the piano.
 
 # Key small items to be developed
 - [ ] add learning rate warm up
