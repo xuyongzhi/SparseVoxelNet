@@ -800,6 +800,21 @@ def mytile(tensor, axis, eval_views):
   tensor = tf.reshape(tensor, org_shape)
   return tensor
 
+def my_reduce_mean(grouped_xyz):
+  '''
+  reduce mean exclusive of 0.
+  grouped_xyz mayu include 0 that should not be included by mean
+  grouped_xyz: (b,n1.n2,3)
+  mean_xyz:(b,n1,3)
+  '''
+  sum_xyz = tf.reduce_sum(grouped_xyz, -2)
+  tmp = tf.reduce_mean(grouped_xyz,-1)
+  tmp = tf.cast(tf.not_equal(tmp, 0),tf.float32)
+  valid_num = tf.reduce_sum(tmp, -1)
+  valid_num = tf.expand_dims(valid_num, -1)
+  mean_xyz = sum_xyz / valid_num
+  return mean_xyz
+
 class Model(ResConvOps):
   """Base class for building the Resnet Model."""
 
@@ -904,7 +919,7 @@ class Model(ResConvOps):
       self.feed_data_idxs = np.sort([i for e in self.feed_data for i in self.data_idxs[e] ])
 
     self.use_xyz = self.data_net_configs['use_xyz']
-    self.mean_grouping_position = False
+    self.mean_grouping_position = True
 
 
   def _custom_dtype_getter(self, getter, name, shape=None, dtype=DEFAULT_DTYPE,
@@ -1300,7 +1315,7 @@ class Model(ResConvOps):
 
     # new_xyz is the "voxel center" or "mean position of points in the voxel"
     if self.mean_grouping_position and (not self.voxel3d):
-        new_xyz = tf.reduce_mean(grouped_xyz,-2)
+        new_xyz = my_reduce_mean(grouped_xyz)
     else:
         new_xyz = block_bottom_center_mm[:,:,3:6] * tf.constant( 0.001, tf.float32 )
     tf.add_to_collection('grouped_xyz_COLC', grouped_xyz)

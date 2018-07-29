@@ -26,7 +26,7 @@ train_epochs=31
 residual=0
 resnet_size=26
 
-model_flag='V'
+model_flag='m'
 
 #feed_data='xyzrsg-nxnynz'
 shortcut='MC'
@@ -39,7 +39,6 @@ lr_decay_rate=0.5
 
 
 
-residual=0
 ./modelnet.sh   $aug_types  $batch_size $model_flag $learning_rate0 $num_gpus $feed_data $drop_imo  $optimizer $use_bias $lr_decay_epochs $lr_decay_rate $resnet_size $block_style $residual $shortcut $loss_lw_gama  $train_epochs  $batch_norm_decay0 $gpu_id $use_xyz
 
 #----------------------------------------

@@ -402,9 +402,10 @@ def define_model_dir():
 
   block_config_str = _DATA_PARAS['block_config_str'] = get_block_configs_fused()
 
-  logname += '-'+flags.FLAGS.feed_data + '-Aug_' + flags.FLAGS.aug_types
+  logname += '-'+flags.FLAGS.feed_data
   if flags.FLAGS.use_xyz == 0:
     logname += 'NP'
+  logname += '-Aug_' + flags.FLAGS.aug_types
   logname += '-Drop'+flags.FLAGS.drop_imo
   if flags.FLAGS.loss_lw_gama > 0:
     logname += '-Lw'+str(int(flags.FLAGS.loss_lw_gama*10))
