@@ -19,6 +19,6 @@ module list
  
 
 #------------------------------------------------------------------------
-./run_modelnet_0.sh  &
-./run_modelnet_1.sh
+./run_modelnet_2.sh  &
+./run_modelnet_3.sh
 

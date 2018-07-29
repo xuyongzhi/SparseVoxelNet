@@ -22,7 +22,7 @@ use_bias=1
 block_style='Regular'
 shortcut='MZ'
 loss_lw_gama=-1
-train_epochs=31
+train_epochs=61
 residual=0
 resnet_size=26
 
@@ -30,7 +30,7 @@ model_flag='m'
 
 #feed_data='xyzrsg-nxnynz'
 shortcut='MC'
-residual=1
+#residual=1
 
 batch_size=24
 batch_norm_decay0=0.8
