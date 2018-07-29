@@ -903,8 +903,8 @@ class Model(ResConvOps):
     else:
       self.feed_data_idxs = np.sort([i for e in self.feed_data for i in self.data_idxs[e] ])
 
-    self.use_xyz = True
-    self.mean_grouping_position = True
+    self.use_xyz = self.data_net_configs['use_xyz']
+    self.mean_grouping_position = False
 
 
   def _custom_dtype_getter(self, getter, name, shape=None, dtype=DEFAULT_DTYPE,
@@ -1305,6 +1305,7 @@ class Model(ResConvOps):
         new_xyz = block_bottom_center_mm[:,:,3:6] * tf.constant( 0.001, tf.float32 )
     tf.add_to_collection('grouped_xyz_COLC', grouped_xyz)
     tf.add_to_collection('new_xyz_COLC', new_xyz)
+    tf.add_to_collection('block_bottom_center_COLC', block_bottom_center_mm * tf.constant( 0.001, tf.float32 ))
     # the mid can be mean or block center, decided by configs['mean_grouping_position']
     sub_block_mid = tf.expand_dims( new_xyz,-2, name = 'sub_block_mid' )   # gpu_1/sa_layer0/sub_block_mid
     global_block_mid = tf.reduce_mean( sub_block_mid,1, keepdims=True, name = 'global_block_mid' )

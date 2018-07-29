@@ -318,6 +318,7 @@ def define_net_configs(flags_obj):
   assert len(xyz_elements) > 0
   _DATA_PARAS['feed_data'] = feed_data
   _DATA_PARAS['feed_data_eles'] = feed_data_eles
+  _DATA_PARAS['use_xyz'] = flags_obj.use_xyz == 1
   _DATA_PARAS['xyz_elements'] = xyz_elements
   _DATA_PARAS['aug_types'] = flags_obj.aug_types
 
@@ -402,6 +403,8 @@ def define_model_dir():
   block_config_str = _DATA_PARAS['block_config_str'] = get_block_configs_fused()
 
   logname += '-'+flags.FLAGS.feed_data + '-Aug_' + flags.FLAGS.aug_types
+  if flags.FLAGS.use_xyz == 0:
+    logname += 'NP'
   logname += '-Drop'+flags.FLAGS.drop_imo
   if flags.FLAGS.loss_lw_gama > 0:
     logname += '-Lw'+str(int(flags.FLAGS.loss_lw_gama*10))
@@ -462,6 +465,7 @@ def define_modelnet_flags():
   flags.DEFINE_string('model_flag', DEFAULTS['model_flag'], '')
   flags.DEFINE_integer('resnet_size',DEFAULTS['resnet_size'],'resnet_size')
   flags.DEFINE_string('feed_data',DEFAULTS['feed_data'],'xyzrsg-nxnynz-color')
+  flags.DEFINE_integer('use_xyz', DEFAULTS['use_xyz'], '1,0')
   flags.DEFINE_string('aug_types',DEFAULTS['aug_types'],'rsfj-360_0_0')
   flags.DEFINE_string('drop_imo',DEFAULTS['drop_imo'],'0_0_5')
 

@@ -40,6 +40,7 @@ DEFAULTS['batch_norm_decay0'] = 0.7
 DEFAULTS['model_flag'] = 'm'
 DEFAULTS['resnet_size'] = 26
 DEFAULTS['feed_data'] = 'xyzs'
+DEFAULTS['use_xyz'] = 1
 DEFAULTS['aug_types'] = 'N' # 'rpsfj-360_0_0'
 DEFAULTS['drop_imo'] = '0_0_5'
 DEFAULTS['batch_size'] = 32

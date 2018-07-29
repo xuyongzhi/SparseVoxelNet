@@ -1,6 +1,6 @@
 #!/bin/bash
 
-gpu_id=1
+gpu_id=0
 num_gpus=1
 batch_size=32
 
@@ -15,6 +15,7 @@ lr_decay_epochs=10
 lr_decay_rate=0.7
 batch_norm_decay0=0.6
 feed_data='xyzs'
+use_xyz=1
 drop_imo='0_0_5'
 aug_types='N'
 use_bias=1
@@ -37,12 +38,9 @@ lr_decay_epochs=5
 lr_decay_rate=0.5
 
 
-#./modelnet.sh   $aug_types  $batch_size $model_flag $learning_rate0 $num_gpus $feed_data $drop_imo  $optimizer $use_bias $lr_decay_epochs $lr_decay_rate $resnet_size $block_style $residual $shortcut $loss_lw_gama  $train_epochs  $batch_norm_decay0 $gpu_id
-
 
 residual=0
-./modelnet.sh   $aug_types  $batch_size $model_flag $learning_rate0 $num_gpus $feed_data $drop_imo  $optimizer $use_bias $lr_decay_epochs $lr_decay_rate $resnet_size $block_style $residual $shortcut $loss_lw_gama  $train_epochs  $batch_norm_decay0 $gpu_id
-residual=1
+./modelnet.sh   $aug_types  $batch_size $model_flag $learning_rate0 $num_gpus $feed_data $drop_imo  $optimizer $use_bias $lr_decay_epochs $lr_decay_rate $resnet_size $block_style $residual $shortcut $loss_lw_gama  $train_epochs  $batch_norm_decay0 $gpu_id $use_xyz
 
 #----------------------------------------
 #aug_types='r-360_0_0'

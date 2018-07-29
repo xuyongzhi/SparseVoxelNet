@@ -39,7 +39,7 @@ from official.utils.misc import model_helpers
 # pylint: enable=g-bad-import-order
 
 # must be False when num_gpus>1
-IsCheckNet = True
+IsCheckNet = False
 
 ################################################################################
 # Functions for input processing.
@@ -395,19 +395,22 @@ def per_device_batch_size(batch_size, num_gpus):
 def add_check(predictions):
   inputs = tf.get_collection('raw_inputs_COLC')
   predictions['inputs'] = inputs[0]
+
+  block_bottom_center_COLC = tf.get_collection('block_bottom_center_COLC')
   new_xyz_COLCs = tf.get_collection('new_xyz_COLC')
   grouped_xyz_COLCs = tf.get_collection('grouped_xyz_COLC')
   cascade_num = len(new_xyz_COLCs)
   for i in range(cascade_num):
     predictions['new_xyz_%d'%(i)] = new_xyz_COLCs[i]
     predictions['grouped_xyz_%d'%(i)] = grouped_xyz_COLCs[i]
+    predictions['block_bottom_center_%d'%(i)] = block_bottom_center_COLC[i]
 
   voxel_indices_COLC = tf.get_collection('voxel_indices_COLC')
   for i in range( len(voxel_indices_COLC) ):
     predictions['voxel_indices_%d'%(i)] = voxel_indices_COLC[i]
 
 def check_net(classifier, input_fn_eval, dataset_name, data_net_configs):
-  N = 2
+  N = 5
   res_dir = '/tmp/check_net'
   gen_inputs = True
   gen_new_xyz = False
@@ -420,7 +423,8 @@ def check_net(classifier, input_fn_eval, dataset_name, data_net_configs):
 
   if not os.path.exists(res_dir):
     os.makedirs(res_dir)
-  from ply_util import create_ply_dset, draw_points_and_voxel_indices
+  from ply_util import create_ply_dset, draw_points_and_voxel_indices,\
+                       draw_blocks_by_bottom_center
   pred_results = classifier.predict(input_fn=input_fn_eval)
   check_items = []
   if gen_inputs:
@@ -433,6 +437,12 @@ def check_net(classifier, input_fn_eval, dataset_name, data_net_configs):
       check_items.append('grouped_xyz_%d'%(i))
 
   for j,pred in enumerate(pred_results):
+    # gen block box   *****************************************************
+    if 'block_bottom_center_0' in pred:
+      for v in range(cascade_num):
+        block_bottom_center = pred['block_bottom_center_%d'%(v)]
+        ply_fn = '{}/{}_block_{}.ply'.format(res_dir, j, v)
+        draw_blocks_by_bottom_center(ply_fn, block_bottom_center)
 
     # gen voxel edges *****************************************************
     if 'voxel_indices_0' in pred:
@@ -468,8 +478,7 @@ def check_net(classifier, input_fn_eval, dataset_name, data_net_configs):
       # gen_grouped_xyz, gen_new_xyz ****************************************
       ply_fn = '{}/{}_{}.ply'.format(res_dir, j, item)
       if 'grouped_xyz' in item and gen_box_to_grouped:
-        import pdb; pdb.set_trace()  # XXX BREAKPOINT
-        pass
+        create_ply_dset(dataset_name, checks[item], ply_fn,  extra = 'random_same_color')
       else:
         create_ply_dset(dataset_name, checks[item], ply_fn,  extra = 'random_same_color')
 

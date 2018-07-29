@@ -39,7 +39,7 @@ def test_plyfile():
     print('write tmp/test_ascii.ply')
 
 
-def gen_box_and_pl( ply_fn, box_vertexes, pl_xyz=None ):
+def gen_box_and_pl( ply_fn, box_vertexes, pl_xyz=None, extra='' ):
     '''
     Generate box and points together in the same file. box_vertexes and pl_xyz
       independently. The 8 vertexs are included automatically in the box.
@@ -82,7 +82,11 @@ def gen_box_and_pl( ply_fn, box_vertexes, pl_xyz=None ):
                             (1, 5, 255, 0, 0),
                             (2, 6, 255, 0, 0),
                             (3, 7, 255, 0, 0)] )
-    edge_basic[:,2:5] = np.array([0,0,255])
+    if extra=='random_color_between_boxes':
+      color = np.random.randint(0,256,3)
+      color[2] = 255 - color[0] - color[1]
+    edge_basic[:,2:5] = color
+
     edge_val = np.concatenate( [edge_basic]*num_box,0 )
     for i in range(num_box):
         edge_val[i*12:(i+1)*12,0:2] += (8*i)
@@ -283,7 +287,15 @@ def draw_points_and_voxel_indices(ply_fn, xyz, voxel_indices):
 
   draw_points_and_edges(ply_fn, xyz, edge_indices)
 
-
+def draw_blocks_by_bottom_center(ply_fn, block_bottom_center):
+  '''
+    block_bottom_center: (num_blocks, 6)
+  '''
+  block_bottom = block_bottom_center[:,0:3]
+  block_center = block_bottom_center[:,3:6]
+  block_top = 2*(block_center - block_bottom) + block_bottom
+  box_vertexes = gen_box_8vertexs(block_bottom, block_top)
+  gen_box_and_pl(ply_fn, box_vertexes, extra='random_color_between_boxes')
 
 
 if __name__ == '__main__':
