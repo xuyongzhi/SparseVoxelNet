@@ -178,6 +178,7 @@ class ResConvOps(object):
   def log_model_summary(self):
       dnc = self.data_net_configs
       res = 'R' if self.residual else 'P'
+      use_xyz_str = '' if dnc['use_xyz'] else 'Np'
       key_para_names = 'model bs aug feed drop_imo loss_weight lr0_drate_depoch \
 bnd optimizer block_config\n'
       key_paras_str = '\n\n{model_name} {bs} {aug} {feed_data_eles} \
@@ -185,7 +186,7 @@ bnd optimizer block_config\n'
 {block_config}\n'.format(
         model_name=dnc['model_name'],
         bs=dnc['batch_size'],
-        feed_data_eles=dnc['feed_data_eles'].replace('nxnynz','n'),
+        feed_data_eles=dnc['feed_data_eles'].replace('nxnynz','n') + use_xyz_str,
         aug=dnc['aug_types'],
         drop_imo=dnc['drop_imo_str'],
         loss_weight=dnc['loss_lw_gama'] if dnc['loss_lw_gama']>0 else 'No',
@@ -815,6 +816,22 @@ def my_reduce_mean(grouped_xyz):
   mean_xyz = sum_xyz / valid_num
   return mean_xyz
 
+
+def pc_normalize(points):
+  has_normal = points.shape[-1].value == 6
+  points_xyz = points[:,0:3]
+  if has_normal:
+    points_normal = points[:,3:6]
+  centroid = tf.reduce_mean(points_xyz, axis=0)
+  points_xyz -= centroid
+  m = tf.reduce_max(tf.sqrt(tf.reduce_sum(tf.pow(points_xyz, 2),axis=1)))
+  points_xyz = points_xyz / m
+  if has_normal:
+    points_normed = tf.concat([points_xyz, points_normal], -1)
+  else:
+    points_normed = points_xyz
+  return points_normed
+
 class Model(ResConvOps):
   """Base class for building the Resnet Model."""
 
@@ -1075,6 +1092,9 @@ class Model(ResConvOps):
       l_points = []                       # size = l_points+1
       l_points.append( inputs )
       l_xyz = inputs[...,0:3]
+
+      #l_xyz, b_bottom_centers_mm = pc_normalize(l_xyz, b_bottom_centers_mm)
+
       new_points = inputs
 
       full_cascades = sg_bm_extract_idx.shape[0]-1

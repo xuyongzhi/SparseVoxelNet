@@ -420,6 +420,7 @@ def define_model_dir():
   data_flag = np.sum([ord(e) for e in DEFAULTS['data_path']]) % 1000
   logname += '-D'+str(data_flag)
   logname += '-BLOCK-'+block_config_str
+  logname += '-NoPreNorm'
 
   model_dir = os.path.join(ROOT_DIR, 'results/object_detection_result', logname)
   if not os.path.exists(model_dir):

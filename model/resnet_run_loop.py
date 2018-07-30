@@ -410,7 +410,8 @@ def add_check(predictions):
     predictions['voxel_indices_%d'%(i)] = voxel_indices_COLC[i]
 
 def check_net(classifier, input_fn_eval, dataset_name, data_net_configs):
-  N = 5
+  N0 = 0
+  N = 2
   res_dir = '/tmp/check_net'
   gen_inputs = True
   gen_new_xyz = False
@@ -437,6 +438,8 @@ def check_net(classifier, input_fn_eval, dataset_name, data_net_configs):
       check_items.append('grouped_xyz_%d'%(i))
 
   for j,pred in enumerate(pred_results):
+    if j < N0:
+      continue
     # gen block box   *****************************************************
     if 'block_bottom_center_0' in pred:
       for v in range(cascade_num):
@@ -483,7 +486,7 @@ def check_net(classifier, input_fn_eval, dataset_name, data_net_configs):
         create_ply_dset(dataset_name, checks[item], ply_fn,  extra = 'random_same_color')
 
 
-    if j==N-1:
+    if j==N+N0-1:
       break
   import pdb; pdb.set_trace()  # XXX BREAKPOINT
   pass

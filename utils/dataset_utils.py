@@ -186,8 +186,8 @@ def parse_pl_record(tfrecord_serialized, is_training, data_net_configs=None):
       points_shape = data_net_configs['points']
     # the image tensor is flattened out, so we have to reconstruct the shape
     points = tf.reshape(points, points_shape)
-    if data_net_configs != None:
-      points = pc_normalize(points)
+    #if data_net_configs != None:
+    #  points = pc_normalize(points)
 
     # ------------------------------------------------
     # do not need for single scale net
