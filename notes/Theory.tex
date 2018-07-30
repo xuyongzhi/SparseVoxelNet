@@ -8,6 +8,11 @@
 \usepackage{float}
 \usepackage{tikz}
 \usetikzlibrary{shapes.geometric, arrows}
+\tikzstyle{startstop} = [rectangle, rounded corners, minimum width=3cm, minimum height=1cm,text centered, draw=black, fill=red!10]
+\tikzstyle{io} = [trapezium, trapezium left angle=70, trapezium right angle=110, minimum width=3cm, minimum height=1cm, text centered, draw=black, fill=blue!10]
+\tikzstyle{process} = [rectangle, minimum width=3cm, minimum height=1cm, text centered, draw=black, fill=orange!10]
+\tikzstyle{decision} = [diamond, minimum width=3cm, minimum height=1cm, text centered, draw=black, fill=green!10]
+\tikzstyle{arrow} = [thick,->,>=stealth]
 \hypersetup{
 	citecolor=black,
 	filecolor=black,
@@ -32,7 +37,8 @@
 \tableofcontents{}
 \section{Deep 3D Learning Notes}
 
-\subsection{potential solutions for over fitting}
+\subsection{Questions and potential improvements}
+\subsubsection{potential solutions for over fitting}
 \begin{itemize}
 	\item combine auxiliary tasks:\par 
 	1. use nxnynz as auxiliary loss
@@ -48,17 +54,51 @@
 	\item smaller net
 \end{itemize}
 
-\subsection{Important improvements}
+\subsubsection{Important improvements}
 \begin{itemize}
 	\item Generate bxmh5 online. So the randomly missing part in each epoch is different. This maybe solve the info missing problem for sparse voxel 3d cnn, especially considering that block merging cannot be applied for voxel cnn. However, on line sampling can only solve missing problom of training, test missing still need some tricks to perform block merging.
 	\item Check this: my usage of tf.gather\_nd should cost a lot of memory, maybe too much!
 \end{itemize}
 
-\subsection{Theory}
-\subsubsection{bidxmap}
-\includegraphics[width=\textheight]{theory/bxmap.png}
 
-\subsubsection{group sampling configuration}
+\section{Sampling and grouping}
+\subsection{on line sampling and grouping progress}
+
+\begin{tikzpicture}[node distance=2cm]
+\node (RawPoint) [io] {Raw points $(P_i)$};
+\node (Grouped1) [process, below of=RawPoint, align=center] {Grouped xyz of scale 1: $({P_{j_1k_1}})$ \\ $j$: block index, sorted \\ $k$:point indice within each block, random};
+\draw [arrow]  (RawPoint) -- node[anchor=east]{GROUP \& SAMPLING} (Grouped1) ;
+
+\node (New1) [process, below of=Grouped1] {new xyz of scale 1: $({P_{j_1}})$};
+\draw [arrow]  (Grouped1) -- node[anchor=east]{CENTER} (New1) ;
+
+\node (Grouped2) [process, below of=New1, align=center] {Grouped xyz of scale 2: $({P_{j_2k_2}})$ };
+\node (New2) [process, below of=Grouped2] {new xyz of scale 2:$({P_{j_2}})$};
+\draw [arrow]  (New1) -- node[anchor=east]{GROUP \& SAMPLING} (Grouped2) ;
+\draw [arrow]  (Grouped2) -- node[anchor=east]{CENTER} (New2) ;
+\end{tikzpicture}
+
+\subsection{GROUP}
+From $(P_i)$ to $({P_{jk}})$: k is random, only need to get block index j. j solutions indicate all the blocks contain point $(P_i)$.
+\par
+Set parameters of block j as: 
+$$ w: width $$ 
+$$ s: stride $$
+$$ n: point\ number\ per\ block $$
+Note: do not need a parameter of padding. The containing relation should always be absolutely containing. The padding operation like CNN can be achieved just set lower limit of j.\par
+The scope of block j is: $[sj,sj+w]$ \par
+$$ sj \leq P_i < sj+w $$
+$$ \frac{P_i-w}{s} < j \leq \frac{P_i}{s} $$
+$$ L = \frac{P_i-w}{s} $$ 
+$$ j_L = ceil(L)\ if\ L\ is\ float\ otherwise\ L+1 $$
+$$ j_U =  floor( \frac{P_i}{s}) $$
+$$ j:range(j_L, j_U+1) $$
+
+\subsection{block indice between different scales}
+\includegraphics[width=0.9\textheight]{theory/bxmap.png}
+
+
+\subsection{voxelizatiopn configuration}
 $$ steps = [0.1,0.3,0.9,2.7] + [-6.3]$$
 $$ strides = [0.1,0.2,0.6,1.8] + [-3.6] $$
 $$ voxel\ size=[, 3, 4, 4, 3] $$
@@ -76,18 +116,9 @@ $$$$
 $$ 6.3=2.7+1.8*2 $$
 $$ 3.6=1.8*2 $$
 
-\subsubsection{Sparse voxel 3DCNN }
-\tikzstyle{startstop} = [rectangle, rounded corners, minimum width=3cm, minimum height=1cm,text centered, draw=black, fill=red!10]
-\tikzstyle{io} = [trapezium, trapezium left angle=70, trapezium right angle=110, minimum width=3cm, minimum height=1cm, text centered, draw=black, fill=blue!10]
-\tikzstyle{process} = [rectangle, minimum width=3cm, minimum height=1cm, text centered, draw=black, fill=orange!10]
-\tikzstyle{decision} = [diamond, minimum width=3cm, minimum height=1cm, text centered, draw=black, fill=green!10]
-\tikzstyle{arrow} = [thick,->,>=stealth]
+\section{Sparse voxel 3DCNN }
 
-\subsubsection{multi-scale classification}
-
-
-
-\subsubsection{Data Augmentation} 
+\section{Data Augmentation} 
 \begin{itemize}
 \item (1.1) Rotate corrdinate reference: Rotate both point and voxel box \par
 Performed by rotating points after sampling and grouping. \par
