@@ -148,17 +148,16 @@ class BlockGroupSampling():
     #(2.3) Get point index per block
     #      Based on: all points belong to same block is together
     # count real npoint_per_block
-    self.nblock = nblock = block_id_unique.shape[0].value
+    self.nblock = nblock = tf.shape(block_id_unique)[0]
     npoint_per_block_real = tf.histogram_fixed_width(blockid_index,
                                   [0, nblock], nbins=nblock)
-    npoint_1 = block_id.shape[0] # num_point0 * npoint_per_block
-    tf.assert_equal(tf.reduce_sum(npoint_per_block_real), npoint_1)
+    tf.assert_equal(tf.reduce_sum(npoint_per_block_real), self.npoint_grouped)
     self.samplings['max_npoint_per_block']= tf.reduce_max(npoint_per_block_real)
 
     tmp0 = tf.cumsum(npoint_per_block_real)[0:-1]
     tmp0 = tf.concat([tf.constant([0],tf.int32), tmp0],0)
     tmp1 = tf.gather(tmp0, blockid_index)
-    tmp2 = tf.range(npoint_1)
+    tmp2 = tf.range(self.npoint_grouped)
     point_index_per_block = tf.expand_dims( tmp2 - tmp1,  1)
     blockid_index = tf.expand_dims(blockid_index, 1)
 
@@ -197,9 +196,7 @@ class BlockGroupSampling():
     nblock_real = self.nblock
     nblock_ = tf.maximum(nblock_real, self._nblock)
     tmp = tf.ones([nblock_, self._npoint_per_block], dtype=tf.int32) * (-1)
-    grouped_pindex = tf.get_variable("grouped_pindex",
-                                              initializer=tmp,
-                                              trainable=False)
+    grouped_pindex = tf.get_variable("grouped_pindex", initializer=tmp, trainable=False, validate_shape=False)
     grouped_pindex = tf.scatter_nd_update(grouped_pindex, bid_index__pindex_inb, point_index)
 
     #(3.2) sampling fixed number of blocks when too many blocks are provided
@@ -231,7 +228,7 @@ class BlockGroupSampling():
     bid_index__pindex_inb, point_index = self.get_bid_point_index(bid_pindex)
     grouped_xyz, empty_mask = self.gather_grouped_xyz(bid_index__pindex_inb, point_index, xyz)
 
-    self.show_summary()
+    #self.show_summary()
     return grouped_xyz, empty_mask
 
   def main(self):
@@ -268,13 +265,15 @@ class BlockGroupSampling():
       features_next, label_next = get_next
       points_next = features_next['points']
       grouped_xyz_next, empty_mask_next = self.grouping(points_next[0,:,0:3])
-      import pdb; pdb.set_trace()  # XXX BREAKPOINT
+
+      init = tf.initialize_all_variables()
 
       with tf.Session() as sess:
-        features, object_label = sess.run(get_next)
-        #points, grouped_xyz = sess.run([points_next, grouped_xyz_next])
-        import pdb; pdb.set_trace()  # XXX BREAKPOINT
-        pass
+        sess.run(init)
+        for i in range(5):
+          points, grouped_xyz, empty_mask = sess.run([points_next, grouped_xyz_next, empty_mask_next])
+          import pdb; pdb.set_trace()  # XXX BREAKPOINT
+          pass
 
   def main_eager(self):
     tf.enable_eager_execution()
@@ -331,4 +330,5 @@ if __name__ == '__main__':
   block_group_sampling = BlockGroupSampling(width, stride, nblock,
                                             npoint_per_block)
   block_group_sampling.main()
+  #block_group_sampling.main_eager()
 
