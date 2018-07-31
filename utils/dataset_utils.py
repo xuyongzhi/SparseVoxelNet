@@ -191,7 +191,8 @@ def parse_pl_record(tfrecord_serialized, is_training, data_net_configs=None):
 
     # ------------------------------------------------
     # do not need for single scale net
-    is_need_bidmap = data_net_configs==None or len(data_net_configs['block_params']['filters'])>1
+    is_need_bidmap = data_net_configs==None or \
+      ( 'block_params' in data_net_configs and len(data_net_configs['block_params']['filters'])>1 )
     if not is_need_bidmap:
       features = {}
       b_bottom_centers_mm = []
@@ -202,7 +203,7 @@ def parse_pl_record(tfrecord_serialized, is_training, data_net_configs=None):
                       data_net_configs['data_idxs'])
           #features['augs'] = augs
       else:
-        if data_net_configs!=None and data_net_configs['eval_views'] > 1:
+        if data_net_configs!=None and 'eval_views' in data_net_configs and data_net_configs['eval_views'] > 1:
           #features['eval_views'] = data_net_configs['eval_views']
           points, b_bottom_centers_mm, augs = aug_views(points, b_bottom_centers_mm,
                       data_net_configs['eval_views'],

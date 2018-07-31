@@ -2,8 +2,35 @@
 import tensorflow as tf
 import glob, os
 import numpy as np
+from utils.dataset_utils import parse_pl_record
+from datasets.all_datasets_meta.datasets_meta import DatasetsMeta
 
 DEBUG = False
+
+def get_data_shapes_from_tfrecord(filenames):
+  _DATA_PARAS = {}
+  batch_size = 1
+  is_training = False
+
+  with tf.Graph().as_default():
+    dataset = tf.data.TFRecordDataset(filenames)
+    dataset = dataset.apply(
+      tf.contrib.data.map_and_batch(
+        lambda value: parse_pl_record(value, is_training),
+        batch_size=batch_size,
+        num_parallel_batches=1,
+        drop_remainder=False))
+    iterator = dataset.make_one_shot_iterator().get_next()
+    with tf.Session() as sess:
+      features, label = sess.run(iterator)
+
+      for key in features:
+        _DATA_PARAS[key] = features[key][0].shape
+        print('{}:{}'.format(key, _DATA_PARAS[key]))
+      points_raw = features['points'][0]
+      print('\n\nget shape from tfrecord OK:\n %s\n\n'%(_DATA_PARAS))
+      #print('points', features['points'][0,0:5,:])
+  return _DATA_PARAS
 
 class BlockGroupSampling():
   def __init__(self, width, stride, nblock, npoint_per_block):
@@ -210,6 +237,48 @@ class BlockGroupSampling():
   def main(self):
     tf.enable_eager_execution()
 
+
+    DATASET_NAME = 'MODELNET40'
+    path = '/home/z/Research/dynamic_pointnet/data/MODELNET40H5F/Merged_tfrecord/6_mgs1_gs2_2-mbf-neg_fmn14_mvp1-1024_240_1-64_27_256-0d2_0d4-0d1_0d2-pd3-2M2pp'
+    filenames = glob.glob(os.path.join(path,'*.tfrecord'))
+    assert len(filenames) > 0
+
+    _DATA_PARAS = get_data_shapes_from_tfrecord(filenames[0:1])
+
+    dataset_meta = DatasetsMeta(DATASET_NAME)
+    num_classes = dataset_meta.num_classes
+
+    with tf.Graph().as_default():
+      dataset = tf.data.TFRecordDataset(filenames,
+                                          compression_type="",
+                                          buffer_size=1024*100,
+                                          num_parallel_reads=1)
+      batch_size = 2
+      is_training = False
+
+      dataset = dataset.prefetch(buffer_size=batch_size)
+      dataset = dataset.apply(
+        tf.contrib.data.map_and_batch(
+          lambda value: parse_pl_record(value, is_training, _DATA_PARAS),
+          batch_size=batch_size,
+          num_parallel_batches=1,
+          drop_remainder=True))
+      dataset = dataset.prefetch(buffer_size=tf.contrib.data.AUTOTUNE)
+      get_next = dataset.make_one_shot_iterator().get_next()
+      features_next, label_next = get_next
+      points_next = features_next['points']
+      grouped_xyz_next, empty_mask_next = self.grouping(points_next[0,:,0:3])
+      import pdb; pdb.set_trace()  # XXX BREAKPOINT
+
+      with tf.Session() as sess:
+        features, object_label = sess.run(get_next)
+        #points, grouped_xyz = sess.run([points_next, grouped_xyz_next])
+        import pdb; pdb.set_trace()  # XXX BREAKPOINT
+        pass
+
+  def main_eager(self):
+    tf.enable_eager_execution()
+
     from utils.dataset_utils import parse_pl_record
     from datasets.all_datasets_meta.datasets_meta import DatasetsMeta
 
@@ -218,9 +287,9 @@ class BlockGroupSampling():
     filenames = glob.glob(os.path.join(path,'*.tfrecord'))
     assert len(filenames) > 0
 
+    dataset_meta = DatasetsMeta(DATASET_NAME)
+    num_classes = dataset_meta.num_classes
 
-    DatasetsMeta = DatasetsMeta(DATASET_NAME)
-    num_classes = DatasetsMeta.num_classes
     dataset = tf.data.TFRecordDataset(filenames,
                                         compression_type="",
                                         buffer_size=1024*100,
