@@ -3,19 +3,21 @@ import tensorflow as tf
 import glob, os
 import numpy as np
 
+DEBUG = True
+
 class BlockGroupSampling():
-  def __init__(self, width, stride, points_per_block):
+  def __init__(self, width, stride, npoint_per_block):
     '''
       width = [1,1,1]
       stride = [1,1,1]
-      points_per_block = 32
+      npoint_per_block = 32
     '''
     self.width = np.array(width, dtype=np.float32)
     self.stride = np.array(stride, dtype=np.float32)
-    self.points_per_block = points_per_block
+    self.npoint_per_block = npoint_per_block
     assert self.width.size == self.stride.size == 3
 
-  def get_block_id(xyz):
+  def get_block_id(self, xyz):
     '''
     (1) Get the responding block index of each point
     xyz: (num_point0, 3)
@@ -30,6 +32,8 @@ class BlockGroupSampling():
     low_b_index += 1e-7 # invoid low_b_index is exactly int
     low_b_index_fixed = tf.cast(tf.ceil(low_b_index), tf.int32)    # include
     up_b_index_fixed = tf.cast(tf.floor(up_b_index), tf.int32) + 1 # not include
+    if DEBUG:
+      up_b_index_fixed += 1
 
     #(1.2) the block number for each point should be equal
     block_num_per_point = up_b_index_fixed - low_b_index_fixed
@@ -53,74 +57,94 @@ class BlockGroupSampling():
     # (num_point0, block_num_per_point, 1)
     block_id = block_index[:,:,0] * block_size[1] * block_size[2] + \
                block_index[:,:,1] * block_size[2] + block_index[:,:,2]
+    block_id = tf.expand_dims(block_id, 2)
 
     # (1.4) concat block id and point index
-    tmp3 = tf.reshape( tf.range(0, num_point0, 1), (-1,1,1))
-    tmp3 = tf.tile(tmp, [1,block_num_per_point,1])
+    point_indices = tf.reshape( tf.range(0, num_point0, 1), (-1,1,1))
+    point_indices = tf.tile(point_indices, [1,block_num_per_point,1])
     # (num_point0, block_num_per_point, 2)
-    block_id_point_index = tf.concat([block_id, tmp3], 2)
+    bid_pindex = tf.concat([block_id, point_indices], 2)
     # (num_point0 * block_num_per_point, 2)
-    block_id_point_index = tf.reshape(block_id_point_index, (-1,2))
+    bid_pindex = tf.reshape(bid_pindex, (-1,2))
 
-    return block_id_point_index
+    return bid_pindex
 
-  def group_point_index(block_id_point_index0):
+  def get_bid_point_index(self, bid_pindex):
     '''
-    # block_id_point_index0: (num_point0 * block_num_per_point, 2)
+    Get "block id index: and "point index within block".
+    bid_pindex: (num_point0 * block_num_per_point, 2)
                                 [block_id, point_index]
+    bid_index__pindex_inb:  (num_point0 * block_num_per_point, 2)
+                                [bid_index, pindex_inb]
     '''
-    #block_id = block_id_point_index[:,0]
-    #point_index = block_id_point_index[:,1]
     # (2.1) sort by block id
-    sort_indices = tf.contrib.framwork.argsort(block_id[:,0], axis = 0)
-    block_id_point_index = tf.gather(block_id_point_index0, sort_indices, axis=0)
+    sort_indices = tf.contrib.framework.argsort(bid_pindex[:,0],
+                                                axis = 0)
+    bid_pindex = tf.gather(bid_pindex, sort_indices, axis=0)
+    block_id = bid_pindex[:,0]
+    point_index = bid_pindex[:,1]
 
     #(2.2) block id -> block id index
     # get valid block num
-    block_id = block_id_point_index[:,0]
-    block_id_unique = tf.unique( block_id ) # should also be sorted already
-    valid_block_num = tf.shape(block_id_unique)[0].value
-    blockid_index_temple = tf.range(0, valid_block_num)
+    block_id_unique, blockid_index = tf.unique( block_id ) # also sorted already
+
+    # (2.3) get point index per block
+    # count real npoint_per_block
+    self.nblock = nblock = block_id_unique.shape[0].value
+    npoint_per_block_real = tf.histogram_fixed_width(blockid_index,
+                                  [0, nblock], nbins=nblock)
+    npoint_1 = block_id.shape[0] # num_point0 * npoint_per_block
+    tf.assert_equal(tf.reduce_sum(npoint_per_block_real), npoint_1)
+    self.max_npoint_per_block = tf.reduce_max(npoint_per_block_real)
+
+    tmp0 = tf.cumsum(npoint_per_block_real)[0:-1]
+    tmp0 = tf.concat([tf.constant([0],tf.int32), tmp0],0)
+    tmp1 = tf.gather(tmp0, blockid_index)
+    tmp2 = tf.range(npoint_1)
+    point_index_per_block = tf.expand_dims( tmp2 - tmp1,  1)
+    blockid_index = tf.expand_dims(blockid_index, 1)
+
+    bid_index__pindex_inb = tf.concat(
+                                    [blockid_index, point_index_per_block], -1)
+    return bid_index__pindex_inb, point_index
+
+  def gather_grouped_xyz(self, bid_index__pindex_inb, point_index):
+    tmp = tf.ones([self.nblock, self.max_npoint_per_block], dtype=tf.int32) * (-1)
+    grouped_pindex_template = tf.get_variable("grouped_pindex_template",
+                                              initializer=tmp,
+                                              trainable=False)
+    grouped_pindex_template = tf.scatter_nd_update(grouped_pindex_template, bid_index__pindex_inb, point_index)
+    import pdb; pdb.set_trace()  # XXX BREAKPOINT
+    pass
 
 
   def grouping(self, xyz):
     '''
     xyz: (num_point0,3)
-    grouped_xyz: (num_block,points_per_block,3)
+    grouped_xyz: (num_block,npoint_per_block,3)
 
     Search by point: for each point in xyz, find all the block d=ids
     '''
     assert len(xyz.shape) == 2
     assert xyz.shape[-1].value == 3
 
-    block_id_point_index = self.get_block_id(xyz)
+    bid_pindex = self.get_block_id(xyz)
+    bid_index__pindex_inb, point_index = self.get_bid_point_index(bid_pindex)
+    self.gather_grouped_xyz(bid_index__pindex_inb, point_index)
 
-    # (2)
 
-
-    # sort by block id:[block id, point index]
-    # (num_point0 * blocks_per_point, 2)
-
-    # [point index]
-    # (num_point0 * blocks_per_point, 1)
-
-    # [block index]
-    # (num_point0 * blocks_per_point, 1)
-
-    # [block index, point index in block] *****
-    # (num_point0 * blocks_per_point, 2)
 
     # grouped point index: neg temple
-    # (num_block_BF, points_per_block_BF, 1)
+    # (num_block_BF, npoint_per_block_BF, 1)
 
     # scatter: neg & pos
-    # (num_block_BF, points_per_block_BF, 1)
+    # (num_block_BF, npoint_per_block_BF, 1)
 
     # sampling
-    # (num_block, points_per_block, 1)
+    # (num_block, npoint_per_block, 1)
 
     # gather
-    # (num_block, points_per_block, 3)
+    # (num_block, npoint_per_block, 3)
 
 
 
@@ -131,13 +155,12 @@ class BlockGroupSampling():
 # (num_point0 * blocks_per_point, 1)  (num_point0 * blocks_per_point, 3)
 # (num_point0 * blocks_per_point, 3)  (num_point0 * blocks_per_point, 1)
 # (num_point0 * blocks_per_point, 3)  (num_point0 * blocks_per_point, 1)
-# (num_block_BF, points_per_block_BF, 3) neg
-# (num_block_BF, points_per_block_BF, 3) neg & pos
-# (num_block, points_per_block, 3) neg & pos
+# (num_block_BF, npoint_per_block_BF, 3) neg
+# (num_block_BF, npoint_per_block_BF, 3) neg & pos
+# (num_block, npoint_per_block, 3) neg & pos
 
 
 
-    grouped_xyz = tf.sactter_nd() # ()
     return grouped_xyz
 
   def main(self):
@@ -190,7 +213,7 @@ class BlockGroupSampling():
 if __name__ == '__main__':
   width = [0.2,0.2,0.2]
   stride = [0.2,0.2,0.2]
-  points_per_block = 32
-  block_group_sampling = BlockGroupSampling(width, stride, points_per_block)
+  npoint_per_block = 32
+  block_group_sampling = BlockGroupSampling(width, stride, npoint_per_block)
   block_group_sampling.main()
 
