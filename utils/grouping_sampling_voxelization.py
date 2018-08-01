@@ -70,7 +70,7 @@ def permutation_combination_3D(up_bound_3d, low_bound_3d=[0,0,0]):
   up_bound_3d: (3)
   '''
   pairs_2d = permutation_combination_2D(up_bound_3d[0:2], low_bound_3d[0:2])
-  zeros = tf.zeros([pairs_2d.shape[0],1], tf.int32)
+  zeros = tf.zeros([tf.shape(pairs_2d)[0],1], tf.int32)
   pairs_2d = tf.concat([pairs_2d, zeros], -1)
 
   pairs_3th = tf.reshape(tf.range(low_bound_3d[2], up_bound_3d[2], 1), [-1,1])
