@@ -93,6 +93,8 @@ $$ L = \frac{P_i-w}{s} $$
 $$ j_L = ceil(L)\ if\ L\ is\ float\ otherwise\ L+1 $$
 $$ j_U =  floor( \frac{P_i}{s}) $$
 $$ j:range(j_L, j_U+1) $$
+Note: Simplify programming of $j_L$:
+$$j_L=ceil(L+1e^{-5})$$
 
 \subsection{block indice between different scales}
 \includegraphics[width=0.9\textheight]{theory/bxmap.png}

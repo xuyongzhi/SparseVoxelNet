@@ -79,39 +79,45 @@ class BlockGroupSampling():
     block_id: (num_point0, nblock_per_point, 1)
     '''
     # (1.1) lower and upper block index bound
-    self.num_point0 = num_point0 = xyz.shape[0].value
+    self.batch_size = batch_size = xyz.shape[0].value
+    self.num_point0 = num_point0 = xyz.shape[1].value
     low_b_index = (xyz - self._width) / self._stride
     up_b_index = xyz / self._stride
 
-    low_b_index += 1e-7 # invoid low_b_index is exactly int
+    # Add 1 when low_b_index is just an int, remain when it's float
+    low_b_index_offset = 1e-5
+    low_b_index += low_b_index_offset # invoid low_b_index is exactly int
     low_b_index_fixed = tf.cast(tf.ceil(low_b_index), tf.int32)    # include
     up_b_index_fixed = tf.cast(tf.floor(up_b_index), tf.int32) + 1 # not include
-    if DEBUG:
-      up_b_index_fixed += 1
 
     #(1.2) the block number for each point should be equal
     nblock_per_point = up_b_index_fixed - low_b_index_fixed
-    tmp0 = tf.reduce_max(nblock_per_point)
-    tmp1 = tf.reduce_min(nblock_per_point)
-    tf.assert_equal( tmp0, tmp1)
-    self.nblock_per_point = nblock_per_point = tmp0
+    tmp_max = tf.reduce_max(nblock_per_point)
+    tmp_min = tf.reduce_min(nblock_per_point)
+
+    tmp_mean = tf.reduce_mean(tf.cast(nblock_per_point,tf.float32))
+    tmp_hist = tf.histogram_fixed_width(nblock_per_point, [tmp_min, tmp_max+1], tmp_max-tmp_min+1)
+    #tf.assert_equal( tmp_max, tmp_min,
+    #    message="max>mean: some points are jut on the intersection, increase low_b_index_offset")
+    self.nblock_per_point = nblock_per_point = tmp_max
     self.npoint_grouped = self.num_point0 * self.nblock_per_point
 
-    tmp2 = tf.range(0, nblock_per_point, 1)
-    tmp2 = tf.reshape(tmp2, (1,-1,1))
-    tmp2 = tf.tile(tmp2, [num_point0, 1, 3])
+    tmp_bi = tf.range(0, nblock_per_point, 1)
+    tmp_bi = tf.reshape(tmp_bi, (1,1,-1,1))
+    tmp_bi = tf.tile(tmp_bi, [batch_size, num_point0, 1, 3])
 
-    block_index = tf.expand_dims(low_b_index_fixed, 1)
+    block_index = tf.expand_dims(low_b_index_fixed, 2)
     # (num_point0, nblock_per_point, 3)
-    block_index = tf.tile(block_index, [1, nblock_per_point, 1]) + tmp2
+    block_index = tf.tile(block_index, [1,1,nblock_per_point,1]) + tmp_bi
 
     # (1.3) block index -> block id
     min_block_index = tf.reduce_min(block_index, -1)
     max_block_index = tf.reduce_max(block_index, -1)
     block_size = max_block_index - min_block_index
     # (num_point0, nblock_per_point, 1)
-    block_id = block_index[:,:,0] * block_size[1] * block_size[2] + \
-               block_index[:,:,1] * block_size[2] + block_index[:,:,2]
+    block_id = block_index[:,:,:,0] * block_size[1] * block_size[2] + \
+               block_index[:,:,:,1] * block_size[2] + block_index[:,:,:,2]
+    import pdb; pdb.set_trace()  # XXX BREAKPOINT
     block_id = tf.expand_dims(block_id, 2)
 
     # (1.4) concat block id and point index
@@ -221,7 +227,7 @@ class BlockGroupSampling():
 
     Search by point: for each point in xyz, find all the block d=ids
     '''
-    assert len(xyz.shape) == 2
+    assert len(xyz.shape) == 3
     assert xyz.shape[-1].value == 3
 
     bid_pindex = self.get_block_id(xyz)
@@ -264,7 +270,7 @@ class BlockGroupSampling():
       get_next = dataset.make_one_shot_iterator().get_next()
       features_next, label_next = get_next
       points_next = features_next['points']
-      grouped_xyz_next, empty_mask_next = self.grouping(points_next[0,:,0:3])
+      grouped_xyz_next, empty_mask_next = self.grouping(points_next[:,:,0:3])
 
       init = tf.initialize_all_variables()
 
@@ -294,7 +300,7 @@ class BlockGroupSampling():
                                         buffer_size=1024*100,
                                         num_parallel_reads=1)
 
-    batch_size = 2
+    batch_size = 3
     is_training = False
 
     dataset = dataset.prefetch(buffer_size=batch_size)
@@ -309,11 +315,9 @@ class BlockGroupSampling():
     features_next, label_next = get_next
     points_next = features_next['points']
 
-    for i in range(2):
-      points_i = points_next[i]
-      grouped_xyz_next, empty_mask_next = self.grouping(points_i[:,0:3])
-      import pdb; pdb.set_trace()  # XXX BREAKPOINT
-      pass
+    grouped_xyz_next, empty_mask_next = self.grouping(points_next[:,:,0:3])
+    import pdb; pdb.set_trace()  # XXX BREAKPOINT
+    pass
 
     #  with tf.Session() as sess:
     #    #features, object_label = sess.run(get_next)
@@ -329,6 +333,6 @@ if __name__ == '__main__':
   npoint_per_block = 32
   block_group_sampling = BlockGroupSampling(width, stride, nblock,
                                             npoint_per_block)
-  block_group_sampling.main()
-  #block_group_sampling.main_eager()
+  #block_group_sampling.main()
+  block_group_sampling.main_eager()
 
