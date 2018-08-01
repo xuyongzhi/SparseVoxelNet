@@ -34,7 +34,35 @@ def get_data_shapes_from_tfrecord(filenames):
   return _DATA_PARAS
 
 
+def block_id_to_block_index(block_id, block_size):
+  '''
+  block_id shape is flexible
+  block_size:(3)
+  '''
+  tmp0 = block_size[0] * block_size[1]
+  block_index_2 = tf.expand_dims(tf.floordiv(block_id, tmp0),-1)
+  tmp1 = tf.floormod(block_id, tmp0)
+  block_index_1 = tf.expand_dims(tf.floordiv(tmp1, block_size[0]),-1)
+  block_index_0 = tf.expand_dims(tf.floormod(tmp1, block_size[0]),-1)
+  block_index = tf.concat([block_index_0, block_index_1, block_index_2], -1)
+  return block_index
 
+def block_index_to_block_id(block_index, block_size):
+  '''
+  block_index: (n0,n1,3)
+  block_size:(3)
+
+  block_id: (n0,n1,1)
+  '''
+  assert tf.shape(block_index).shape[0].value == 3
+  block_id = block_index[:,:,2] * block_size[1] * block_size[0] + \
+              block_index[:,:,1] * block_size[0] + block_index[:,:,0]
+
+  is_check = True
+  if is_check:
+    block_index_C = block_id_to_block_index(block_id, block_size)
+    tf.assert_equal(block_index, block_index_C)
+  return block_id
 def add_permutation_combination_template(A, B):
   '''
   Utilize tf broadcast: https://stackoverflow.com/questions/43534057/evaluate-all-pair-combinations-of-rows-of-two-tensors-in-tensorflow/43542926
@@ -172,12 +200,14 @@ class BlockGroupSampling():
 
     # (1.3) block index -> block id
     tmp_bindex = tf.reshape(block_index, (-1,3))
-    min_block_index = tf.reduce_min(tmp_bindex, 0)
+    self.min_block_index = tf.reduce_min(tmp_bindex, 0)
     max_block_index = tf.reduce_max(tmp_bindex, 0)
-    self.samplings['block_size'] = block_size = max_block_index - min_block_index
+    self.block_size = max_block_index - self.min_block_index + 1 # ADD ONE!!!
+    # Make all block index positive. So that the blockid for each block index is
+    # exclusive.
+    block_index -= self.min_block_index
     # (num_point0, nblock_perp_3d, 1)
-    block_id = block_index[:,:,0] * block_size[1] * block_size[2] + \
-               block_index[:,:,1] * block_size[2] + block_index[:,:,2]
+    block_id = block_index_to_block_id(block_index, self.block_size)
     block_id = tf.expand_dims(block_id, 2)
 
     # (1.4) concat block id and point index
@@ -186,7 +216,9 @@ class BlockGroupSampling():
     # (num_point0, nblock_perp_3d, 2)
     bid_pindex = tf.concat([block_id, point_indices], 2)
     # (num_point0 * nblock_perp_3d, 2)
+
     bid_pindex = tf.reshape(bid_pindex, (-1,2))
+    block_index = tf.reshape(block_index, (-1,3))
 
     return bid_pindex
 
@@ -256,7 +288,7 @@ class BlockGroupSampling():
     #                  tf.cast(self.npoint_grouped, tf.float32)
     #samplings['nblock_rate'] = 1.0 * self._nblock / self.nblock
     self.samplings.update(samplings)
-    return bid_index__pindex_inb, point_index
+    return bid_index__pindex_inb, point_index, block_id_unique
 
 
   def gather_grouped_xyz(self, bid_index__pindex_inb, point_index, xyz):
@@ -268,18 +300,20 @@ class BlockGroupSampling():
     grouped_pindex = tf.scatter_nd_update(grouped_pindex, bid_index__pindex_inb, point_index)
 
     #(3.2) sampling fixed number of blocks when too many blocks are provided
-    b_sampling_index = tf.random_shuffle(tf.range(nblock_))[0:self._nblock]
-    b_sampling_index = tf.contrib.framework.sort(b_sampling_index)
+    bid_index_sampling0 = tf.random_shuffle(tf.range(nblock_))[0:self._nblock]
+    bid_index_sampling = tf.cond( nblock_real <= self._nblock,
+                          lambda: tf.range(nblock_real),
+                          lambda: tf.contrib.framework.sort(bid_index_sampling0))
     grouped_pindex = tf.cond( nblock_real <= self._nblock,
             lambda: grouped_pindex,
-            lambda: tf.gather(grouped_pindex, b_sampling_index) )
+            lambda: tf.gather(grouped_pindex, bid_index_sampling) )
     #print(grouped_pindex[0:20,0:10])
 
     #(3.3) gather xyz from point index
     grouped_xyz = tf.gather(xyz, grouped_pindex)
     empty_mask = tf.less(grouped_pindex,0)
 
-    return grouped_xyz, empty_mask
+    return grouped_xyz, empty_mask, bid_index_sampling
 
 
   def grouping(self, xyz):
@@ -293,9 +327,15 @@ class BlockGroupSampling():
     assert xyz.shape[-1].value == 3
 
     bid_pindex = self.get_block_id(xyz)
-    bid_index__pindex_inb, point_index = self.get_bid_point_index(bid_pindex)
-    grouped_xyz, empty_mask = self.gather_grouped_xyz(bid_index__pindex_inb, point_index, xyz)
+    bid_index__pindex_inb, point_index, block_id_unique = self.get_bid_point_index(bid_pindex)
+    grouped_xyz, empty_mask, bid_index_sampling = self.gather_grouped_xyz(
+                                      bid_index__pindex_inb, point_index, xyz)
 
+    # get grouped blocks center
+    bids_sampling = tf.gather(block_id_unique, bid_index_sampling)
+    bid_index = block_id_to_block_index(bids_sampling, self.block_size)
+
+    import pdb; pdb.set_trace()  # XXX BREAKPOINT
     return grouped_xyz, empty_mask
 
 
