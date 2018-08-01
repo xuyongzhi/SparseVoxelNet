@@ -4,9 +4,10 @@ import glob, os
 import numpy as np
 from utils.dataset_utils import parse_pl_record
 from datasets.all_datasets_meta.datasets_meta import DatasetsMeta
-from utils.ply_util import create_ply_dset
+from utils.ply_util import create_ply_dset, draw_blocks_by_bottom_center
 
 DEBUG = False
+TMP_IGNORE = True
 
 def get_data_shapes_from_tfrecord(filenames):
   _DATA_PARAS = {}
@@ -122,8 +123,13 @@ class BlockGroupSampling():
     self._stride = np.array(stride, dtype=np.float32)
     self._nblock = nblock
     self._npoint_per_block = npoint_per_block
+    # cut all the block with too few points
+    self._npoint_per_block_min = max(int(npoint_per_block*0.03), 2)
     assert self._width.size == self._stride.size == 3
     self.samplings = {}
+
+    # debug flags
+    self._debug_only_blocks_few_points = True
 
 
   def show_settings(self):
@@ -142,6 +148,7 @@ class BlockGroupSampling():
                       1.0*tf.cast(real,tf.float32)/tf.cast(config,tf.float32))
     summary = '\tReal / Config\n'
     summary += summary_str('nblock', self._nblock, self.nblock)
+    summary += 'nblock_invalid: {}\n'.format(self.samplings['nblock_invalid'])
     summary += 'ave-std np_perb: {}-{:.1f}/{}\n'.format(self.samplings['ave_np_perb'],
                 self.samplings['std_np_perb'], self._npoint_per_block)
     summary += summary_str('grouped_sampling_rate', self.npoint_grouped,
@@ -154,6 +161,16 @@ class BlockGroupSampling():
                            self.samplings['nempty_perb'])
     print(summary)
 
+
+  def block_index_to_center(self, block_index):
+    '''
+    block_index: (n,3)
+    '''
+    block_index = tf.cast(block_index, tf.float32)
+    bottom = block_index * self._stride
+    center = bottom + self._width*0.5
+    bottom_center = tf.concat([bottom, center], -1)
+    return bottom_center
 
   def get_block_id(self, xyz):
     '''
@@ -180,13 +197,31 @@ class BlockGroupSampling():
 
     #(1.2) the block number for each point should be equal
     nblocks_per_points = up_b_index_fixed - low_b_index_fixed
-    tmp_max = tf.reduce_max(nblocks_per_points, axis=0)
-    tmp_min = tf.reduce_min(nblocks_per_points, axis=0)
+    tmp_max_i = tf.reduce_max(nblocks_per_points, axis=0)
+    tmp_max = tf.cast(tmp_max_i, tf.float32)
+    tmp_min = tf.cast(tf.reduce_min(nblocks_per_points, axis=0), tf.float32)
 
-    #tmp_mean = tf.reduce_mean(tf.cast(nblocks_per_points,tf.float32), axis=0)
-    tf.assert_equal( tmp_max, tmp_min,
+    # *****
+    # block index is got by linear ranging from low bound by a fixed offset for
+    # all the points. This is based on: num block per point is the same for all!
+    # Check: No points will belong to greater nblocks. But few may belong to
+    # smaller blocks: err_npoints
+    tmp_mean = tf.reduce_mean(tf.cast(nblocks_per_points,tf.float32), axis=0)
+    # (a) The most are same as tmp_max
+    # (b) Very few may be tmp_max - 1
+    tf.assert_less(tmp_max - tmp_mean, 0.001,
                   message="Increase low_b_index_offset if tmp_max > tmp_mean")
-    self.nblocks_per_point = tmp_max
+    tf.assert_less(tmp_mean - tmp_min, 1.0)
+    tmp_err_np = tf.cast(tf.not_equal(nblocks_per_points,tmp_max_i),tf.int32)
+    tmp_err_np = tf.reduce_sum(tmp_err_np, 1)
+    err_npoints = tf.reduce_sum(tf.cast(tf.not_equal(tmp_err_np, 0),tf.int32))
+    if TMP_IGNORE:
+      tf.assert_less(err_npoints, 3)
+    else:
+      tf.assert_less(err_npoints, 1)
+    # *****
+
+    self.nblocks_per_point = tmp_max_i
     self.nblock_perp_3d = tf.reduce_prod(self.nblocks_per_point)
     self.npoint_grouped = self.num_point0 * self.nblock_perp_3d
 
@@ -246,9 +281,17 @@ class BlockGroupSampling():
                                                 tf.unique_with_counts(block_id)
     tf.assert_equal(tf.reduce_sum(npoint_per_block), self.npoint_grouped)
 
+    # get blockid_index for blocks with fewer points than self._npoint_per_block_min
+    tmp_valid_b = tf.greater_equal(npoint_per_block, self._npoint_per_block_min)
+    self.valid_bid_index = tf.cast(tf.where(tmp_valid_b)[:,0], tf.int32)
+    if self._debug_only_blocks_few_points:
+      tmp_invalid_b = tf.less(npoint_per_block, self._npoint_per_block_min)
+      self.invalid_bid_index = tf.cast(tf.where(tmp_invalid_b)[:,0], tf.int32)
+
     #(2.3) Get point index per block
     #      Based on: all points belong to same block is together
     self.nblock = nblock = tf.shape(block_id_unique)[0]
+    self.samplings['nblock_invalid'] = self.nblock - tf.shape(self.valid_bid_index)[0]
     self.samplings['max_npoint_per_block']= tf.reduce_max(npoint_per_block)
 
     tmp0 = tf.cumsum(npoint_per_block)[0:-1]
@@ -299,17 +342,22 @@ class BlockGroupSampling():
     grouped_pindex = tf.get_variable("grouped_pindex", initializer=tmp, trainable=False, validate_shape=False)
     grouped_pindex = tf.scatter_nd_update(grouped_pindex, bid_index__pindex_inb, point_index)
 
-    #(3.2) sampling fixed number of blocks when too many blocks are provided
-    bid_index_sampling0 = tf.random_shuffle(tf.range(nblock_))[0:self._nblock]
-    bid_index_sampling = tf.cond( nblock_real <= self._nblock,
-                          lambda: tf.range(nblock_real),
-                          lambda: tf.contrib.framework.sort(bid_index_sampling0))
-    grouped_pindex = tf.cond( nblock_real <= self._nblock,
+    #(3.2) remove the blocks with too less points
+    bid_index_valid = tf.concat([self.valid_bid_index, tf.range(nblock_real, nblock_,1)],0)
+    nblock_valid = tf.shape(bid_index_valid)[0]
+
+    #(3.3) sampling fixed number of blocks when too many blocks are provided
+    tmp_nb = self._nblock - nblock_valid
+    bid_index_sampling = tf.cond( tf.greater(tmp_nb, 0),
+             lambda: tf.concat([bid_index_valid, tf.zeros(tmp_nb,tf.int32)],0),
+             lambda: tf.contrib.framework.sort( tf.random_shuffle(bid_index_valid)[0:self._nblock] ))
+    nblock_valid_final = tf.shape(bid_index_sampling)[0]
+    grouped_pindex = tf.cond( tf.equal(nblock_valid_final, self._nblock),
             lambda: grouped_pindex,
             lambda: tf.gather(grouped_pindex, bid_index_sampling) )
     #print(grouped_pindex[0:20,0:10])
 
-    #(3.3) gather xyz from point index
+    #(3.4) gather xyz from point index
     grouped_xyz = tf.gather(xyz, grouped_pindex)
     empty_mask = tf.less(grouped_pindex,0)
 
@@ -333,10 +381,11 @@ class BlockGroupSampling():
 
     # get grouped blocks center
     bids_sampling = tf.gather(block_id_unique, bid_index_sampling)
-    bid_index = block_id_to_block_index(bids_sampling, self.block_size)
+    bindex_sampling = block_id_to_block_index(bids_sampling, self.block_size)
+    bindex_sampling += self.min_block_index
+    block_bottom_center = self.block_index_to_center(bindex_sampling)
 
-    import pdb; pdb.set_trace()  # XXX BREAKPOINT
-    return grouped_xyz, empty_mask
+    return grouped_xyz, empty_mask, block_bottom_center
 
 
   def main(self):
@@ -372,7 +421,7 @@ class BlockGroupSampling():
       get_next = dataset.make_one_shot_iterator().get_next()
       features_next, label_next = get_next
       points_next = features_next['points']
-      grouped_xyz_next, empty_mask_next = self.grouping(points_next[0,:,0:3])
+      grouped_xyz_next, empty_mask_next, bottom_center_next = self.grouping(points_next[0,:,0:3])
 
       init = tf.initialize_all_variables()
 
@@ -427,10 +476,10 @@ class BlockGroupSampling():
     points_next = features_next['points'][:,:,0:3]
 
     for i in range(batch_size):
-      if i<1: continue
+      #if i<2: continue
 
       points_i = points_next[i,:,:]
-      grouped_xyz_next, empty_mask_next = self.grouping(points_i)
+      grouped_xyz_next, empty_mask_next, bottom_center_next = self.grouping(points_i)
 
       self.show_summary()
 
@@ -440,6 +489,8 @@ class BlockGroupSampling():
       ply_fn = '/tmp/E%d_grouped_points.ply'%(i)
       create_ply_dset(DATASET_NAME, grouped_xyz_next.numpy(), ply_fn,
                       extra='random_same_color')
+      ply_fn = '/tmp/E%d_blocks.ply'%(i)
+      draw_blocks_by_bottom_center(ply_fn, bottom_center_next.numpy(), random_crop=0.2)
 
       import pdb; pdb.set_trace()  # XXX BREAKPOINT
       pass
