@@ -83,7 +83,12 @@ class BlockGroupSampling():
     low_b_index = (xyz - self._width) / self._stride
     up_b_index = xyz / self._stride
 
-    low_b_index += 1e-7 # invoid low_b_index is exactly int
+    # set a small pos offset. If low_b_index is float, ceil(low_b_index)
+    # remains. But if low_b_index is int, ceil(low_b_index) increases.
+    # Therefore, the points just on the intersection of two blocks will always
+    # belong to left block. (See notes)
+    low_b_index_offset = 1e-5
+    low_b_index += low_b_index_offset # invoid low_b_index is exactly int
     low_b_index_fixed = tf.cast(tf.ceil(low_b_index), tf.int32)    # include
     up_b_index_fixed = tf.cast(tf.floor(up_b_index), tf.int32) + 1 # not include
     if DEBUG:
@@ -91,10 +96,11 @@ class BlockGroupSampling():
 
     #(1.2) the block number for each point should be equal
     nblock_per_point = up_b_index_fixed - low_b_index_fixed
-    tmp0 = tf.reduce_max(nblock_per_point)
-    tmp1 = tf.reduce_min(nblock_per_point)
-    tf.assert_equal( tmp0, tmp1)
-    self.nblock_per_point = nblock_per_point = tmp0
+    tmp_max = tf.reduce_max(nblock_per_point)
+    tmp_min = tf.reduce_min(nblock_per_point)
+    tf.assert_equal( tmp_max, tmp_min,
+                  message="Increase low_b_index_offset if tmp_max > tmp_mean")
+    self.nblock_per_point = nblock_per_point = tmp_max
     self.npoint_grouped = self.num_point0 * self.nblock_per_point
 
     tmp2 = tf.range(0, nblock_per_point, 1)
@@ -106,9 +112,10 @@ class BlockGroupSampling():
     block_index = tf.tile(block_index, [1, nblock_per_point, 1]) + tmp2
 
     # (1.3) block index -> block id
-    min_block_index = tf.reduce_min(block_index, -1)
-    max_block_index = tf.reduce_max(block_index, -1)
-    block_size = max_block_index - min_block_index
+    tmp_bindex = tf.reshape(block_index, (-1,3))
+    min_block_index = tf.reduce_min(tmp_bindex, 0)
+    max_block_index = tf.reduce_max(tmp_bindex, 0)
+    self.samplings['block_size'] = block_size = max_block_index - min_block_index
     # (num_point0, nblock_per_point, 1)
     block_id = block_index[:,:,0] * block_size[1] * block_size[2] + \
                block_index[:,:,1] * block_size[2] + block_index[:,:,2]
@@ -143,18 +150,16 @@ class BlockGroupSampling():
 
     #(2.2) block id -> block id index
     # get valid block num
-    block_id_unique, blockid_index = tf.unique( block_id ) # also sorted already
+    block_id_unique, blockid_index, npoint_per_block =\
+                                                tf.unique_with_counts(block_id)
+    tf.assert_equal(tf.reduce_sum(npoint_per_block), self.npoint_grouped)
 
     #(2.3) Get point index per block
     #      Based on: all points belong to same block is together
-    # count real npoint_per_block
     self.nblock = nblock = tf.shape(block_id_unique)[0]
-    npoint_per_block_real = tf.histogram_fixed_width(blockid_index,
-                                  [0, nblock], nbins=nblock)
-    tf.assert_equal(tf.reduce_sum(npoint_per_block_real), self.npoint_grouped)
-    self.samplings['max_npoint_per_block']= tf.reduce_max(npoint_per_block_real)
+    self.samplings['max_npoint_per_block']= tf.reduce_max(npoint_per_block)
 
-    tmp0 = tf.cumsum(npoint_per_block_real)[0:-1]
+    tmp0 = tf.cumsum(npoint_per_block)[0:-1]
     tmp0 = tf.concat([tf.constant([0],tf.int32), tmp0],0)
     tmp1 = tf.gather(tmp0, blockid_index)
     tmp2 = tf.range(self.npoint_grouped)
@@ -171,7 +176,7 @@ class BlockGroupSampling():
 
     # record sampling parameters
     samplings = {}
-    tmp = npoint_per_block_real - self._npoint_per_block
+    tmp = npoint_per_block - self._npoint_per_block
     missing_mask = tf.cast(tf.greater(tmp,0), tf.int32)
     tmp_missing = missing_mask * tmp
     empty_mask = tf.cast(tf.less(tmp,0), tf.int32)
@@ -329,6 +334,6 @@ if __name__ == '__main__':
   npoint_per_block = 32
   block_group_sampling = BlockGroupSampling(width, stride, nblock,
                                             npoint_per_block)
-  block_group_sampling.main()
-  #block_group_sampling.main_eager()
+  #block_group_sampling.main()
+  block_group_sampling.main_eager()
 
