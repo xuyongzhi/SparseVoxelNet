@@ -284,6 +284,7 @@ class BlockGroupSampling():
     # get blockid_index for blocks with fewer points than self._npoint_per_block_min
     tmp_valid_b = tf.greater_equal(npoint_per_block, self._npoint_per_block_min)
     self.valid_bid_index = tf.cast(tf.where(tmp_valid_b)[:,0], tf.int32)
+    self.nblock_valid = tf.shape(self.valid_bid_index)[0]
     if self._debug_only_blocks_few_points:
       tmp_invalid_b = tf.less(npoint_per_block, self._npoint_per_block_min)
       self.invalid_bid_index = tf.cast(tf.where(tmp_invalid_b)[:,0], tf.int32)
@@ -291,7 +292,7 @@ class BlockGroupSampling():
     #(2.3) Get point index per block
     #      Based on: all points belong to same block is together
     self.nblock = nblock = tf.shape(block_id_unique)[0]
-    self.samplings['nblock_invalid'] = self.nblock - tf.shape(self.valid_bid_index)[0]
+    self.samplings['nblock_invalid'] = self.nblock - self.nblock_valid
     self.samplings['max_npoint_per_block']= tf.reduce_max(npoint_per_block)
 
     tmp0 = tf.cumsum(npoint_per_block)[0:-1]
@@ -336,15 +337,14 @@ class BlockGroupSampling():
 
   def gather_grouped_xyz(self, bid_index__pindex_inb, point_index, xyz):
     #(3.1) gather grouped point index
-    nblock_real = self.nblock
-    nblock_ = tf.maximum(nblock_real, self._nblock)
-    tmp = tf.ones([nblock_, self._npoint_per_block], dtype=tf.int32) * (-1)
+    # gen point index: (real nblock, self._npoint_per_block, 1)
+    tmp = tf.ones([self.nblock, self._npoint_per_block], dtype=tf.int32) * (-1)
     grouped_pindex = tf.get_variable("grouped_pindex", initializer=tmp, trainable=False, validate_shape=False)
     grouped_pindex = tf.scatter_nd_update(grouped_pindex, bid_index__pindex_inb, point_index)
 
     #(3.2) remove the blocks with too less points
-    bid_index_valid = tf.concat([self.valid_bid_index, tf.range(nblock_real, nblock_,1)],0)
-    nblock_valid = tf.shape(bid_index_valid)[0]
+    bid_index_valid = self.valid_bid_index
+    nblock_valid = self.nblock_valid
 
     #(3.3) sampling fixed number of blocks when too many blocks are provided
     tmp_nb = self._nblock - nblock_valid
