@@ -4,6 +4,7 @@ import glob, os
 import numpy as np
 from utils.dataset_utils import parse_pl_record
 from datasets.all_datasets_meta.datasets_meta import DatasetsMeta
+from utils.ply_util import create_ply_dset
 
 DEBUG = False
 
@@ -61,6 +62,8 @@ class BlockGroupSampling():
                       1.0*tf.cast(real,tf.float32)/tf.cast(config,tf.float32))
     summary = '\tReal / Config\n'
     summary += summary_str('nblock', self._nblock, self.nblock)
+    summary += 'ave-std np_perb: {}-{:.1f}/{}\n'.format(self.samplings['ave_np_perb'],
+                self.samplings['std_np_perb'], self._npoint_per_block)
     summary += summary_str('grouped_sampling_rate', self.npoint_grouped,
                            self.samplings['valid_grouped_npoint'])
     summary += summary_str('nblock_has_missing', self.nblock,
@@ -182,6 +185,8 @@ class BlockGroupSampling():
     empty_mask = tf.cast(tf.less(tmp,0), tf.int32)
     tmp_empty = empty_mask * tmp
 
+    samplings['ave_np_perb'], variance = tf.nn.moments(npoint_per_block,0)
+    samplings['std_np_perb'] = tf.sqrt(tf.cast(variance,tf.float32))
     samplings['nblock_has_missing'] = nblock_has_missing = tf.reduce_sum(missing_mask)
     nblock_empty = tf.reduce_sum(empty_mask)
     samplings['nmissing_perb'] = tf.reduce_sum(tmp_missing) / nblock_has_missing
@@ -315,8 +320,18 @@ class BlockGroupSampling():
     points_next = features_next['points']
 
     for i in range(2):
-      points_i = points_next[i]
-      grouped_xyz_next, empty_mask_next = self.grouping(points_i[:,0:3])
+      points_i = points_next[i][:,0:3]
+      grouped_xyz_next, empty_mask_next = self.grouping(points_i)
+
+      self.show_summary()
+
+      ply_fn = '/tmp/%d_points.ply'%(i)
+      create_ply_dset(DATASET_NAME, points_i.numpy(), ply_fn,
+                      extra='random_same_color')
+      ply_fn = '/tmp/%d_grouped_points.ply'%(i)
+      create_ply_dset(DATASET_NAME, grouped_xyz_next.numpy(), ply_fn,
+                      extra='random_same_color')
+
       import pdb; pdb.set_trace()  # XXX BREAKPOINT
       pass
 
@@ -330,7 +345,7 @@ class BlockGroupSampling():
 if __name__ == '__main__':
   width = [0.4,0.4,0.4]
   stride = [0.2,0.2,0.2]
-  nblock = 48
+  nblock = 256
   npoint_per_block = 32
   block_group_sampling = BlockGroupSampling(width, stride, nblock,
                                             npoint_per_block)
