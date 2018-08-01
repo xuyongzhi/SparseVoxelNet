@@ -69,6 +69,7 @@ class BlockGroupSampling():
                            self.samplings['nmissing_perb'])
     summary += summary_str('nempty_perb', self._npoint_per_block,
                            self.samplings['nempty_perb'])
+    summary += 'block size:{}\n'.format(self.samplings['block_size'])
     print(summary)
 
   def get_block_id(self, xyz):
@@ -107,26 +108,26 @@ class BlockGroupSampling():
     tmp_bi = tf.tile(tmp_bi, [batch_size, num_point0, 1, 3])
 
     block_index = tf.expand_dims(low_b_index_fixed, 2)
-    # (num_point0, nblock_per_point, 3)
+    # (batch_size, num_point0, nblock_per_point, 3)
     block_index = tf.tile(block_index, [1,1,nblock_per_point,1]) + tmp_bi
 
     # (1.3) block index -> block id
-    min_block_index = tf.reduce_min(block_index, -1)
-    max_block_index = tf.reduce_max(block_index, -1)
-    block_size = max_block_index - min_block_index
-    # (num_point0, nblock_per_point, 1)
+    tmp_bi = tf.reshape(block_index, [-1,3])
+    min_block_index = tf.reduce_min(tmp_bi, 0)
+    max_block_index = tf.reduce_max(tmp_bi, 0)
+    self.samplings['block_size']=block_size = max_block_index - min_block_index
+    # (batch_size, num_point0, nblock_per_point, 1)
     block_id = block_index[:,:,:,0] * block_size[1] * block_size[2] + \
                block_index[:,:,:,1] * block_size[2] + block_index[:,:,:,2]
-    import pdb; pdb.set_trace()  # XXX BREAKPOINT
-    block_id = tf.expand_dims(block_id, 2)
+    block_id = tf.expand_dims(block_id, -1)
 
     # (1.4) concat block id and point index
-    point_indices = tf.reshape( tf.range(0, num_point0, 1), (-1,1,1))
-    point_indices = tf.tile(point_indices, [1,nblock_per_point,1])
-    # (num_point0, nblock_per_point, 2)
-    bid_pindex = tf.concat([block_id, point_indices], 2)
-    # (num_point0 * nblock_per_point, 2)
-    bid_pindex = tf.reshape(bid_pindex, (-1,2))
+    point_indices = tf.reshape( tf.range(0, num_point0, 1), (1,-1,1,1))
+    point_indices = tf.tile(point_indices, [batch_size,1,nblock_per_point,1])
+    # (batch_size, num_point0, nblock_per_point, 2)
+    bid_pindex = tf.concat([block_id, point_indices], -1)
+    # (batch_size, num_point0 * nblock_per_point, 2)
+    bid_pindex = tf.reshape(bid_pindex, (batch_size,-1,2))
 
     return bid_pindex
 
@@ -141,16 +142,30 @@ class BlockGroupSampling():
     #(2.1) sort by block id, to put all the points belong to same block together
     # shuffle before sort for randomly sampling later
     bid_pindex = tf.random_shuffle(bid_pindex)
-    sort_indices = tf.contrib.framework.argsort(bid_pindex[:,0],
-                                                axis = 0)
-    bid_pindex = tf.gather(bid_pindex, sort_indices, axis=0)
-    block_id = bid_pindex[:,0]
-    point_index = bid_pindex[:,1]
+    sort_indices = tf.contrib.framework.argsort(bid_pindex[:,:,0],
+                                                axis = 1)
+    sort_indices = tf.expand_dims(sort_indices, -1)
+    tmp0 = tf.reshape(tf.range(0,self.batch_size,1), (3,1,1))
+    tmp0 = tf.tile(tmp0, [1, self.npoint_grouped,1])
+    sort_indices = tf.concat([tmp0, sort_indices], -1)
+
+    bid_pindex = tf.gather_nd(bid_pindex, sort_indices)
+    block_id = bid_pindex[:,:,0]
+    point_index = bid_pindex[:,:,1]
 
     #(2.2) block id -> block id index
     # get valid block num
-    block_id_unique, blockid_index = tf.unique( block_id ) # also sorted already
+    bid_unique = []
+    bid_index = []
+    bid_count = []
+    for i in range(self.batch_size):
+       # also sorted already
+      bid_unique_i,bid_index_i,bid_count_i = tf.unique_with_counts(block_id[i])
+      bid_unique.append(tf.expand_dims(bid_unique_i,-1))
+      bid_index.append(tf.expand_dims(bid_index_i,-1))
+      bid_count.append(tf.expand_dims(bid_count_i,-1))
 
+    import pdb; pdb.set_trace()  # XXX BREAKPOINT
     #(2.3) Get point index per block
     #      Based on: all points belong to same block is together
     # count real npoint_per_block
