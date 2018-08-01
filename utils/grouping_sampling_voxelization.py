@@ -33,6 +33,56 @@ def get_data_shapes_from_tfrecord(filenames):
       #print('points', features['points'][0,0:5,:])
   return _DATA_PARAS
 
+
+
+def add_permutation_combination_template(A, B):
+  '''
+  Utilize tf broadcast: https://stackoverflow.com/questions/43534057/evaluate-all-pair-combinations-of-rows-of-two-tensors-in-tensorflow/43542926
+  A:(a,d)
+  B:(b,d)
+  '''
+  A_ = tf.expand_dims(A,0)
+  B = tf.expand_dims(B,1)
+
+def permutation_combination_2D(up_bound_2d, low_bound_2d):
+  '''
+  low_bound_2d: (2)
+  up_bound_2d: (2)
+  '''
+  pairs = []
+  for i in range(2):
+    zeros = tf.zeros([up_bound_2d[i] - low_bound_2d[i],1], tf.int32)
+    pairs_i = tf.reshape(tf.range(low_bound_2d[i], up_bound_2d[i], 1), [-1,1])
+    if i==1:
+      pairs_i = tf.concat([zeros, pairs_i], 1)
+      pairs_i = tf.expand_dims(pairs_i, 0)
+    else:
+      pairs_i = tf.concat([pairs_i, zeros], 1)
+      pairs_i = tf.expand_dims(pairs_i, 1)
+    pairs.append(pairs_i)
+
+  pairs_2d = tf.reshape(pairs[0] + pairs[1], [-1,2])
+  return pairs_2d
+
+def permutation_combination_3D(up_bound_3d, low_bound_3d=[0,0,0]):
+  '''
+  low_bound_3d: (3)
+  up_bound_3d: (3)
+  '''
+  pairs_2d = permutation_combination_2D(up_bound_3d[0:2], low_bound_3d[0:2])
+  zeros = tf.zeros([pairs_2d.shape[0],1], tf.int32)
+  pairs_2d = tf.concat([pairs_2d, zeros], -1)
+
+  pairs_3th = tf.reshape(tf.range(low_bound_3d[2], up_bound_3d[2], 1), [-1,1])
+  zeros = tf.zeros([up_bound_3d[2] - low_bound_3d[2],2], tf.int32)
+  pairs_3th = tf.concat([zeros, pairs_3th], -1)
+
+  pairs_2d = tf.expand_dims(pairs_2d, 0)
+  pairs_3th = tf.expand_dims(pairs_3th, 1)
+  pairs_3d = tf.reshape(pairs_2d + pairs_3th, [-1,3])
+  return pairs_3d
+
+
 class BlockGroupSampling():
   def __init__(self, width, stride, nblock, npoint_per_block):
     '''
@@ -81,8 +131,8 @@ class BlockGroupSampling():
     '''
     (1) Get the responding block index of each point
     xyz: (num_point0, 3)
-      block_index: (num_point0, nblock_per_point, 3)
-    block_id: (num_point0, nblock_per_point, 1)
+      block_index: (num_point0, nblock_perp_3d, 3)
+    block_id: (num_point0, nblock_perp_3d, 1)
     '''
     # (1.1) lower and upper block index bound
     self.num_point0 = num_point0 = xyz.shape[0].value
@@ -101,38 +151,41 @@ class BlockGroupSampling():
       up_b_index_fixed += 1
 
     #(1.2) the block number for each point should be equal
-    nblock_per_point = up_b_index_fixed - low_b_index_fixed
-    tmp_max = tf.reduce_max(nblock_per_point)
-    tmp_min = tf.reduce_min(nblock_per_point)
+    nblocks_per_points = up_b_index_fixed - low_b_index_fixed
+    tmp_max = tf.reduce_max(nblocks_per_points, axis=0)
+    tmp_min = tf.reduce_min(nblocks_per_points, axis=0)
+
+    #tmp_mean = tf.reduce_mean(tf.cast(nblocks_per_points,tf.float32), axis=0)
     tf.assert_equal( tmp_max, tmp_min,
                   message="Increase low_b_index_offset if tmp_max > tmp_mean")
-    self.nblock_per_point = nblock_per_point = tmp_max
-    self.npoint_grouped = self.num_point0 * self.nblock_per_point
+    self.nblocks_per_point = tmp_max
+    self.nblock_perp_3d = tf.reduce_prod(self.nblocks_per_point)
+    self.npoint_grouped = self.num_point0 * self.nblock_perp_3d
 
-    tmp2 = tf.range(0, nblock_per_point, 1)
-    tmp2 = tf.reshape(tmp2, (1,-1,1))
-    tmp2 = tf.tile(tmp2, [num_point0, 1, 3])
+    pairs_3d = permutation_combination_3D(self.nblocks_per_point)
+    pairs_3d = tf.tile( tf.expand_dims(pairs_3d, 0), [self.num_point0,1,1])
 
     block_index = tf.expand_dims(low_b_index_fixed, 1)
-    # (num_point0, nblock_per_point, 3)
-    block_index = tf.tile(block_index, [1, nblock_per_point, 1]) + tmp2
+    # (num_point0, nblock_perp_3d, 3)
+    block_index = tf.tile(block_index, [1, self.nblock_perp_3d, 1])
+    block_index += pairs_3d
 
     # (1.3) block index -> block id
     tmp_bindex = tf.reshape(block_index, (-1,3))
     min_block_index = tf.reduce_min(tmp_bindex, 0)
     max_block_index = tf.reduce_max(tmp_bindex, 0)
     self.samplings['block_size'] = block_size = max_block_index - min_block_index
-    # (num_point0, nblock_per_point, 1)
+    # (num_point0, nblock_perp_3d, 1)
     block_id = block_index[:,:,0] * block_size[1] * block_size[2] + \
                block_index[:,:,1] * block_size[2] + block_index[:,:,2]
     block_id = tf.expand_dims(block_id, 2)
 
     # (1.4) concat block id and point index
     point_indices = tf.reshape( tf.range(0, num_point0, 1), (-1,1,1))
-    point_indices = tf.tile(point_indices, [1,nblock_per_point,1])
-    # (num_point0, nblock_per_point, 2)
+    point_indices = tf.tile(point_indices, [1, self.nblock_perp_3d, 1])
+    # (num_point0, nblock_perp_3d, 2)
     bid_pindex = tf.concat([block_id, point_indices], 2)
-    # (num_point0 * nblock_per_point, 2)
+    # (num_point0 * nblock_perp_3d, 2)
     bid_pindex = tf.reshape(bid_pindex, (-1,2))
 
     return bid_pindex
@@ -141,9 +194,9 @@ class BlockGroupSampling():
   def get_bid_point_index(self, bid_pindex):
     '''
     Get "block id index: and "point index within block".
-    bid_pindex: (num_point0 * nblock_per_point, 2)
+    bid_pindex: (num_point0 * nblock_perp_3d, 2)
                                 [block_id, point_index]
-    bid_index__pindex_inb:  (num_point0 * nblock_per_point, 2)
+    bid_index__pindex_inb:  (num_point0 * nblock_perp_3d, 2)
                                 [bid_index, pindex_inb]
     '''
     #(2.1) sort by block id, to put all the points belong to same block together
@@ -197,7 +250,7 @@ class BlockGroupSampling():
     samplings['nempty_perb'] = tf.reduce_sum(tmp_empty) / nblock_empty
 
     samplings['valid_grouped_npoint'] = bid_index__pindex_inb.shape[0].value
-    samplings['nblock_per_point'] = self.nblock_per_point
+    samplings['nblock_perp_3d'] = self.nblock_perp_3d
     #samplings['grouped_sampling_rate'] =\
     #                  tf.cast(samplings['valid_grouped_npoint'],tf.float32) /\
     #                  tf.cast(self.npoint_grouped, tf.float32)
@@ -334,6 +387,8 @@ class BlockGroupSampling():
     points_next = features_next['points'][:,:,0:3]
 
     for i in range(batch_size):
+      if i<1: continue
+
       points_i = points_next[i,:,:]
       grouped_xyz_next, empty_mask_next = self.grouping(points_i)
 
@@ -360,7 +415,7 @@ if __name__ == '__main__':
   width = [0.4,0.4,0.4]
   stride = [0.2,0.2,0.2]
   nblock = 256
-  npoint_per_block = 32
+  npoint_per_block = 156
   block_group_sampling = BlockGroupSampling(width, stride, nblock,
                                             npoint_per_block)
   #block_group_sampling.main()
