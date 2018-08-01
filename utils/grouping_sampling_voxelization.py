@@ -124,7 +124,7 @@ class BlockGroupSampling():
     self._nblock = nblock
     self._npoint_per_block = npoint_per_block
     # cut all the block with too few points
-    self._npoint_per_block_min = max(int(npoint_per_block*0.03), 2)
+    self._npoint_per_block_min = max(int(npoint_per_block*0.05), 2)
     assert self._width.size == self._stride.size == 3
     self.samplings = {}
 
@@ -148,7 +148,7 @@ class BlockGroupSampling():
                       1.0*tf.cast(real,tf.float32)/tf.cast(config,tf.float32))
     summary = '\tReal / Config\n'
     summary += summary_str('nblock', self._nblock, self.nblock)
-    summary += 'nblock_invalid: {}\n'.format(self.samplings['nblock_invalid'])
+    summary += 'nblock_invalid: {}\n'.format(self.nblock_invalid)
     summary += 'ave-std np_perb: {}-{:.1f}/{}\n'.format(self.samplings['ave_np_perb'],
                 self.samplings['std_np_perb'], self._npoint_per_block)
     summary += summary_str('grouped_sampling_rate', self.npoint_grouped,
@@ -280,19 +280,19 @@ class BlockGroupSampling():
     block_id_unique, blockid_index, npoint_per_block =\
                                                 tf.unique_with_counts(block_id)
     tf.assert_equal(tf.reduce_sum(npoint_per_block), self.npoint_grouped)
+    self.nblock = nblock = tf.shape(block_id_unique)[0]
 
     # get blockid_index for blocks with fewer points than self._npoint_per_block_min
     tmp_valid_b = tf.greater_equal(npoint_per_block, self._npoint_per_block_min)
     self.valid_bid_index = tf.cast(tf.where(tmp_valid_b)[:,0], tf.int32)
     self.nblock_valid = tf.shape(self.valid_bid_index)[0]
+    self.nblock_invalid = self.nblock - self.nblock_valid
     if self._debug_only_blocks_few_points:
       tmp_invalid_b = tf.less(npoint_per_block, self._npoint_per_block_min)
       self.invalid_bid_index = tf.cast(tf.where(tmp_invalid_b)[:,0], tf.int32)
 
     #(2.3) Get point index per block
     #      Based on: all points belong to same block is together
-    self.nblock = nblock = tf.shape(block_id_unique)[0]
-    self.samplings['nblock_invalid'] = self.nblock - self.nblock_valid
     self.samplings['max_npoint_per_block']= tf.reduce_max(npoint_per_block)
 
     tmp0 = tf.cumsum(npoint_per_block)[0:-1]
@@ -343,18 +343,19 @@ class BlockGroupSampling():
     grouped_pindex = tf.scatter_nd_update(grouped_pindex, bid_index__pindex_inb, point_index)
 
     #(3.2) remove the blocks with too less points
-    bid_index_valid = self.valid_bid_index
-    nblock_valid = self.nblock_valid
+    if not self._debug_only_blocks_few_points:
+      bid_index_valid = self.valid_bid_index
+      nblock_valid = self.nblock_valid
+    else:
+      bid_index_valid = self.invalid_bid_index
+      nblock_valid = self.nblock_invalid
 
     #(3.3) sampling fixed number of blocks when too many blocks are provided
     tmp_nb = self._nblock - nblock_valid
     bid_index_sampling = tf.cond( tf.greater(tmp_nb, 0),
-             lambda: tf.concat([bid_index_valid, tf.zeros(tmp_nb,tf.int32)],0),
+             lambda: tf.concat([bid_index_valid, tf.ones(tmp_nb,tf.int32) * bid_index_valid[0]],0),
              lambda: tf.contrib.framework.sort( tf.random_shuffle(bid_index_valid)[0:self._nblock] ))
-    nblock_valid_final = tf.shape(bid_index_sampling)[0]
-    grouped_pindex = tf.cond( tf.equal(nblock_valid_final, self._nblock),
-            lambda: grouped_pindex,
-            lambda: tf.gather(grouped_pindex, bid_index_sampling) )
+    grouped_pindex = tf.gather(grouped_pindex, bid_index_sampling)
     #print(grouped_pindex[0:20,0:10])
 
     #(3.4) gather xyz from point index
@@ -460,7 +461,7 @@ class BlockGroupSampling():
                                         buffer_size=1024*100,
                                         num_parallel_reads=1)
 
-    batch_size = 5
+    batch_size = 2
     is_training = False
 
     dataset = dataset.prefetch(buffer_size=batch_size)
@@ -489,8 +490,19 @@ class BlockGroupSampling():
       ply_fn = '/tmp/E%d_grouped_points.ply'%(i)
       create_ply_dset(DATASET_NAME, grouped_xyz_next.numpy(), ply_fn,
                       extra='random_same_color')
-      ply_fn = '/tmp/E%d_blocks.ply'%(i)
-      draw_blocks_by_bottom_center(ply_fn, bottom_center_next.numpy(), random_crop=0.2)
+      if self._debug_only_blocks_few_points:
+        block_flag = '_invalid'
+      else:
+        block_flag = ''
+      ply_fn = '/tmp/E%d_blocks%s.ply'%(i, block_flag)
+      draw_blocks_by_bottom_center(ply_fn, bottom_center_next.numpy(), random_crop=0)
+
+      for j in np.random.randint(0, grouped_xyz_next.shape[0].value, 10):
+        ply_fn = '/tmp/%d%s/E%d_blocks.ply'%(i, block_flag, j)
+        draw_blocks_by_bottom_center(ply_fn, bottom_center_next.numpy()[j:j+1], random_crop=0)
+        ply_fn = '/tmp/%d%s/E%d_points.ply'%(i, block_flag, j)
+        create_ply_dset(DATASET_NAME, grouped_xyz_next.numpy()[j], ply_fn,
+                      extra='random_same_color')
 
       import pdb; pdb.set_trace()  # XXX BREAKPOINT
       pass

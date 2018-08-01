@@ -97,6 +97,9 @@ def gen_box_and_pl( ply_fn, box_vertexes, pl_xyz=None, extra='' ):
         edge[i] = ( edge_val[i,0], edge_val[i,1], edge_val[i,2], edge_val[i,3], edge_val[i,4] )
     el_edge = PlyElement.describe(edge,'edge')
 
+    dirname = os.path.dirname(ply_fn)
+    if not os.path.exists(dirname):
+      os.makedirs(dirname)
     PlyData([el_vertex, el_edge],text=True).write(ply_fn)
     print('write %s ok'%(ply_fn))
 
@@ -287,13 +290,13 @@ def draw_points_and_voxel_indices(ply_fn, xyz, voxel_indices):
 
   draw_points_and_edges(ply_fn, xyz, edge_indices)
 
-def draw_blocks_by_bottom_center(ply_fn, block_bottom_center, random_crop=1):
+def draw_blocks_by_bottom_center(ply_fn, block_bottom_center, random_crop=0):
   '''
     block_bottom_center: (num_blocks, 6)
   '''
-  if random_crop<1:
+  if random_crop>0:
     N = block_bottom_center.shape[0]
-    choices = np.random.choice(N, int(N*random_crop))
+    choices = np.random.choice(N, N-int(N*random_crop))
     block_bottom_center = np.take(block_bottom_center, choices, axis=0)
   block_bottom = block_bottom_center[:,0:3]
   block_center = block_bottom_center[:,3:6]
