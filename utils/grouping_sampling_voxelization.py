@@ -47,11 +47,13 @@ class BlockGroupSampling():
     assert self._width.size == self._stride.size == 3
     self.samplings = {}
 
+
   def show_settings(self):
     items = ['width', 'stride', 'npoint_per_block']
     for item in items:
       if hasattr(self, item):
         print('{}:{}'.format(item, getattr(self,item)))
+
 
   def show_summary(self):
     #for item in self.samplings:
@@ -73,6 +75,7 @@ class BlockGroupSampling():
     summary += summary_str('nempty_perb', self._npoint_per_block,
                            self.samplings['nempty_perb'])
     print(summary)
+
 
   def get_block_id(self, xyz):
     '''
@@ -133,6 +136,7 @@ class BlockGroupSampling():
     bid_pindex = tf.reshape(bid_pindex, (-1,2))
 
     return bid_pindex
+
 
   def get_bid_point_index(self, bid_pindex):
     '''
@@ -201,6 +205,7 @@ class BlockGroupSampling():
     self.samplings.update(samplings)
     return bid_index__pindex_inb, point_index
 
+
   def gather_grouped_xyz(self, bid_index__pindex_inb, point_index, xyz):
     #(3.1) gather grouped point index
     nblock_real = self.nblock
@@ -238,8 +243,8 @@ class BlockGroupSampling():
     bid_index__pindex_inb, point_index = self.get_bid_point_index(bid_pindex)
     grouped_xyz, empty_mask = self.gather_grouped_xyz(bid_index__pindex_inb, point_index, xyz)
 
-    #self.show_summary()
     return grouped_xyz, empty_mask
+
 
   def main(self):
     tf.enable_eager_execution()
@@ -260,7 +265,7 @@ class BlockGroupSampling():
                                           compression_type="",
                                           buffer_size=1024*100,
                                           num_parallel_reads=1)
-      batch_size = 2
+      batch_size = 1
       is_training = False
 
       dataset = dataset.prefetch(buffer_size=batch_size)
@@ -281,9 +286,18 @@ class BlockGroupSampling():
       with tf.Session() as sess:
         sess.run(init)
         for i in range(5):
-          points, grouped_xyz, empty_mask = sess.run([points_next, grouped_xyz_next, empty_mask_next])
+          #points_i, = sess.run([points_next])
+          points_i, grouped_xyz_i, empty_mask = sess.run([points_next, grouped_xyz_next, empty_mask_next])
+
+          ply_fn = '/tmp/%d_points.ply'%(i)
+          create_ply_dset(DATASET_NAME, points_i, ply_fn,
+                          extra='random_same_color')
+          ply_fn = '/tmp/%d_grouped_points.ply'%(i)
+          create_ply_dset(DATASET_NAME, grouped_xyz_i, ply_fn,
+                          extra='random_same_color')
           import pdb; pdb.set_trace()  # XXX BREAKPOINT
           pass
+
 
   def main_eager(self):
     tf.enable_eager_execution()
@@ -304,7 +318,7 @@ class BlockGroupSampling():
                                         buffer_size=1024*100,
                                         num_parallel_reads=1)
 
-    batch_size = 2
+    batch_size = 5
     is_training = False
 
     dataset = dataset.prefetch(buffer_size=batch_size)
@@ -317,18 +331,18 @@ class BlockGroupSampling():
     dataset = dataset.prefetch(buffer_size=tf.contrib.data.AUTOTUNE)
     get_next = dataset.make_one_shot_iterator().get_next()
     features_next, label_next = get_next
-    points_next = features_next['points']
+    points_next = features_next['points'][:,:,0:3]
 
-    for i in range(2):
-      points_i = points_next[i][:,0:3]
+    for i in range(batch_size):
+      points_i = points_next[i,:,:]
       grouped_xyz_next, empty_mask_next = self.grouping(points_i)
 
       self.show_summary()
 
-      ply_fn = '/tmp/%d_points.ply'%(i)
+      ply_fn = '/tmp/E%d_points.ply'%(i)
       create_ply_dset(DATASET_NAME, points_i.numpy(), ply_fn,
                       extra='random_same_color')
-      ply_fn = '/tmp/%d_grouped_points.ply'%(i)
+      ply_fn = '/tmp/E%d_grouped_points.ply'%(i)
       create_ply_dset(DATASET_NAME, grouped_xyz_next.numpy(), ply_fn,
                       extra='random_same_color')
 
