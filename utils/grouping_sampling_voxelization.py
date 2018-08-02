@@ -6,7 +6,7 @@ from utils.dataset_utils import parse_pl_record
 from datasets.all_datasets_meta.datasets_meta import DatasetsMeta
 from utils.ply_util import create_ply_dset, draw_blocks_by_bottom_center
 
-DEBUG = False
+DEBUG = True
 TMP_IGNORE = True
 
 def get_data_shapes_from_tfrecord(filenames):
@@ -126,10 +126,13 @@ class BlockGroupSampling():
     # cut all the block with too few points
     self._npoint_per_block_min = max(int(npoint_per_block*0.05), 2)
     assert self._width.size == self._stride.size == 3
+    self._nblock_buf_max = 800
+
     self.samplings = {}
 
     # debug flags
-    self._debug_only_blocks_few_points = True
+    self._debug_only_blocks_few_points = False
+    self.debugs = {}
 
 
   def show_settings(self):
@@ -291,6 +294,12 @@ class BlockGroupSampling():
       tmp_invalid_b = tf.less(npoint_per_block, self._npoint_per_block_min)
       self.invalid_bid_index = tf.cast(tf.where(tmp_invalid_b)[:,0], tf.int32)
 
+    if DEBUG:
+      self.debugs['nblock'] = self.nblock
+      self.debugs['block_id'] = block_id
+      self.debugs['block_id_unique'] = block_id_unique
+      self.debugs['nblock_invalid'] = self.nblock_invalid
+
     #(2.3) Get point index per block
     #      Based on: all points belong to same block is together
     self.samplings['max_npoint_per_block']= tf.reduce_max(npoint_per_block)
@@ -322,7 +331,9 @@ class BlockGroupSampling():
     samplings['std_np_perb'] = tf.sqrt(tf.cast(variance,tf.float32))
     samplings['nblock_has_missing'] = nblock_has_missing = tf.reduce_sum(missing_mask)
     nblock_empty = tf.reduce_sum(empty_mask)
-    samplings['nmissing_perb'] = tf.reduce_sum(tmp_missing) / nblock_has_missing
+    samplings['nmissing_perb'] = tf.cond( tf.greater(nblock_has_missing,0),
+                    lambda: tf.reduce_sum(tmp_missing) / nblock_has_missing,
+                    lambda: 0)
     samplings['nempty_perb'] = tf.reduce_sum(tmp_empty) / nblock_empty
 
     samplings['valid_grouped_npoint'] = bid_index__pindex_inb.shape[0].value
@@ -338,9 +349,17 @@ class BlockGroupSampling():
   def gather_grouped_xyz(self, bid_index__pindex_inb, point_index, xyz):
     #(3.1) gather grouped point index
     # gen point index: (real nblock, self._npoint_per_block, 1)
-    tmp = tf.ones([self.nblock, self._npoint_per_block], dtype=tf.int32) * (-1)
-    grouped_pindex = tf.get_variable("grouped_pindex", initializer=tmp, trainable=False, validate_shape=False)
-    grouped_pindex = tf.scatter_nd_update(grouped_pindex, bid_index__pindex_inb, point_index)
+    tmp = tf.ones([self._nblock_buf_max, self._npoint_per_block], dtype=tf.int32) * (-1)
+    grouped_pindex0 = tf.get_variable("grouped_pindex", initializer=tmp, trainable=False, validate_shape=True)
+    grouped_pindex1 = tf.scatter_nd_update(grouped_pindex0, bid_index__pindex_inb, point_index)
+
+    if DEBUG:
+      self.debugs['nblock_'] = self.nblock
+      self.debugs['grouped_pindex0'] = grouped_pindex0
+      #self.debugs['grouped_pindex1'] = grouped_pindex1
+      self.debugs['tmp'] = tmp
+      self.debugs['bid_index__pindex_inb'] = bid_index__pindex_inb
+
 
     #(3.2) remove the blocks with too less points
     if not self._debug_only_blocks_few_points:
@@ -355,7 +374,7 @@ class BlockGroupSampling():
     bid_index_sampling = tf.cond( tf.greater(tmp_nb, 0),
              lambda: tf.concat([bid_index_valid, tf.ones(tmp_nb,tf.int32) * bid_index_valid[0]],0),
              lambda: tf.contrib.framework.sort( tf.random_shuffle(bid_index_valid)[0:self._nblock] ))
-    grouped_pindex = tf.gather(grouped_pindex, bid_index_sampling)
+    grouped_pindex = tf.gather(grouped_pindex1, bid_index_sampling)
     #print(grouped_pindex[0:20,0:10])
 
     #(3.4) gather xyz from point index
@@ -404,6 +423,7 @@ class BlockGroupSampling():
     num_classes = dataset_meta.num_classes
 
     with tf.Graph().as_default():
+     with tf.device('/device:GPU:0'):
       dataset = tf.data.TFRecordDataset(filenames,
                                           compression_type="",
                                           buffer_size=1024*100,
@@ -421,23 +441,29 @@ class BlockGroupSampling():
       dataset = dataset.prefetch(buffer_size=tf.contrib.data.AUTOTUNE)
       get_next = dataset.make_one_shot_iterator().get_next()
       features_next, label_next = get_next
-      points_next = features_next['points']
-      grouped_xyz_next, empty_mask_next, bottom_center_next = self.grouping(points_next[0,:,0:3])
+      points_next = features_next['points'][0,:,0:3]
+      grouped_xyz_next, empty_mask_next, bottom_center_next = self.grouping(points_next)
 
-      init = tf.initialize_all_variables()
+      init = tf.global_variables_initializer()
 
-      with tf.Session() as sess:
+      config = tf.ConfigProto(allow_soft_placement=True)
+      with tf.Session(config=config) as sess:
         sess.run(init)
         for i in range(5):
-          #points_i, = sess.run([points_next])
-          points_i, grouped_xyz_i, empty_mask = sess.run([points_next, grouped_xyz_next, empty_mask_next])
+          #points_i = sess.run(points_next)
+          points_i, grouped_xyz_i, empty_mask, bottom_center_i = sess.run([points_next, grouped_xyz_next, empty_mask_next, bottom_center_next])
 
-          ply_fn = '/tmp/%d_points.ply'%(i)
-          create_ply_dset(DATASET_NAME, points_i, ply_fn,
-                          extra='random_same_color')
-          ply_fn = '/tmp/%d_grouped_points.ply'%(i)
-          create_ply_dset(DATASET_NAME, grouped_xyz_i, ply_fn,
-                          extra='random_same_color')
+          block_flag = '' if not self._debug_only_blocks_few_points else '_invalid'
+          gen_plys(DATASET_NAME, i, points_i, grouped_xyz_i, bottom_center_i, block_flag)
+
+          #debugs = sess.run(self.debugs)
+          #print(debugs['nblock'])
+          #print(debugs['nblock_'])
+          #print(debugs['tmp'].shape)
+          #print(debugs['grouped_pindex0'].shape)
+          ##print(debugs['grouped_pindex1'].shape)
+          #print(debugs['block_id_unique'].shape)
+
           import pdb; pdb.set_trace()  # XXX BREAKPOINT
           pass
 
@@ -461,7 +487,7 @@ class BlockGroupSampling():
                                         buffer_size=1024*100,
                                         num_parallel_reads=1)
 
-    batch_size = 2
+    batch_size = 20
     is_training = False
 
     dataset = dataset.prefetch(buffer_size=batch_size)
@@ -477,41 +503,39 @@ class BlockGroupSampling():
     points_next = features_next['points'][:,:,0:3]
 
     for i in range(batch_size):
-      #if i<2: continue
+      if i<1: continue
 
       points_i = points_next[i,:,:]
       grouped_xyz_next, empty_mask_next, bottom_center_next = self.grouping(points_i)
 
       self.show_summary()
 
-      ply_fn = '/tmp/E%d_points.ply'%(i)
-      create_ply_dset(DATASET_NAME, points_i.numpy(), ply_fn,
-                      extra='random_same_color')
-      ply_fn = '/tmp/E%d_grouped_points.ply'%(i)
-      create_ply_dset(DATASET_NAME, grouped_xyz_next.numpy(), ply_fn,
-                      extra='random_same_color')
-      if self._debug_only_blocks_few_points:
-        block_flag = '_invalid'
-      else:
-        block_flag = ''
-      ply_fn = '/tmp/E%d_blocks%s.ply'%(i, block_flag)
-      draw_blocks_by_bottom_center(ply_fn, bottom_center_next.numpy(), random_crop=0)
-
-      for j in np.random.randint(0, grouped_xyz_next.shape[0].value, 10):
-        ply_fn = '/tmp/%d%s/E%d_blocks.ply'%(i, block_flag, j)
-        draw_blocks_by_bottom_center(ply_fn, bottom_center_next.numpy()[j:j+1], random_crop=0)
-        ply_fn = '/tmp/%d%s/E%d_points.ply'%(i, block_flag, j)
-        create_ply_dset(DATASET_NAME, grouped_xyz_next.numpy()[j], ply_fn,
-                      extra='random_same_color')
+      block_flag = '' if not self._debug_only_blocks_few_points else '_invalid'
+      gen_plys(DATASET_NAME, i, points_i.numpy(), grouped_xyz_next.numpy(),
+               bottom_center_next.numpy(), block_flag, '_E')
 
       import pdb; pdb.set_trace()  # XXX BREAKPOINT
       pass
 
-    #  with tf.Session() as sess:
-    #    #features, object_label = sess.run(get_next)
-    #    points, grouped_xyz = sess.run([points_next, grouped_xyz_next])
-    #    import pdb; pdb.set_trace()  # XXX BREAKPOINT
-    #    pass
+
+def gen_plys(DATASET_NAME, i, points, grouped_xyz, bottom_center, block_flag='', main_flag=''):
+  path = '/tmp/plys' + main_flag
+  ply_fn = '%s/%d_points.ply'%(path, i)
+  create_ply_dset(DATASET_NAME, points, ply_fn,
+                  extra='random_same_color')
+
+  ply_fn = '%s/%d_grouped_points.ply'%(path, i)
+  create_ply_dset(DATASET_NAME, grouped_xyz, ply_fn,
+                  extra='random_same_color')
+  ply_fn = '%s/%d_blocks%s.ply'%(path, i, block_flag)
+  draw_blocks_by_bottom_center(ply_fn, bottom_center, random_crop=0)
+
+  for j in np.random.randint(0, grouped_xyz.shape[0], 10):
+    ply_fn = '%s/%d%s/%d_blocks.ply'%(path, i, block_flag, j)
+    draw_blocks_by_bottom_center(ply_fn, bottom_center[j:j+1], random_crop=0)
+    ply_fn = '%s/%d%s/%d_points.ply'%(path, i, block_flag, j)
+    create_ply_dset(DATASET_NAME, grouped_xyz[j], ply_fn,
+                  extra='random_same_color')
 
 
 if __name__ == '__main__':
