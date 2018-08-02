@@ -6,7 +6,7 @@ from utils.dataset_utils import parse_pl_record
 from datasets.all_datasets_meta.datasets_meta import DatasetsMeta
 from utils.ply_util import create_ply_dset, draw_blocks_by_bottom_center
 
-DEBUG = True
+DEBUG = False
 TMP_IGNORE = True
 
 def get_data_shapes_from_tfrecord(filenames):
@@ -132,6 +132,8 @@ class BlockGroupSampling():
     self.samplings = {}
 
     # debug flags
+    self._check_block_index = True
+    self._check_grouped_xyz_inblock = True
     self._debug_only_blocks_few_points = False
     self.debugs = {}
 
@@ -166,7 +168,7 @@ class BlockGroupSampling():
     print(summary)
 
 
-  def block_index_to_center(self, block_index):
+  def block_index_to_scope(self, block_index):
     '''
     block_index: (n,3)
     '''
@@ -175,6 +177,26 @@ class BlockGroupSampling():
     center = bottom + self._width*0.5
     bottom_center = tf.concat([bottom, center], -1)
     return bottom_center
+
+  def check_block_index(self, block_index, xyz):
+    block_bottom_center = self.block_index_to_scope(block_index)
+    block_bottom = block_bottom_center[:,0,0:3]
+    block_center = block_bottom_center[:,0,3:6]
+    block_top = block_bottom + 2 * (block_center - block_bottom)
+    tf.assert_less(xyz, block_top)
+    tf.assert_less_equal(block_bottom, xyz)
+
+  def check_grouped_xyz_inblock(self, grouped_xyz, block_bottom_center, empty_mask):
+    block_bottom_center = tf.expand_dims(block_bottom_center, 1)
+    block_bottom = block_bottom_center[:,:,0:3]
+    block_center = block_bottom_center[:,:, 3:6]
+    block_top = block_bottom + 2 * (block_center - block_bottom)
+    top_check = tf.reduce_all(tf.less(grouped_xyz, block_top), -1)
+    bottom_check = tf.reduce_all(tf.less_equal(block_bottom, grouped_xyz), -1)
+    top_check = tf.logical_or(top_check, empty_mask)
+    bottom_check = tf.logical_or(bottom_check, empty_mask)
+    tf.Assert(tf.reduce_all(top_check), top_check)
+    tf.Assert(tf.reduce_all(bottom_check), bottom_check)
 
   def get_block_id(self, xyz):
     '''
@@ -236,6 +258,9 @@ class BlockGroupSampling():
     # (num_point0, nblock_perp_3d, 3)
     block_index = tf.tile(block_index, [1, self.nblock_perp_3d, 1])
     block_index += pairs_3d
+
+    if self._check_block_index:
+      self.check_block_index(block_index, xyz)
 
     # (1.3) block index -> block id
     tmp_bindex = tf.reshape(block_index, (-1,3))
@@ -350,6 +375,7 @@ class BlockGroupSampling():
   def gather_grouped_xyz(self, bid_index__pindex_inb, point_index, xyz):
     #(3.1) gather grouped point index
     # gen point index: (real nblock, self._npoint_per_block, 1)
+    tf.assert_greater(self._nblock_buf_max, self.nblock)
     tmp = tf.ones([self._nblock_buf_max, self._npoint_per_block], dtype=tf.int32) * (-1)
     grouped_pindex0 = tf.get_variable("grouped_pindex", initializer=tmp, trainable=False, validate_shape=True)
     grouped_pindex1 = tf.scatter_nd_update(grouped_pindex0, bid_index__pindex_inb, point_index)
@@ -387,7 +413,7 @@ class BlockGroupSampling():
 
     return grouped_xyz, empty_mask, bid_index_sampling
 
-  def block_bottom_center(self, block_id_unique, bid_index_sampling):
+  def all_bottom_centers(self, block_id_unique, bid_index_sampling):
     '''
     block_id_unique: (self.nblock,)
     bid_index_sampling: (self._nblock,)
@@ -395,7 +421,7 @@ class BlockGroupSampling():
     bids_sampling = tf.gather(block_id_unique, bid_index_sampling)
     bindex_sampling = block_id_to_block_index(bids_sampling, self.block_size)
     bindex_sampling += self.min_block_index
-    block_bottom_center = self.block_index_to_center(bindex_sampling)
+    block_bottom_center = self.block_index_to_scope(bindex_sampling)
     return bids_sampling, block_bottom_center
 
   def grouping(self, xyz):
@@ -412,7 +438,9 @@ class BlockGroupSampling():
     bid_index__pindex_inb, point_index, block_id_unique = self.get_bid_point_index(bid_pindex)
     grouped_xyz, empty_mask, bid_index_sampling = self.gather_grouped_xyz(
                                       bid_index__pindex_inb, point_index, xyz)
-    bids_sampling, block_bottom_center = self.block_bottom_center(block_id_unique, bid_index_sampling)
+    bids_sampling, block_bottom_center = self.all_bottom_centers(block_id_unique, bid_index_sampling)
+    if self._check_grouped_xyz_inblock:
+      self.check_grouped_xyz_inblock(grouped_xyz, block_bottom_center, empty_mask)
 
 
     if DEBUG:
@@ -545,7 +573,7 @@ def gen_plys(DATASET_NAME, i, points, grouped_xyz, bottom_center, bids_sampling,
   draw_blocks_by_bottom_center(ply_fn, bottom_center, random_crop=0)
 
   tmp = np.random.randint(0, grouped_xyz.shape[0], 10)
-  tmp = np.arange(0, grouped_xyz.shape[0], 10)
+  tmp = np.arange(0, max(grouped_xyz.shape[0],30))
   for j in tmp:
     block_id = bids_sampling[j]
     ply_fn = '%s/%d%s/%d_blocks.ply'%(path, i, valid_flag, block_id)
@@ -558,8 +586,14 @@ def gen_plys(DATASET_NAME, i, points, grouped_xyz, bottom_center, bids_sampling,
 if __name__ == '__main__':
   width = [0.4,0.4,0.4]
   stride = [0.2,0.2,0.2]
-  nblock = 256
-  npoint_per_block = 156
+  nblock = 480
+  npoint_per_block = 256
+
+  #width = [0.2,0.2,0.2]
+  #stride = [0.2,0.2,0.2]
+  #nblock = 200
+  #npoint_per_block = 32
+
   block_group_sampling = BlockGroupSampling(width, stride, nblock,
                                             npoint_per_block)
   if len(sys.argv) > 1:
