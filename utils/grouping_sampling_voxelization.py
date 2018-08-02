@@ -6,7 +6,7 @@ from utils.dataset_utils import parse_pl_record
 from datasets.all_datasets_meta.datasets_meta import DatasetsMeta
 from utils.ply_util import create_ply_dset, draw_blocks_by_bottom_center
 
-DEBUG = False
+DEBUG = True
 TMP_IGNORE = True
 
 def get_data_shapes_from_tfrecord(filenames):
@@ -132,8 +132,10 @@ class BlockGroupSampling():
     self.samplings = {}
 
     # debug flags
+    self._shuffle = True
     self._check_block_index = True
     self._check_grouped_xyz_inblock = True
+
     self._debug_only_blocks_few_points = False
     self.debugs = {}
 
@@ -195,8 +197,8 @@ class BlockGroupSampling():
     bottom_check = tf.reduce_all(tf.less_equal(block_bottom, grouped_xyz), -1)
     top_check = tf.logical_or(top_check, empty_mask)
     bottom_check = tf.logical_or(bottom_check, empty_mask)
-    tf.Assert(tf.reduce_all(top_check), top_check)
-    tf.Assert(tf.reduce_all(bottom_check), bottom_check)
+    tf.Assert(tf.reduce_all(top_check), [top_check])
+    tf.Assert(tf.reduce_all(bottom_check), [bottom_check])
 
   def get_block_id(self, xyz):
     '''
@@ -218,8 +220,6 @@ class BlockGroupSampling():
     low_b_index += low_b_index_offset # invoid low_b_index is exactly int
     low_b_index_fixed = tf.cast(tf.ceil(low_b_index), tf.int32)    # include
     up_b_index_fixed = tf.cast(tf.floor(up_b_index), tf.int32) + 1 # not include
-    if DEBUG:
-      up_b_index_fixed += 1
 
     #(1.2) the block number for each point should be equal
     nblocks_per_points = up_b_index_fixed - low_b_index_fixed
@@ -302,7 +302,7 @@ class BlockGroupSampling():
     '''
     #(2.1) sort by block id, to put all the points belong to same block together
     # shuffle before sort for randomly sampling later
-    if not DEBUG:
+    if not self._shuffle:
       bid_pindex = tf.random_shuffle(bid_pindex)
     sort_indices = tf.contrib.framework.argsort(bid_pindex[:,0],
                                                 axis = 0)
@@ -390,7 +390,7 @@ class BlockGroupSampling():
 
     #(3.3) sampling fixed number of blocks when too many blocks are provided
     tmp_nb = self._nblock - nblock_valid
-    if not DEBUG:
+    if not self._shuffle:
       bid_index_sampling = tf.cond( tf.greater(tmp_nb, 0),
              lambda: tf.concat([bid_index_valid, tf.ones(tmp_nb,tf.int32) * bid_index_valid[0]],0),
              lambda: tf.contrib.framework.sort( tf.random_shuffle(bid_index_valid)[0:self._nblock] ))
@@ -470,7 +470,7 @@ class BlockGroupSampling():
                                           compression_type="",
                                           buffer_size=1024*100,
                                           num_parallel_reads=1)
-      batch_size = 1
+      batch_size = 3
       is_training = False
 
       dataset = dataset.prefetch(buffer_size=batch_size)
@@ -491,7 +491,7 @@ class BlockGroupSampling():
       config = tf.ConfigProto(allow_soft_placement=True)
       with tf.Session(config=config) as sess:
         sess.run(init)
-        for i in range(1):
+        for i in range(batch_size):
           #if DEBUG:
           #  debugs = sess.run(self.debugs)
 
@@ -499,6 +499,8 @@ class BlockGroupSampling():
 
           points_i, grouped_xyz_i, empty_mask, bottom_center_i, bids_sampling_i = \
             sess.run([points_next, grouped_xyz_next, empty_mask_next, bottom_center_next, bids_sampling_next])
+          print('group OK %d'%(i))
+          continue
 
           valid_flag = '' if not self._debug_only_blocks_few_points else '_invalid'
           gen_plys(DATASET_NAME, i, points_i, grouped_xyz_i, bottom_center_i,\
@@ -561,24 +563,24 @@ class BlockGroupSampling():
 
 def gen_plys(DATASET_NAME, i, points, grouped_xyz, bottom_center, bids_sampling, valid_flag='', main_flag=''):
   print('bids_sampling: {}'.format(bids_sampling))
-  path = '/tmp/plys' + main_flag
-  ply_fn = '%s/%d_points.ply'%(path, i)
+  path = '/tmp/%d_plys'%(i) + main_flag
+  ply_fn = '%s/points.ply'%(path)
   create_ply_dset(DATASET_NAME, points, ply_fn,
                   extra='random_same_color')
 
-  ply_fn = '%s/%d_grouped_points_%s.ply'%(path, i, valid_flag)
+  ply_fn = '%s/grouped_points_%s.ply'%(path, valid_flag)
   create_ply_dset(DATASET_NAME, grouped_xyz, ply_fn,
                   extra='random_same_color')
-  ply_fn = '%s/%d_blocks%s.ply'%(path, i, valid_flag)
+  ply_fn = '%s/blocks%s.ply'%(path, valid_flag)
   draw_blocks_by_bottom_center(ply_fn, bottom_center, random_crop=0)
 
-  tmp = np.random.randint(0, grouped_xyz.shape[0], 10)
-  tmp = np.arange(0, max(grouped_xyz.shape[0],30))
+  tmp = np.random.randint(0, min(grouped_xyz.shape[0], 10))
+  tmp = np.arange(0, min(grouped_xyz.shape[0],10))
   for j in tmp:
     block_id = bids_sampling[j]
-    ply_fn = '%s/%d%s/%d_blocks.ply'%(path, i, valid_flag, block_id)
+    ply_fn = '%s/blocks%s/%d_blocks.ply'%(path, valid_flag, block_id)
     draw_blocks_by_bottom_center(ply_fn, bottom_center[j:j+1], random_crop=0)
-    ply_fn = '%s/%d%s/%d_points.ply'%(path, i, valid_flag, block_id)
+    ply_fn = '%s/blocks%s/%d_points.ply'%(path, valid_flag, block_id)
     create_ply_dset(DATASET_NAME, grouped_xyz[j], ply_fn,
                   extra='random_same_color')
 
@@ -599,7 +601,7 @@ if __name__ == '__main__':
   if len(sys.argv) > 1:
     main_flag = sys.argv[1]
   else:
-    main_flag = 'e'
+    main_flag = 'g'
   print(main_flag)
   if main_flag == 'g':
     block_group_sampling.main()
