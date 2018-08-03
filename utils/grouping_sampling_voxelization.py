@@ -61,7 +61,9 @@ def block_index_to_block_id(block_index, block_size):
   is_check = True
   if is_check:
     block_index_C = block_id_to_block_index(block_id, block_size)
-    tf.assert_equal(block_index, block_index_C)
+    check_bi = tf.assert_equal(block_index, block_index_C)
+    with tf.control_dependencies([check_bi]):
+      block_id = tf.identity(block_id)
   return block_id
 def add_permutation_combination_template(A, B):
   '''
@@ -134,6 +136,7 @@ class BlockGroupSampling():
     self._shuffle = False
     # Theoretically, num_block_per_point should be same for all. This is 0.
     self._n_maxerr_same_nb_perp = 0
+    self._n_maxerr_same_nb_perp = 1
 
     self._check_block_index = True
     self._check_grouped_xyz_inblock = True
@@ -192,8 +195,9 @@ class BlockGroupSampling():
     block_bottom = block_bottom_center[:,0,0:3]
     block_center = block_bottom_center[:,0,3:6]
     block_top = block_bottom + 2 * (block_center - block_bottom)
-    tf.assert_less(xyz, block_top)
-    tf.assert_less_equal(block_bottom, xyz)
+    check_top = tf.assert_less(xyz, block_top)
+    check_bottom = tf.assert_less_equal(block_bottom, xyz)
+    return [check_top, check_bottom]
 
   def check_grouped_xyz_inblock(self, grouped_xyz, block_bottom_center, empty_mask):
     block_bottom_center = tf.expand_dims(block_bottom_center, 1)
@@ -204,8 +208,12 @@ class BlockGroupSampling():
     bottom_check = tf.reduce_all(tf.less_equal(block_bottom, grouped_xyz), -1)
     top_check = tf.logical_or(top_check, empty_mask)
     bottom_check = tf.logical_or(bottom_check, empty_mask)
-    tf.Assert(tf.reduce_all(top_check), [top_check])
-    tf.Assert(tf.reduce_all(bottom_check), [bottom_check])
+    nerr_top = tf.reduce_sum(1-tf.cast(top_check, tf.int32))
+    nerr_bottom = tf.reduce_sum(1-tf.cast(bottom_check, tf.int32))
+
+    assert_top = tf.assert_equal(nerr_top, 0, message='nerr_top: {}'.format(nerr_top))
+    assert_bottom = tf.assert_equal(nerr_bottom, 0, message='nerr_bottom: {}'.format(nerr_bottom))
+    return [assert_top, assert_bottom]
 
   def get_block_id(self, xyz):
     '''
@@ -243,13 +251,15 @@ class BlockGroupSampling():
       tmp_mean = tf.reduce_mean(tf.cast(nblocks_per_points,tf.float32), axis=0)
       # (a) The most are same as tmp_max
       # (b) Very few may be tmp_max - 1
-      tf.assert_less(tmp_max - tmp_mean, 0.001,
+      check_0 = tf.assert_less(tmp_max - tmp_mean, 0.001,
                     message="Increase low_b_index_offset if tmp_max > tmp_mean")
-      tf.assert_less(tmp_mean - tmp_min, 1.0)
+      check_1 = tf.assert_less(tmp_mean - tmp_min, 1.0)
       tmp_err_np = tf.cast(tf.not_equal(nblocks_per_points,tmp_max_i),tf.int32)
       tmp_err_np = tf.reduce_sum(tmp_err_np, 1)
       err_npoints = tf.reduce_sum(tf.cast(tf.not_equal(tmp_err_np, 0),tf.int32))
-      tf.assert_less_equal(err_npoints, self._n_maxerr_same_nb_perp)
+      check_2 = tf.assert_less_equal(err_npoints, self._n_maxerr_same_nb_perp)
+      with tf.control_dependencies([check_0, check_1, check_2 ]):
+        tmp_max_i = tf.identity(tmp_max_i)
     # *****
 
     self.nblocks_per_point = tmp_max_i
@@ -265,7 +275,9 @@ class BlockGroupSampling():
     block_index += pairs_3d
 
     if self._check_block_index:
-      self.check_block_index(block_index, xyz)
+      check_bi = self.check_block_index(block_index, xyz)
+      with tf.control_dependencies(check_bi):
+        block_index = tf.identity(block_index)
 
     # (1.3) block index -> block id
     tmp_bindex = tf.reshape(block_index, (-1,3))
@@ -319,8 +331,10 @@ class BlockGroupSampling():
     # get valid block num
     block_id_unique, blockid_index, npoint_per_block =\
                                                 tf.unique_with_counts(block_id)
-    tf.assert_equal(tf.reduce_sum(npoint_per_block), self.npoint_grouped)
-    self.nblock = nblock = tf.shape(block_id_unique)[0]
+    self.nblock = tf.shape(block_id_unique)[0]
+    check_nb = tf.assert_greater(self._nblock_buf_max, self.nblock)
+    with tf.control_dependencies([check_nb]):
+      self.nblock = tf.identity(self.nblock)
 
     # get blockid_index for blocks with fewer points than self._npoint_per_block_min
     tmp_valid_b = tf.greater_equal(npoint_per_block, self._npoint_per_block_min)
@@ -380,7 +394,6 @@ class BlockGroupSampling():
   def gather_grouped_xyz(self, bid_index__pindex_inb, point_index, xyz):
     #(3.1) gather grouped point index
     # gen point index: (real nblock, self._npoint_per_block, 1)
-    tf.assert_greater(self._nblock_buf_max, self.nblock)
     tmp = tf.ones([self._nblock_buf_max, self._npoint_per_block], dtype=tf.int32) * (-1)
     grouped_pindex0 = tf.get_variable("grouped_pindex", initializer=tmp, trainable=False, validate_shape=True)
     grouped_pindex1 = tf.scatter_nd_update(grouped_pindex0, bid_index__pindex_inb, point_index)
@@ -445,8 +458,9 @@ class BlockGroupSampling():
                                       bid_index__pindex_inb, point_index, xyz)
     bids_sampling, block_bottom_center = self.all_bottom_centers(block_id_unique, bid_index_sampling)
     if self._check_grouped_xyz_inblock:
-      self.check_grouped_xyz_inblock(grouped_xyz, block_bottom_center, empty_mask)
-
+      check_gs = self.check_grouped_xyz_inblock(grouped_xyz, block_bottom_center, empty_mask)
+      with tf.control_dependencies(check_gs):
+        grouped_xyz = tf.identity(grouped_xyz)
 
     if DEBUG:
       self.debugs['xyz'] = xyz
@@ -456,12 +470,8 @@ class BlockGroupSampling():
     return grouped_xyz, empty_mask, block_bottom_center, bids_sampling
 
 
-  def main(self, DATASET_NAME, path):
-    #tf.enable_eager_execution()
-    filenames = glob.glob(os.path.join(path,'*.tfrecord'))
-    assert len(filenames) > 0
-
-    _DATA_PARAS = get_data_shapes_from_tfrecord(filenames[0:1])
+  def main(self, DATASET_NAME, filenames):
+    _DATA_PARAS = get_data_shapes_from_tfrecord(filenames)
 
     dataset_meta = DatasetsMeta(DATASET_NAME)
     num_classes = dataset_meta.num_classes
@@ -474,7 +484,7 @@ class BlockGroupSampling():
                                           compression_type="",
                                           buffer_size=1024*100,
                                           num_parallel_reads=1)
-      batch_size = 2
+      batch_size = 1
       is_training = False
 
       dataset = dataset.prefetch(buffer_size=batch_size)
@@ -508,7 +518,7 @@ class BlockGroupSampling():
           xyzs.append(np.expand_dims(points_i,0))
           grouped_xyzs.append(np.expand_dims(grouped_xyz_i,0))
           print('group OK %d'%(i))
-          #continue
+          continue
 
           valid_flag = '' if not self._debug_only_blocks_few_points else '_invalid'
           if not self._shuffle:
@@ -521,10 +531,9 @@ class BlockGroupSampling():
     return xyzs, grouped_xyzs
 
 
-  def main_eager(self, DATASET_NAME, path):
-    filenames = glob.glob(os.path.join(path,'*.tfrecord'))
-    assert len(filenames) > 0
-
+  def main_eager(self, DATASET_NAME, filenames):
+    tf.enable_eager_execution()
+    #tf.enable_eager_execution()
     dataset_meta = DatasetsMeta(DATASET_NAME)
     num_classes = dataset_meta.num_classes
 
@@ -533,7 +542,7 @@ class BlockGroupSampling():
                                         buffer_size=1024*100,
                                         num_parallel_reads=1)
 
-    batch_size = 2
+    batch_size = 1
     is_training = False
 
     dataset = dataset.prefetch(buffer_size=batch_size)
@@ -554,7 +563,7 @@ class BlockGroupSampling():
     grouped_xyzs = []
 
     for i in range(batch_size):
-      if i<1: continue
+      #if i<1: continue
 
       points_i = points_next[i,:,:]
       grouped_xyz_i, empty_mask_i, bottom_center_i, bids_sampling = self.grouping(points_i)
@@ -562,7 +571,7 @@ class BlockGroupSampling():
       grouped_xyzs.append(np.expand_dims(grouped_xyz_i.numpy(),0))
 
       self.show_summary(i)
-      #continue
+      continue
 
       valid_flag = '' if not self._debug_only_blocks_few_points else '_invalid'
       if not self._shuffle:
@@ -601,9 +610,17 @@ def gen_plys(DATASET_NAME, i, points, grouped_xyz, bottom_center, bids_sampling,
 
 if __name__ == '__main__':
   DATASET_NAME = 'MODELNET40'
-  path = '/home/z/Research/dynamic_pointnet/data/MODELNET40H5F/Merged_tfrecord/6_mgs1_gs2_2-mbf-neg_fmn14_mvp1-1024_240_1-64_27_256-0d2_0d4-0d1_0d2-pd3-2M2pp'
+  path = '/home/z/Research/dynamic_pointnet/data/MODELNET40H5F/Merged_tfrecord/4_mgs0.2048_gs2_2d2-rep_fmn1_mvp1-1-1024--pd3-1M'
+  path = '/home/z/Research/SparseVoxelNet/data/MODELNET40__H5F/ORG_tfrecord/1024_mgs0.2048_gs2_2d2-rep_fmn1_mvp1-1-1024--pd3-1M'
+  tmp = 'chair_0056'
+  tmp = 'dresser_0282'
+  tmp= 'plant_0199'
+  tmp = 'car_0048'
+  tmp = 'bathtub_0007'
+  tmp = 'airplane_0001' # ERR
+  filenames = glob.glob(os.path.join(path, tmp+'.tfrecord'))
+  assert len(filenames) >= 1
 
-  tf.enable_eager_execution()
   width = [0.4,0.4,0.4]
   stride = [0.2,0.2,0.2]
   nblock = 480
@@ -620,19 +637,18 @@ if __name__ == '__main__':
     main_flag = sys.argv[1]
   else:
     main_flag = 'g'
-    #main_flag = 'eg'
+    main_flag = 'eg'
     #main_flag = 'e'
   print(main_flag)
 
   if 'e' in main_flag:
-    xyzs_E, grouped_xyzs_E = block_group_sampling.main_eager(DATASET_NAME, path)
+    xyzs_E, grouped_xyzs_E = block_group_sampling.main_eager(DATASET_NAME, filenames)
   if 'g' in main_flag:
-    xyzs, grouped_xyzs = block_group_sampling.main(DATASET_NAME, path)
+    xyzs, grouped_xyzs = block_group_sampling.main(DATASET_NAME, filenames)
 
   if main_flag=='eg':
     batch_size = min(xyzs.shape[0], xyzs_E.shape[0])
     for b in range(batch_size):
-      import pdb; pdb.set_trace()  # XXX BREAKPOINT
       assert (xyzs_E[b] == xyzs[b]).all(), 'time %d xyz different'%(b)
       print('time %d xyzs of g and e is same'%(b))
       assert (grouped_xyzs_E[b] == grouped_xyzs[b]).all(), 'time %d grouped_xyzs differernt'%(b)
