@@ -135,12 +135,15 @@ class BlockGroupSampling():
     # debug flags
     self._shuffle = False
     # Theoretically, num_block_per_point should be same for all. This is 0.
-    self._n_maxerr_same_nb_perp = 0
-    self._n_maxerr_same_nb_perp = 1
+    self._check_nblock_per_points_same = True
+    if self._check_nblock_per_points_same:
+      self._n_maxerr_same_nb_perp = 0
+      self._n_maxerr_same_nb_perp = 1
 
-    self._check_block_index = True
+    self._check_xyz_inblock = True
+    if self._check_xyz_inblock:
+      self._replace_points_outside_block = True
     self._check_grouped_xyz_inblock = True
-    self._check_point_in_block = True
 
     self._debug_only_blocks_few_points = False
     self.debugs = {}
@@ -190,14 +193,69 @@ class BlockGroupSampling():
     bottom_center = tf.concat([bottom, center], -1)
     return bottom_center
 
-  def check_block_index(self, block_index, xyz):
+  def check_xyz_inblock(self, block_index, xyz):
     block_bottom_center = self.block_index_to_scope(block_index)
-    block_bottom = block_bottom_center[:,0,0:3]
-    block_center = block_bottom_center[:,0,3:6]
+    block_bottom = block_bottom_center[:,:,0:3]
+    block_center = block_bottom_center[:,:,3:6]
     block_top = block_bottom + 2 * (block_center - block_bottom)
-    check_top = tf.assert_less(xyz, block_top)
-    check_bottom = tf.assert_less_equal(block_bottom, xyz)
-    return [check_top, check_bottom]
+    xyz = tf.expand_dims(xyz, 1)
+
+    check_top = tf.less(xyz, block_top)
+    check_top = tf.reduce_all(check_top, 2)
+    nerr_top = tf.reduce_sum(1-tf.cast(check_top, tf.int32))
+    assert_top = tf.assert_equal(nerr_top, 0,
+                message='check_xyz_inblock nerr_top:{}'.format(nerr_top))
+    check_bottom = tf.reduce_all(tf.less_equal(block_bottom, xyz),2)
+    nerr_bottom = tf.reduce_sum(1-tf.cast(check_bottom,tf.int32))
+
+    if self._replace_points_outside_block:
+      block_index = tf.cond( nerr_bottom>0,
+            lambda: self.replace_points_outside_block(block_index, check_bottom),
+            lambda: block_index)
+    else:
+      assert_bottom = tf.assert_equal(nerr_bottom, 0,
+                message='check_xyz_inblock nerr_bottom:{}'.format(nerr_bottom))
+      with tf.control_dependencies([assert_top, assert_bottom]):
+        block_index = tf.identity(block_index)
+
+    return block_index
+
+  def replace_points_outside_block(self, block_index, check_bottom):
+    '''
+    Replace the points out of block with the first one in this block.
+    The first one must inside the block.
+    '''
+    def my_sparse_to_dense(dense_shape, sparse_indices0, sparse_value0):
+      # dense_shape: [1024,    8,    3]
+      # sparse_indices0: (4, 2)
+      # sparse_value0: (4, 3)
+
+      # return: sparse_values: (1024, 8, 3)
+      sparse_shape0 = tf.shape(sparse_indices0)
+      d = dense_shape[-1]
+
+      sparse_indices = tf.expand_dims(sparse_indices0, 1)
+      sparse_indices = tf.tile(sparse_indices, [1,d,1])
+      tmp1 = tf.reshape(tf.range(d),[1,d,1])
+      tmp1 = tf.tile(tmp1, [sparse_shape0[0], 1, 1])
+      sparse_indices = tf.concat([sparse_indices, tmp1],2)
+      sparse_indices = tf.reshape(sparse_indices, (-1,d))
+      sparse_values = tf.reshape(sparse_value0, [-1])
+      sparse_values = tf.sparse_to_dense(sparse_indices, dense_shape, sparse_values)
+      return sparse_values
+
+    invalid_indices = tf.cast(tf.where(tf.logical_not(check_bottom)),tf.int32)
+    tmp0 = tf.constant([[1,0],[0,0]], tf.int32)
+    valid_indices = tf.matmul( invalid_indices, tmp0)
+
+    invalid_values = tf.gather_nd(block_index, invalid_indices)
+    valid_values = tf.gather_nd(block_index, valid_indices)
+    dense_shape = tf.shape(block_index)
+
+    invalid_values_dense = my_sparse_to_dense(dense_shape, invalid_indices, invalid_values)
+    valid_values_dense = my_sparse_to_dense(dense_shape, invalid_indices, valid_values)
+    block_index_fixed = block_index - invalid_values_dense + valid_values_dense
+    return block_index_fixed
 
   def check_grouped_xyz_inblock(self, grouped_xyz, block_bottom_center, empty_mask):
     block_bottom_center = tf.expand_dims(block_bottom_center, 1)
@@ -211,8 +269,10 @@ class BlockGroupSampling():
     nerr_top = tf.reduce_sum(1-tf.cast(top_check, tf.int32))
     nerr_bottom = tf.reduce_sum(1-tf.cast(bottom_check, tf.int32))
 
-    assert_top = tf.assert_equal(nerr_top, 0, message='nerr_top: {}'.format(nerr_top))
-    assert_bottom = tf.assert_equal(nerr_bottom, 0, message='nerr_bottom: {}'.format(nerr_bottom))
+    assert_top = tf.assert_equal(nerr_top, 0,
+        message='check_grouped_xyz_inblock nerr_top: {}'.format(nerr_top))
+    assert_bottom = tf.assert_equal(nerr_bottom, 0,
+        message='check_grouped_xyz_inblock nerr_bottom: {}'.format(nerr_bottom))
     return [assert_top, assert_bottom]
 
   def get_block_id(self, xyz):
@@ -238,31 +298,34 @@ class BlockGroupSampling():
 
     #(1.2) the block number for each point should be equal
     nblocks_per_points = up_b_index_fixed - low_b_index_fixed
-    tmp_max_i = tf.reduce_max(nblocks_per_points, axis=0)
-    tmp_max = tf.cast(tmp_max_i, tf.float32)
-    tmp_min = tf.cast(tf.reduce_min(nblocks_per_points, axis=0), tf.float32)
+    nbpp_max_int = tf.reduce_max(nblocks_per_points, axis=0)
+    nbpp_max = tf.cast(nbpp_max_int, tf.float32)
+    nbpp_min = tf.cast(tf.reduce_min(nblocks_per_points, axis=0), tf.float32)
 
     # *****
     # block index is got by linear ranging from low bound by a fixed offset for
     # all the points. This is based on: num block per point is the same for all!
     # Check: No points will belong to greater nblocks. But few may belong to
     # smaller blocks: err_npoints
-    if self._check_point_in_block:
-      tmp_mean = tf.reduce_mean(tf.cast(nblocks_per_points,tf.float32), axis=0)
-      # (a) The most are same as tmp_max
-      # (b) Very few may be tmp_max - 1
-      check_0 = tf.assert_less(tmp_max - tmp_mean, 0.001,
-                    message="Increase low_b_index_offset if tmp_max > tmp_mean")
-      check_1 = tf.assert_less(tmp_mean - tmp_min, 1.0)
-      tmp_err_np = tf.cast(tf.not_equal(nblocks_per_points,tmp_max_i),tf.int32)
+    if self._check_nblock_per_points_same:
+      nbpp_mean = tf.reduce_mean(tf.cast(nblocks_per_points,tf.float32), axis=0)
+      # (a) The most are same as nbpp_max
+      # (b) Very few may be nbpp_max - 1
+      tmp_str = '\nnbpp min={}, mean={}, max={}'.format(nbpp_min, nbpp_mean, nbpp_max)
+      check_0 = tf.assert_less(nbpp_max - nbpp_mean, 0.001,
+                    message="nbpp_max > nbpp_mean increase low_b_index_offset"+tmp_str)
+      check_1 = tf.assert_less(nbpp_mean - nbpp_min, 1.0,
+                    message="nbpp_min is too small."+tmp_str)
+      tmp_err_np = tf.cast(tf.not_equal(nblocks_per_points,nbpp_max_int),tf.int32)
       tmp_err_np = tf.reduce_sum(tmp_err_np, 1)
       err_npoints = tf.reduce_sum(tf.cast(tf.not_equal(tmp_err_np, 0),tf.int32))
-      check_2 = tf.assert_less_equal(err_npoints, self._n_maxerr_same_nb_perp)
+      check_2 = tf.assert_less_equal(err_npoints, self._n_maxerr_same_nb_perp,
+                    message="err points with not different nblocks: {}".format(err_npoints)+tmp_str)
       with tf.control_dependencies([check_0, check_1, check_2 ]):
-        tmp_max_i = tf.identity(tmp_max_i)
+        nbpp_max_int = tf.identity(nbpp_max_int)
     # *****
 
-    self.nblocks_per_point = tmp_max_i
+    self.nblocks_per_point = nbpp_max_int
     self.nblock_perp_3d = tf.reduce_prod(self.nblocks_per_point)
     self.npoint_grouped = self.num_point0 * self.nblock_perp_3d
 
@@ -274,10 +337,8 @@ class BlockGroupSampling():
     block_index = tf.tile(block_index, [1, self.nblock_perp_3d, 1])
     block_index += pairs_3d
 
-    if self._check_block_index:
-      check_bi = self.check_block_index(block_index, xyz)
-      with tf.control_dependencies(check_bi):
-        block_index = tf.identity(block_index)
+    if self._check_xyz_inblock:
+      block_index = self.check_xyz_inblock(block_index, xyz)
 
     # (1.3) block index -> block id
     tmp_bindex = tf.reshape(block_index, (-1,3))
@@ -638,7 +699,7 @@ if __name__ == '__main__':
   else:
     main_flag = 'g'
     main_flag = 'eg'
-    #main_flag = 'e'
+    main_flag = 'e'
   print(main_flag)
 
   if 'e' in main_flag:
