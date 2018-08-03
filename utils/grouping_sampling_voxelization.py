@@ -114,7 +114,7 @@ def permutation_combination_3D(up_bound_3d, low_bound_3d=[0,0,0]):
 
 
 class BlockGroupSampling():
-  def __init__(self, width, stride, nblock, npoint_per_block):
+  def __init__(self, width, stride, nblock, npoint_per_block, max_nblock):
     '''
       width = [1,1,1]
       stride = [1,1,1]
@@ -125,25 +125,24 @@ class BlockGroupSampling():
     self._nblock = nblock
     self._npoint_per_block = npoint_per_block
     # cut all the block with too few points
-    self._npoint_per_block_min = max(int(npoint_per_block*0.05), 2)
-    print('_npoint_per_block_min:{}'.format(self._npoint_per_block_min))
+    self._npoint_per_block_min = max(int(npoint_per_block*0.02), 2)
     assert self._width.size == self._stride.size == 3
-    self._nblock_buf_max = 800
+    self._nblock_buf_max = max_nblock
 
     self.samplings = {}
 
     # debug flags
-    self._shuffle = False
+    self._shuffle = True
     # Theoretically, num_block_per_point should be same for all. This is 0.
     self._check_nblock_per_points_same = True
     if self._check_nblock_per_points_same:
       self._n_maxerr_same_nb_perp = 0
       self._n_maxerr_same_nb_perp = 1
 
-    self._check_xyz_inblock = True
+    self._check_xyz_inblock = False
     if self._check_xyz_inblock:
       self._replace_points_outside_block = True
-    self._check_grouped_xyz_inblock = True
+    self._check_grouped_xyz_inblock = False
 
     self._debug_only_blocks_few_points = False
     self.debugs = {}
@@ -151,7 +150,7 @@ class BlockGroupSampling():
 
   def show_settings(self):
     items = ['_width', '_stride', '_npoint_per_block', '_nblock',
-             '_n_maxerr_same_nb_perp', '_shuffle']
+              '_npoint_per_block_min','_n_maxerr_same_nb_perp', '_shuffle']
     print('\n\nsettings:\n')
     for item in items:
       if hasattr(self, item):
@@ -168,7 +167,7 @@ class BlockGroupSampling():
                       1.0*tf.cast(real,tf.float32)/tf.cast(config,tf.float32))
     summary = '\npoint %d\n'%(p_i)
     summary += '\tReal / Config\n'
-    summary += summary_str('nblock', self._nblock, self.nblock)
+    summary += summary_str('valid nblock', self._nblock, self.nblock_valid)
     summary += 'nblock_invalid: {}\n'.format(self.nblock_invalid)
     summary += 'ave-std np_perb: {}-{:.1f}/{}\n'.format(self.samplings['ave_np_perb'],
                 self.samplings['std_np_perb'], self._npoint_per_block)
@@ -579,7 +578,7 @@ class BlockGroupSampling():
           xyzs.append(np.expand_dims(points_i,0))
           grouped_xyzs.append(np.expand_dims(grouped_xyz_i,0))
           print('group OK %d'%(i))
-          continue
+          #continue
 
           valid_flag = '' if not self._debug_only_blocks_few_points else '_invalid'
           if not self._shuffle:
@@ -682,23 +681,26 @@ if __name__ == '__main__':
   filenames = glob.glob(os.path.join(path, tmp+'.tfrecord'))
   assert len(filenames) >= 1
 
-  width = [0.4,0.4,0.4]
-  stride = [0.2,0.2,0.2]
-  nblock = 480
-  npoint_per_block = 256
-
-  #width = [0.2,0.2,0.2]
+  #width = [0.4,0.4,0.4]
   #stride = [0.2,0.2,0.2]
-  #nblock = 200
-  #npoint_per_block = 32
+  #nblock = 480
+  #npoint_per_block = 256
+  max_nblock = 800
+
+  width = [0.1,0.1,0.1]
+  #stride = [0.1,0.1,0.1]
+  stride = [0.05,0.05,0.05]
+  nblock = 2000
+  npoint_per_block = 6
+  max_nblock = 3000
 
   block_group_sampling = BlockGroupSampling(width, stride, nblock,
-                                            npoint_per_block)
+                                            npoint_per_block, max_nblock)
   if len(sys.argv) > 1:
     main_flag = sys.argv[1]
   else:
     main_flag = 'g'
-    main_flag = 'eg'
+    #main_flag = 'eg'
     main_flag = 'e'
   print(main_flag)
 
@@ -713,5 +715,5 @@ if __name__ == '__main__':
       assert (xyzs_E[b] == xyzs[b]).all(), 'time %d xyz different'%(b)
       print('time %d xyzs of g and e is same'%(b))
       assert (grouped_xyzs_E[b] == grouped_xyzs[b]).all(), 'time %d grouped_xyzs differernt'%(b)
-      print('time %d grouped_xyzs of g and e is same'%(b))
+      print('time %d grouped_xyzs of g and e is same, CHECK if shuffle is turned off'%(b))
 
