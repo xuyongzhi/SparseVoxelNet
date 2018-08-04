@@ -156,7 +156,7 @@ def pc_normalize(points):
   return points_normed
 
 
-def parse_pl_record(tfrecord_serialized, is_training, data_shaps=None):
+def parse_pl_record(tfrecord_serialized, is_training, data_shaps=None, bsg=None):
     from aug_data_tf import aug_main, aug_views
     #if data_shaps!=None:
     #  from aug_data_tf import aug_data, tf_Rz
@@ -185,6 +185,7 @@ def parse_pl_record(tfrecord_serialized, is_training, data_shaps=None):
     #  points = pc_normalize(points)
 
     # ------------------------------------------------
+    #             data augmentation
     features = {}
     b_bottom_centers_mm = []
     if is_training:
@@ -200,6 +201,15 @@ def parse_pl_record(tfrecord_serialized, is_training, data_shaps=None):
                     data_shaps['eval_views'],
                     data_shaps['data_idxs'])
     features['points'] = points
+    # ------------------------------------------------
+    #             grouping and sampling on line
+    if bsg!=None:
+      grouped_xyz, empty_mask, block_bottom_center, others = bsg.grouping(points[:,0:3])
+      features['grouped_xyz'] = grouped_xyz
+      features['empty_mask'] = empty_mask
+      features['block_bottom_center'] = block_bottom_center
+      features['others'] = others
+
     return features, object_label
 
 def parse_pl_record_withbmap(tfrecord_serialized, is_training, data_net_configs=None):

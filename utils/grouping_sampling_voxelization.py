@@ -452,8 +452,9 @@ class BlockGroupSampling():
   def gather_grouped_xyz(self, bid_index__pindex_inb, point_index, xyz):
     #(3.1) gather grouped point index
     # gen point index: (real nblock, self._npoint_per_block, 1)
+    print(1, tf.get_default_graph() )
     tmp = tf.ones([self._nblock_buf_max, self._npoint_per_block], dtype=tf.int32) * (-1)
-    grouped_pindex0 = tf.get_variable("grouped_pindex", initializer=tmp, trainable=False, validate_shape=True)
+    grouped_pindex0 = tf.get_variable("grouped_pindex", dtype=tf.int32, initializer=tmp, trainable=False, validate_shape=True)
     grouped_pindex0 = tf.assign(grouped_pindex0, tmp)
     grouped_pindex1 = tf.scatter_nd_update(grouped_pindex0, bid_index__pindex_inb, point_index)
 
@@ -480,7 +481,6 @@ class BlockGroupSampling():
     #(3.4) gather xyz from point index
     grouped_xyz = tf.gather(xyz, grouped_pindex)
     empty_mask = tf.less(grouped_pindex,0)
-
 
     return grouped_xyz, empty_mask, bid_index_sampling
 
@@ -598,17 +598,21 @@ def main(DATASET_NAME, filenames, sg_settings, times):
   num_classes = dataset_meta.num_classes
 
   with tf.Graph().as_default():
+   with tf.device('/device:GPU:0'):
     dataset = tf.data.TFRecordDataset(filenames,
                                         compression_type="",
                                         buffer_size=1024*100,
                                         num_parallel_reads=1)
     batch_size = 1
     is_training = False
+    bsg = BlockGroupSampling(sg_settings)
+    bsg.show_settings()
+    print(0, tf.get_default_graph() )
 
     dataset = dataset.prefetch(buffer_size=batch_size)
     dataset = dataset.apply(
       tf.contrib.data.map_and_batch(
-        lambda value: parse_pl_record(value, is_training, _DATA_PARAS),
+        lambda value: parse_pl_record(value, is_training, _DATA_PARAS, bsg),
         batch_size=batch_size,
         num_parallel_batches=1,
         drop_remainder=True))
@@ -616,18 +620,16 @@ def main(DATASET_NAME, filenames, sg_settings, times):
     get_next = dataset.make_one_shot_iterator().get_next()
     features_next, label_next = get_next
     points_next = features_next['points'][0,:,0:3]
-
-
-    bsg = BlockGroupSampling(sg_settings)
-    bsg.show_settings()
-    grouped_xyz_next, empty_mask_next, bottom_center_next, others_next = bsg.grouping(points_next)
-
+    grouped_xyz_next = features_next['grouped_xyz']
+    empty_mask_next = features_next['empty_mask']
+    bottom_center_next = features_next['block_bottom_center']
+    others_next = features_next['others']
 
     init = tf.global_variables_initializer()
 
     config = tf.ConfigProto(allow_soft_placement=True)
     with tf.Session(config=config) as sess:
-      sess.run(init)
+      #sess.run(init)
       xyzs = []
       grouped_xyzs = []
       others = {}
