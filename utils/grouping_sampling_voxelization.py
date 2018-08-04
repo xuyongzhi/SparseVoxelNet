@@ -364,11 +364,6 @@ class BlockGroupSampling():
     bid_pindex = tf.reshape(bid_pindex, (-1,2))
     block_index = tf.reshape(block_index, (-1,3))
 
-    #if DEBUG:
-    #  self.debugs['xyz'] = xyz
-    #  self.debugs['low_b_index_fixed'] = low_b_index_fixed
-    #  self.debugs['pairs_3d'] = pairs_3d
-    #  self.debugs['block_index'] = block_index
     return bid_pindex
 
 
@@ -459,6 +454,7 @@ class BlockGroupSampling():
     # gen point index: (real nblock, self._npoint_per_block, 1)
     tmp = tf.ones([self._nblock_buf_max, self._npoint_per_block], dtype=tf.int32) * (-1)
     grouped_pindex0 = tf.get_variable("grouped_pindex", initializer=tmp, trainable=False, validate_shape=True)
+    grouped_pindex0 = tf.assign(grouped_pindex0, tmp)
     grouped_pindex1 = tf.scatter_nd_update(grouped_pindex0, bid_index__pindex_inb, point_index)
 
     #(3.2) remove the blocks with too less points
@@ -480,17 +476,11 @@ class BlockGroupSampling():
              lambda: tf.concat([bid_index_valid, tf.ones(tmp_nb,tf.int32) * bid_index_valid[0]],0),
              lambda: tf.contrib.framework.sort( bid_index_valid[0:self._nblock] ))
     grouped_pindex = tf.gather(grouped_pindex1, bid_index_sampling)
-    #print(grouped_pindex[0:20,0:10])
 
     #(3.4) gather xyz from point index
     grouped_xyz = tf.gather(xyz, grouped_pindex)
     empty_mask = tf.less(grouped_pindex,0)
 
-    if DEBUG:
-      self.debugs['bid_index__pindex_inb'] = bid_index__pindex_inb
-      self.debugs['point_index'] = point_index
-      self.debugs['grouped_pindex1'] = grouped_pindex1
-      self.debugs['grouped_pindex'] = grouped_pindex
 
     return grouped_xyz, empty_mask, bid_index_sampling
 
@@ -525,14 +515,13 @@ class BlockGroupSampling():
       with tf.control_dependencies(check_gs):
         grouped_xyz = tf.identity(grouped_xyz)
 
-    if DEBUG:
-      self.debugs['xyz'] = xyz
-      self.debugs['grouped_xyz'] = grouped_xyz
-      self.debugs['bid_index__pindex_inb'] = bid_index__pindex_inb
-      self.debugs['block_id_unique'] = block_id_unique
     others = {}
-    others['value'] = [bid_pindex, bid_index__pindex_inb, point_index]
-    others['name'] = ['bid_pindex', 'bid_index__pindex_inb', 'point_index']
+    others['value'] = []
+    others['name'] = []
+    #others['value'] = [bid_pindex, bid_index__pindex_inb, point_index,\
+    #                   block_id_unique, bid_index_sampling, empty_mask]
+    #others['name'] = ['bid_pindex', 'bid_index__pindex_inb', 'point_index',\
+    #                  'block_id_unique', 'bid_index_sampling', 'empty_mask']
     return grouped_xyz, empty_mask, block_bottom_center, others
 
 
@@ -597,7 +586,7 @@ def main_eager(DATASET_NAME, filenames, sg_settings, times):
   grouped_xyzs = np.concatenate(grouped_xyzs,0)
 
   for name in others:
-    if name not in ['valid_bid_indexs']:
+    if name not in ['valid_bid_indexs', 'block_id_unique']:
       others[name] = np.concatenate(others[name], 0)
 
   return xyzs, grouped_xyzs, others
@@ -670,7 +659,7 @@ def main(DATASET_NAME, filenames, sg_settings, times):
       xyzs = np.concatenate(xyzs, 0)
       grouped_xyzs = np.concatenate(grouped_xyzs, 0)
       for name in others:
-        if name not in ['valid_bid_indexs']:
+        if name not in ['valid_bid_indexs', 'block_id_unique']:
           others[name] = np.concatenate(others[name], 0)
 
     return xyzs, grouped_xyzs, others
@@ -711,8 +700,6 @@ if __name__ == '__main__':
   tmp = 'airplane_0001' # ERR
   tmp = '*'
   filenames = glob.glob(os.path.join(path, tmp+'.tfrecord'))
-  filenames = filenames[0:2]
-  #filenames = [filenames[1], filenames[0]]
   assert len(filenames) >= 1
 
   sg_settings = {}
@@ -739,10 +726,10 @@ if __name__ == '__main__':
 
   if 'e' in main_flag:
     xyzs_E, grouped_xyzs_E, others_E = \
-      main_eager(DATASET_NAME, filenames, sg_settings, 2)
+      main_eager(DATASET_NAME, filenames, sg_settings, 20)
   if 'g' in main_flag:
     xyzs, grouped_xyzs, others = \
-      main(DATASET_NAME, filenames, sg_settings, 2)
+      main(DATASET_NAME, filenames, sg_settings, 20)
 
   if main_flag=='eg':
     batch_size = min(xyzs.shape[0], xyzs_E.shape[0])
@@ -751,8 +738,16 @@ if __name__ == '__main__':
       print('time %d xyzs of g and e is same'%(b))
 
       for name in others:
-        assert (others_E[name][b] == others[name][b]).all(), 'time %d others- %s different'%(b, name)
-        print('time %d others - %s of g and e is same'%(b, name))
+        check = (others_E[name][b] == others[name][b]).all()
+        if not check:
+          print('time %d others- %s different'%(b, name))
+          err = others_E[name][b] != others[name][b]
+          nerr = np.sum(err)
+          print(others[name][b])
+          import pdb; pdb.set_trace()  # XXX BREAKPOINT
+          pass
+        else:
+          print('time %d others - %s of g and e is same'%(b, name))
 
       assert (grouped_xyzs_E[b] == grouped_xyzs[b]).all(), 'time %d grouped_xyzs differernt, CHECK if shuffle is turned off'%(b)
       print('time %d grouped_xyzs of g and e is same'%(b))
