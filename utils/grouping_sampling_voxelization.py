@@ -131,6 +131,7 @@ class BlockGroupSampling():
     self._npoint_per_block_min = max(int(sg_settings['npoint_per_block']*0.02), 2)
     assert self._width.size == self._stride.size == 3
     self._nblock_buf_max = sg_settings['max_nblock']
+    self._empty_point_index = 'first' # -1(GPU only) or 'first'
 
     self.samplings = {}
 
@@ -422,22 +423,22 @@ class BlockGroupSampling():
     bid_index__pindex_inb = tf.gather(bid_index__pindex_inb, remain_index)
     point_index = tf.gather(point_index, remain_index)
 
-    # record sampling parameters
+    # (2.5) record sampling parameters
     samplings = {}
     tmp = npoint_per_block - self._npoint_per_block
     missing_mask = tf.cast(tf.greater(tmp,0), tf.int32)
     tmp_missing = missing_mask * tmp
-    empty_mask = tf.cast(tf.less(tmp,0), tf.int32)
-    tmp_empty = empty_mask * tmp
+    less_mask = tf.cast(tf.less(tmp,0), tf.int32)
+    tmp_less = less_mask * tmp
 
     samplings['ave_np_perb'], variance = tf.nn.moments(npoint_per_block,0)
     samplings['std_np_perb'] = tf.sqrt(tf.cast(variance,tf.float32))
     samplings['nblock_has_missing'] = nblock_has_missing = tf.reduce_sum(missing_mask)
-    nblock_empty = tf.reduce_sum(empty_mask)
+    nblock_less = tf.reduce_sum(less_mask)
     samplings['nmissing_perb'] = tf.cond( tf.greater(nblock_has_missing,0),
                     lambda: tf.reduce_sum(tmp_missing) / nblock_has_missing,
                     lambda: 0)
-    samplings['nempty_perb'] = tf.reduce_sum(tmp_empty) / nblock_empty
+    samplings['nempty_perb'] = tf.reduce_sum(tmp_less) / nblock_less
 
     samplings['valid_grouped_npoint'] = bid_index__pindex_inb.shape[0].value
     samplings['nblock_perp_3d'] = self.nblock_perp_3d
@@ -479,8 +480,20 @@ class BlockGroupSampling():
     grouped_pindex = tf.gather(grouped_pindex1, bid_index_sampling)
 
     #(3.4) gather xyz from point index
-    grouped_xyz = tf.gather(xyz, grouped_pindex)
     empty_mask = tf.less(grouped_pindex,0)
+    if self._empty_point_index != -1:
+      # replace -1 with first one of each block
+      first_pindices = grouped_pindex[0,0:1]
+      empty_indices = tf.cast(tf.where(empty_mask), tf.int32)
+      # Incorrect!!!: use the first point of first block always.
+      # Should use the first one of each block, but it's hard to implement.
+      # So always use empty mask to avoid this error!
+      first_pindices = tf.tile(first_pindices, [tf.shape(empty_indices)[0]]) + 1
+      first_pindices_dense = tf.sparse_to_dense(empty_indices, tf.shape(grouped_pindex), first_pindices)
+      grouped_pindex = grouped_pindex + first_pindices_dense
+
+    grouped_xyz = tf.gather(xyz, grouped_pindex)
+    empty_mask = tf.cast(empty_mask, tf.int8) # to feed into input pipeline
 
     return grouped_xyz, empty_mask, bid_index_sampling
 
@@ -633,14 +646,14 @@ def main(DATASET_NAME, filenames, sg_settings, times):
       xyzs = []
       grouped_xyzs = []
       others = {}
-      for i in range(times):
+      for i in range(1):
         #if DEBUG:
         #  debugs = sess.run(self.debugs)
 
         #points_i = sess.run(points_next)
 
         points_i, grouped_xyz_i, empty_mask, bottom_center_i, others_i = \
-          sess.run([points_next, grouped_xyz_next, empty_mask_next, bottom_center_next, others_next['value']])
+          sess.run([points_next, grouped_xyz_next, empty_mask_next, bottom_center_next, others_next['value']] )
 
         xyzs.append(np.expand_dims(points_i,0))
         grouped_xyzs.append(np.expand_dims(grouped_xyz_i,0))
