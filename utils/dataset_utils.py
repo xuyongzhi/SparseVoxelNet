@@ -155,7 +155,54 @@ def pc_normalize(points):
     points_normed = points_xyz
   return points_normed
 
-def parse_pl_record(tfrecord_serialized, is_training, data_net_configs=None):
+
+def parse_pl_record(tfrecord_serialized, is_training, data_shaps=None):
+    from aug_data_tf import aug_main, aug_views
+    #if data_shaps!=None:
+    #  from aug_data_tf import aug_data, tf_Rz
+    #  R = tf_Rz(1)
+    #  import pdb; pdb.set_trace()  # XXX BREAKPOINT
+    feature_map = {
+        'object/label': tf.FixedLenFeature([], tf.int64),
+        'points/shape': tf.FixedLenFeature([], tf.string),
+        'points/encoded': tf.FixedLenFeature([], tf.string),
+    }
+    tfrecord_features = tf.parse_single_example(tfrecord_serialized,
+                                                features=feature_map,
+                                                name='pl_features')
+
+    object_label = tf.cast(tfrecord_features['object/label'], tf.int32)
+    object_label = tf.expand_dims(object_label,0)
+
+    points = tf.decode_raw(tfrecord_features['points/encoded'], tf.float32)
+    if data_shaps == None:
+      points_shape = tf.decode_raw(tfrecord_features['points/shape'], tf.int32)
+    else:
+      points_shape = data_shaps['points']
+    # the image tensor is flattened out, so we have to reconstruct the shape
+    points = tf.reshape(points, points_shape)
+    #if data_shaps != None:
+    #  points = pc_normalize(points)
+
+    # ------------------------------------------------
+    features = {}
+    b_bottom_centers_mm = []
+    if is_training:
+      if data_shaps != None and data_shaps['aug_types']!='none':
+        points, b_bottom_centers_mm, augs = aug_main(points, b_bottom_centers_mm,
+                    data_shaps['aug_types'],
+                    data_shaps['data_idxs'])
+        #features['augs'] = augs
+    else:
+      if data_shaps!=None and 'eval_views' in data_shaps and data_shaps['eval_views'] > 1:
+        #features['eval_views'] = data_shaps['eval_views']
+        points, b_bottom_centers_mm, augs = aug_views(points, b_bottom_centers_mm,
+                    data_shaps['eval_views'],
+                    data_shaps['data_idxs'])
+    features['points'] = points
+    return features, object_label
+
+def parse_pl_record_withbmap(tfrecord_serialized, is_training, data_net_configs=None):
     from aug_data_tf import aug_main, aug_views
     #if data_net_configs!=None:
     #  from aug_data_tf import aug_data, tf_Rz

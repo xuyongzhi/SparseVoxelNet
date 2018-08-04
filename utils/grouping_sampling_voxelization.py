@@ -720,7 +720,7 @@ if __name__ == '__main__':
     main_flag = sys.argv[1]
   else:
     main_flag = 'g'
-    main_flag = 'eg'
+    #main_flag = 'eg'
     #main_flag = 'e'
   print(main_flag)
 
