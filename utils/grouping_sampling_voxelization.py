@@ -454,19 +454,9 @@ class BlockGroupSampling():
   def gather_grouped_xyz(self, bid_index__pindex_inb, point_index, xyz):
     #(3.1) gather grouped point index
     # gen point index: (real nblock, self._npoint_per_block, 1)
-
-    #tmp = tf.ones([self._nblock_buf_max, self._npoint_per_block], dtype=tf.int32) * (-1)
-    #grouped_pindex0 = tf.get_variable("grouped_pindex", dtype=tf.int32, initializer=tmp, trainable=False, validate_shape=True)
-    #grouped_pindex0 = tf.assign(grouped_pindex0, tmp)
-    #grouped_pindex1 = tf.scatter_nd_update(grouped_pindex0, bid_index__pindex_inb, point_index)
-
-    grouped_pindex1 = tf.sparse_to_dense(bid_index__pindex_inb,
-                              (self._nblock, self._npoint_per_block),
+    grouped_pindex0 = tf.sparse_to_dense(bid_index__pindex_inb,
+                              (self._nblock_buf_max, self._npoint_per_block),
                               point_index, default_value=-1)
-
-    if DEBUG:
-      #self.grouped_pindex0 = grouped_pindex0
-      self.grouped_pindex1 = grouped_pindex1
 
     #(3.2) remove the blocks with too less points
     if not self._debug_only_blocks_few_points:
@@ -486,7 +476,7 @@ class BlockGroupSampling():
       bid_index_sampling = tf.cond( tf.greater(tmp_nb, 0),
              lambda: tf.concat([bid_index_valid, tf.ones(tmp_nb,tf.int32) * bid_index_valid[0]],0),
              lambda: tf.contrib.framework.sort( bid_index_valid[0:self._nblock] ))
-    grouped_pindex = tf.gather(grouped_pindex1, bid_index_sampling)
+    grouped_pindex = tf.gather(grouped_pindex0, bid_index_sampling)
 
     #(3.4) gather xyz from point index
     empty_mask = tf.less(grouped_pindex,0)
@@ -537,19 +527,21 @@ class BlockGroupSampling():
       with tf.control_dependencies(check_gs):
         grouped_xyz = tf.identity(grouped_xyz)
 
+    # **************************************************************************
+    #       Add middle tensors to check between graph model and eager model
     others = {}
     others['value'] = []
     others['name'] = []
-    point_index_O = tf.concat([point_index, tf.zeros(self.npoint_grouped-tf.shape(point_index),tf.int32)],0)
-    bid_index__pindex_inb_O = tf.concat([bid_index__pindex_inb,
-            tf.zeros([self.npoint_grouped-tf.shape(bid_index__pindex_inb)[0],2],tf.int32)],0)
-    others['value'] += [bid_pindex, bid_index__pindex_inb_O, point_index_O]
-    others['name'] += ['bid_pindex', 'bid_index__pindex_inb', 'point_index']
+    #point_index_O = tf.concat([point_index, tf.zeros(self.npoint_grouped-tf.shape(point_index),tf.int32)],0)
+    #bid_index__pindex_inb_O = tf.concat([bid_index__pindex_inb,
+    #        tf.zeros([self.npoint_grouped-tf.shape(bid_index__pindex_inb)[0],2],tf.int32)],0)
+    #others['value'] += [bid_pindex, bid_index__pindex_inb_O, point_index_O]
+    #others['name'] += ['bid_pindex', 'bid_index__pindex_inb', 'point_index']
 
-    block_id_unique_O = tf.concat([block_id_unique, tf.zeros(1000-tf.shape(block_id_unique),tf.int32)],0)
-    bid_index_sampling_O = tf.concat([bid_index_sampling, tf.zeros(1000-tf.shape(bid_index_sampling),tf.int32)],0)
-    others['value'] += [block_id_unique_O, bid_index_sampling_O]
-    others['name'] += ['block_id_unique', 'bid_index_sampling']
+    #block_id_unique_O = tf.concat([block_id_unique, tf.zeros(1000-tf.shape(block_id_unique),tf.int32)],0)
+    #bid_index_sampling_O = tf.concat([bid_index_sampling, tf.zeros(1000-tf.shape(bid_index_sampling),tf.int32)],0)
+    #others['value'] += [block_id_unique_O, bid_index_sampling_O]
+    #others['name'] += ['block_id_unique', 'bid_index_sampling']
     #others['value'] += [self.grouped_pindex0]
     #others['name'] += ['grouped_pindex0']
 
@@ -728,19 +720,21 @@ if __name__ == '__main__':
   filenames = glob.glob(os.path.join(path, tmp+'.tfrecord'))
   assert len(filenames) >= 1
 
-  sg_settings = {}
-  sg_settings['width'] = [0.4,0.4,0.4]
-  sg_settings['stride'] = [0.2,0.2,0.2]
-  sg_settings['nblock'] = 480
-  sg_settings['npoint_per_block'] = 48
-  sg_settings['max_nblock'] = 800
+  sg_settings0 = {}
+  sg_settings0['width'] = [0.4,0.4,0.4]
+  sg_settings0['stride'] = [0.2,0.2,0.2]
+  sg_settings0['nblock'] = 480
+  sg_settings0['npoint_per_block'] = 48
+  sg_settings0['max_nblock'] = 800
 
-  #width = [0.1,0.1,0.1]
-  ##stride = [0.1,0.1,0.1]
-  #stride = [0.05,0.05,0.05]
-  #nblock = 2000
-  #npoint_per_block = 6
-  #max_nblock = 3000
+  sg_settings1 = {}
+  sg_settings1['width'] = [0.1, 0.1, 0.1]
+  sg_settings1['stride'] = [0.05, 0.05, 0.05]
+  sg_settings1['nblock'] = 2000
+  sg_settings1['npoint_per_block'] = 6
+  sg_settings1['max_nblock'] = 6000
+
+  sg_settings = sg_settings1
 
   if len(sys.argv) > 1:
     main_flag = sys.argv[1]
