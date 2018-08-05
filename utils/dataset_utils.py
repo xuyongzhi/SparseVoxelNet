@@ -208,7 +208,9 @@ def parse_pl_record(tfrecord_serialized, is_training, data_shaps=None, bsg=None)
       features['grouped_xyz'] = grouped_xyz
       features['empty_mask'] = empty_mask
       features['block_bottom_center'] = block_bottom_center
-      features['others'] = others
+      for k in range(len(others['name'])):
+        name = others['name'][k]
+        features[name] = others['value'][k]
 
     return features, object_label
 
