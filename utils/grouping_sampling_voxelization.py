@@ -161,6 +161,7 @@ class BlockGroupSampling():
 
     # debug flags
     self._shuffle = False
+    self._use_less_points_block_when_not_enough = True
     # Theoretically, num_block_per_point should be same for all. This is 0.
     self._check_nblock_per_points_same = True
     if self._check_nblock_per_points_same:
@@ -429,9 +430,8 @@ class BlockGroupSampling():
     self.valid_bid_index = tf.cast(tf.where(tmp_valid_b)[:,0], tf.int32)
     self.nblock_valid = tf.shape(self.valid_bid_index)[0]
     self.nblock_invalid = self.nblock - self.nblock_valid
-    if self._debug_only_blocks_few_points:
-      tmp_invalid_b = tf.less(npoint_per_block, self._np_perb_min_includes[self.scale])
-      self.invalid_bid_index = tf.cast(tf.where(tmp_invalid_b)[:,0], tf.int32)
+    tmp_invalid_b = tf.less(npoint_per_block, self._np_perb_min_includes[self.scale])
+    self.invalid_bid_index = tf.cast(tf.where(tmp_invalid_b)[:,0], tf.int32)
 
     #(2.3) Get point index per block
     #      Based on: all points belong to same block is together
@@ -493,23 +493,44 @@ class BlockGroupSampling():
                               point_index, default_value=-1)
 
     #(3.2) remove the blocks with too less points
-    if not self._debug_only_blocks_few_points:
-      bid_index_valid = self.valid_bid_index
-      nblock_valid = self.nblock_valid
-    else:
+    if self._debug_only_blocks_few_points:
       bid_index_valid = self.invalid_bid_index
       nblock_valid = self.nblock_invalid
+    else:
+      bid_index_valid = self.valid_bid_index
+      nblock_valid = self.nblock_valid
+
+    tmp_nb = self._nblocks[self.scale] - nblock_valid
+
+    def block_not_enough():
+      if self._use_less_points_block_when_not_enough:
+        bid_index_valid_1 = tf.concat([bid_index_valid,
+                                self.invalid_bid_index[0:tmp_nb]],0)
+        tmp_nb1 = self._nblocks[self.scale] - tf.shape(bid_index_valid_1)[0]
+        bid_index_sampled = tf.concat([bid_index_valid_1, tf.ones(tmp_nb1,tf.int32)\
+                                     * bid_index_valid_1[0]],0)
+        return bid_index_sampled
+
+    def block_too_many():
+      if self._shuffle:
+        return tf.contrib.framework.sort( tf.random_shuffle(bid_index_valid)[0:self._nblocks[self.scale]] )
+      else:
+        return tf.contrib.framework.sort( bid_index_valid[0:self._nblocks[self.scale]] )
+
+    bid_index_sampling = tf.cond( tf.greater(tmp_nb, 0),
+                                 block_not_enough,
+                                 block_too_many )
 
     #(3.3) sampling fixed number of blocks when too many blocks are provided
-    tmp_nb = self._nblocks[self.scale] - nblock_valid
-    if self._shuffle:
-      bid_index_sampling = tf.cond( tf.greater(tmp_nb, 0),
-             lambda: tf.concat([bid_index_valid, tf.ones(tmp_nb,tf.int32) * bid_index_valid[0]],0),
-             lambda: tf.contrib.framework.sort( tf.random_shuffle(bid_index_valid)[0:self._nblocks[self.scale]] ))
-    else:
-      bid_index_sampling = tf.cond( tf.greater(tmp_nb, 0),
-             lambda: tf.concat([bid_index_valid, tf.ones(tmp_nb,tf.int32) * bid_index_valid[0]],0),
-             lambda: tf.contrib.framework.sort( bid_index_valid[0:self._nblocks[self.scale]] ))
+
+    #if self._shuffle:
+    #  bid_index_sampling = tf.cond( tf.greater(tmp_nb, 0),
+    #         lambda: tf.concat([bid_index_valid, tf.ones(tmp_nb,tf.int32) * bid_index_valid[0]],0),
+    #         lambda: tf.contrib.framework.sort( tf.random_shuffle(bid_index_valid)[0:self._nblocks[self.scale]] ))
+    #else:
+    #  bid_index_sampling = tf.cond( tf.greater(tmp_nb, 0),
+    #         lambda: tf.concat([bid_index_valid, tf.ones(tmp_nb,tf.int32) * bid_index_valid[0]],0),
+    #         lambda: tf.contrib.framework.sort( bid_index_valid[0:self._nblocks[self.scale]] ))
     grouped_pindex = tf.gather(grouped_pindex0, bid_index_sampling)
 
     #(3.4) gather xyz from point index
@@ -837,9 +858,9 @@ def get_sg_settings():
   sg_settings1 = {}
   sg_settings1['width'] =   [[0.2,0.2,0.2], [0.6,0.6,0.6]]
   sg_settings1['stride'] =  [[0.1,0.1,0.1], [0.4,0.4,0.4]]
-  sg_settings1['nblock'] =  [1512,           128]
+  sg_settings1['nblock'] =  [512,           64]
   sg_settings1['npoint_per_block'] = [10,   10]
-  sg_settings1['np_perb_min_include'] = [3, 1]
+  sg_settings1['np_perb_min_include'] = [4, 2]
   sg_settings1['max_nblock'] =      [6000,  500]
 
   sg_settings = sg_settings1
@@ -872,7 +893,7 @@ if __name__ == '__main__':
     #main_flag = 'e'
   print(main_flag)
 
-  nframes = 20
+  nframes = 2
 
   if 'e' in main_flag:
     sg_settings['record'] = True
