@@ -236,16 +236,18 @@ class BlockGroupSampling():
     check_top = tf.less(xyz, block_top)
     check_top = tf.reduce_all(check_top, 2)
     nerr_top = tf.reduce_sum(1-tf.cast(check_top, tf.int32))
-    assert_top = tf.assert_equal(nerr_top, 0,
-                message='check_xyz_inblock nerr_top:{}'.format(nerr_top))
     check_bottom = tf.reduce_all(tf.less_equal(block_bottom, xyz),2)
     nerr_bottom = tf.reduce_sum(1-tf.cast(check_bottom,tf.int32))
+    nerr = nerr_top + nerr_bottom
 
     if self._replace_points_outside_block:
-      block_index = tf.cond( nerr_bottom>0,
-            lambda: self.replace_points_outside_block(block_index, check_bottom),
+      check_scope = tf.logical_and(check_bottom, check_top)
+      block_index = tf.cond( tf.greater(nerr, 0),
+            lambda: self.replace_points_outside_block(block_index, check_scope),
             lambda: block_index)
     else:
+      assert_top = tf.assert_equal(nerr_top, 0,
+                message='check_xyz_inblock nerr_top:{}'.format(nerr_top))
       assert_bottom = tf.assert_equal(nerr_bottom, 0,
                 message='check_xyz_inblock nerr_bottom:{}'.format(nerr_bottom))
       with tf.control_dependencies([assert_top, assert_bottom]):
@@ -254,7 +256,7 @@ class BlockGroupSampling():
     return block_index
 
 
-  def replace_points_outside_block(self, block_index, check_bottom):
+  def replace_points_outside_block(self, block_index, check_scope):
     '''
     Replace the points out of block with the first one in this block.
     The first one must inside the block.
@@ -278,7 +280,7 @@ class BlockGroupSampling():
       sparse_values = tf.sparse_to_dense(sparse_indices, dense_shape, sparse_values)
       return sparse_values
 
-    invalid_indices = tf.cast(tf.where(tf.logical_not(check_bottom)),tf.int32)
+    invalid_indices = tf.cast(tf.where(tf.logical_not(check_scope)),tf.int32)
     tmp0 = tf.constant([[1,0],[0,0]], tf.int32)
     valid_indices = tf.matmul( invalid_indices, tmp0)
 
@@ -289,6 +291,7 @@ class BlockGroupSampling():
     invalid_values_dense = my_sparse_to_dense(dense_shape, invalid_indices, invalid_values)
     valid_values_dense = my_sparse_to_dense(dense_shape, invalid_indices, valid_values)
     block_index_fixed = block_index - invalid_values_dense + valid_values_dense
+    print('scale {}, invalid_indices num:{}'.format(self.scale, tf.shape(invalid_indices)[0]))
     return block_index_fixed
 
 
@@ -312,6 +315,17 @@ class BlockGroupSampling():
     return [assert_top, assert_bottom]
 
 
+  def get_block_index_bound(self, xyz):
+    '''
+    The blocks at the edge
+    '''
+    xyz_max = tf.reduce_max(xyz, 0)
+    xyz_min = tf.reduce_min(xyz, 0)
+    padding = self._widths[self.scale] * 0.5
+    bindex_min = (xyz_min - padding)/self._strides[self.scale]
+    bindex_max = (xyz_max + padding-self._widths[self.scale])/self._strides[self.scale]
+    return bindex_min, bindex_max
+
   def get_block_id(self, xyz):
     '''
     (1) Get the responding block index of each point
@@ -323,6 +337,8 @@ class BlockGroupSampling():
     self.num_point0 = num_point0 = tf.shape(xyz)[0]
     low_b_index = (xyz - self._widths[self.scale]) / self._strides[self.scale]
     up_b_index = xyz / self._strides[self.scale]
+
+    bindex_min, bindex_max = self.get_block_index_bound(xyz)
 
     # set a small pos offset. If low_b_index is float, ceil(low_b_index)
     # remains. But if low_b_index is int, ceil(low_b_index) increases.

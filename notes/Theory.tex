@@ -96,6 +96,15 @@ $$ j:range(j_L, j_U+1) $$
 Note: Simplify programming of $j_L$:
 $$j_L=ceil(L+1e^{-5})$$
 
+\subsubsection{block index bound}
+The scope of all points are $[P_{min}, P_{max}]$. The scope of all block index is $[j_l, j_u]$.
+$$ sj_l+ padding = P_{min}$$
+$$ sj_u+w-padding = P_{max} $$
+$$ padding = \frac{w}{2}$$
+
+$$ j_l = \frac{(P_{min}-padding)}{s} $$
+$$ j_u = \frac{P_{max}+padding-w}{s} $$
+
 \subsection{block indice between different scales}
 \includegraphics[width=0.9\textheight]{theory/bxmap.png}
 
