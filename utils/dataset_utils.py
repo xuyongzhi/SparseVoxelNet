@@ -204,13 +204,18 @@ def parse_pl_record(tfrecord_serialized, is_training, data_shaps=None, bsg=None)
     # ------------------------------------------------
     #             grouping and sampling on line
     if bsg!=None:
-      grouped_xyz, empty_mask, block_bottom_center, others = bsg.grouping(points[:,0:3])
-      features['grouped_xyz'] = grouped_xyz
-      features['empty_mask'] = empty_mask
-      features['block_bottom_center'] = block_bottom_center
-      for k in range(len(others['name'])):
-        name = others['name'][k]
-        features[name] = others['value'][k]
+      grouped_xyz, empty_mask, block_bottom_center, nblock_valid, others = \
+                        bsg.grouping_multi_scale(points[:,0:3])
+      num_scale = len(grouped_xyz)
+      for s in range(num_scale):
+        features['grouped_xyz_%d'%(s)] = grouped_xyz[s]
+        features['empty_mask_%d'%(s)] = empty_mask[s]
+        features['block_bottom_center_%d'%(s)] = block_bottom_center[s]
+        for k in range(len(others[s]['name'])):
+          name = others[s]['name'][k]+'_%d'%(s)
+          if name not in features:
+            features[name] = []
+          features[name].append( others[s]['value'][k] )
 
     return features, object_label
 

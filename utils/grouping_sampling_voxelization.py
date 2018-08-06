@@ -160,7 +160,7 @@ class BlockGroupSampling():
 
 
     # debug flags
-    self._shuffle = True
+    self._shuffle = False
     # Theoretically, num_block_per_point should be same for all. This is 0.
     self._check_nblock_per_points_same = True
     if self._check_nblock_per_points_same:
@@ -319,7 +319,7 @@ class BlockGroupSampling():
     block_id: (num_point0, nblock_perp_3d, 1)
     '''
     # (1.1) lower and upper block index bound
-    self.num_point0 = num_point0 = xyz.shape[0].value
+    self.num_point0 = num_point0 = tf.shape(xyz)[0]
     low_b_index = (xyz - self._widths[self.scale]) / self._strides[self.scale]
     up_b_index = xyz / self._strides[self.scale]
 
@@ -599,17 +599,19 @@ class BlockGroupSampling():
     grouped_mean = tmp_sum / valid_num
     return grouped_mean
 
+
   def valid_block_xyz(self, grouped_xyz, empty_mask, block_bottom_center, nblock_valid):
     if self._block_pos == 'mean':
       block_xyz = self.grouped_mean(grouped_xyz, empty_mask)
     elif self._block_pos == 'center':
       block_xyz = block_bottom_center[:,3:6]
     empty_mask = tf.cast(empty_mask, tf.bool)
-    valid_block_xyz = tf.cond( nblock_valid<block_xyz.shape[0],
+    valid_block_xyz = tf.cond( tf.less(nblock_valid, tf.shape(block_xyz)[0]),
                               lambda: block_xyz[0:nblock_valid],
                               lambda: block_xyz)
 
     return valid_block_xyz
+
 
   def grouping_multi_scale(self, xyz, num_scale=None):
     grouped_pos = 'center'
@@ -755,14 +757,23 @@ def main(DATASET_NAME, filenames, sg_settings, nframes):
     features_next, label_next = get_next
 
     points_next = features_next['points']
-    grouped_xyz_next = features_next['grouped_xyz']
-    empty_mask_next = features_next['empty_mask']
-    bottom_center_next = features_next['block_bottom_center']
-    others_next = {}
-    for name in features_next:
-      if name not in ['points', 'grouped_xyz', 'empty_mask', 'block_bottom_center']:
-        others_next[name] = features_next[name]
-    samplings_next = bsg.samplings
+    grouped_xyz_next = []
+    empty_mask_next = []
+    bottom_center_next = []
+    others_next = []
+
+    num_scale = bsg._num_scale
+    for s in range(num_scale):
+      grouped_xyz_next.append(features_next['grouped_xyz_%d'%(s)])
+      empty_mask_next.append(features_next['empty_mask_%d'%(s)])
+      bottom_center_next.append(features_next['block_bottom_center_%d'%(s)])
+
+      others_next.append({})
+      for name in ['bids_sampling']:
+        name_s = name+'_%d'%(s)
+        if name_s in features_next:
+          others_next[s][name_s] = features_next[name_s]
+    #samplings_next = bsg.samplings
 
     init = tf.global_variables_initializer()
 
@@ -774,29 +785,31 @@ def main(DATASET_NAME, filenames, sg_settings, nframes):
 
       #points_i = sess.run(points_next)
 
-      points, grouped_xyzs, empty_masks, bottom_centers, others, samplings = \
-        sess.run([points_next, grouped_xyz_next, empty_mask_next, bottom_center_next, others_next, samplings_next] )
+      points, grouped_xyzs, empty_masks, bottom_centers, others = \
+        sess.run([points_next, grouped_xyz_next, empty_mask_next, bottom_center_next, others_next] )
 
       #bsg.show_samplings_np(samplings)
       xyzs = points[:,:,0:3]
-
-      others['empty_mask'] = empty_masks
-
       print('group OK')
 
-      if bsg._gen_ply:
-        valid_flag = '' if not self._debug_only_blocks_few_points else '_invalid'
-        if not self._shuffle:
-          valid_flag += '_NoShuffle'
-        gen_plys(DATASET_NAME, i, points_i, grouped_xyz_i, bottom_center_i,\
-                  bids_sampling_i, valid_flag)
+      for s in range(num_scale):
+        others[s]['empty_mask'] = empty_masks[s]
+
+        for frame in range(batch_size):
+          if bsg._gen_ply:
+            valid_flag = '' if not bsg._debug_only_blocks_few_points else '_invalid'
+            if not bsg._shuffle:
+              valid_flag += '_NoShuffle'
+            bids_sampling = others[s]['bids_sampling_%d'%(s)][frame,0]
+            gen_plys(DATASET_NAME, frame, points[frame], grouped_xyzs[s][frame], bottom_centers[s][frame],\
+                      bids_sampling, valid_flag, 'S%d'%(s))
 
     return xyzs, grouped_xyzs, others, bsg._shuffle
 
 
-def gen_plys(DATASET_NAME, i, points, grouped_xyz, bottom_center, bids_sampling, valid_flag='', main_flag=''):
+def gen_plys(DATASET_NAME, frame, points, grouped_xyz, bottom_center, bids_sampling, valid_flag='', main_flag=''):
   print('bids_sampling: {}'.format(bids_sampling))
-  path = '/tmp/%d_plys'%(i) + main_flag
+  path = '/tmp/%d_plys'%(frame) + main_flag
 
   if type(points)!=type(None):
     ply_fn = '%s/points.ply'%(path)
@@ -832,7 +845,7 @@ def get_sg_settings():
   sg_settings = sg_settings1
   sg_settings['block_pos'] = 'center'
   #sg_settings['block_pos'] = 'mean'
-  sg_settings['gen_ply'] = True
+  sg_settings['gen_ply'] = False
   return sg_settings1
 
 if __name__ == '__main__':
@@ -859,7 +872,7 @@ if __name__ == '__main__':
     #main_flag = 'e'
   print(main_flag)
 
-  nframes = 2
+  nframes = 20
 
   if 'e' in main_flag:
     sg_settings['record'] = True
@@ -876,24 +889,26 @@ if __name__ == '__main__':
       assert (xyzs_E[b] == xyzs[b]).all(), 'time %d xyz different'%(b)
       print('time %d xyzs of g and e is same'%(b))
 
-      for name in others_E:
-        check = (others_E[name][b] == others[name][b]).all()
-        if not check:
-          print('time %d others- %s different'%(b, name))
-          err = others_E[name][b] != others[name][b]
-          nerr = np.sum(err)
-          print(others[name][b])
-          import pdb; pdb.set_trace()  # XXX BREAKPOINT
-          pass
-        else:
-          print('time %d others - %s of g and e is same'%(b, name))
+      num_scale = len(grouped_xyzs)
+      for s in range(num_scale):
+        for name in others_E[s]:
+          check = (others_E[s][name][b] == others[s][name][b]).all()
+          if not check:
+            print('time %d scale %d others- %s different'%(b, s, name))
+            err = others_E[s][name][b] != others[s][name][b]
+            nerr = np.sum(err)
+            print(others[s][name][b])
+            import pdb; pdb.set_trace()  # XXX BREAKPOINT
+            pass
+          else:
+            print('time %d scale %d others - %s of g and e is same'%(b, s, name))
 
-      diff = grouped_xyzs_E[b] - grouped_xyzs[b]
-      diff = np.sum(diff, -1)
-      nerr = np.sum(diff != 0)
-      if nerr!=0:
-        print("time %d, grouped_xyz nerr=%d"%(b, nerr))
-        import pdb; pdb.set_trace()  # XXX BREAKPOINT
-      else:
-        print('time %d grouped_xyzs of g and e is same'%(b))
+        diff = grouped_xyzs_E[s][b] - grouped_xyzs[s][b]
+        diff = np.sum(diff, -1)
+        nerr = np.sum(diff != 0)
+        if nerr!=0:
+          print("time %d, scale %d, grouped_xyz nerr=%d"%(b, s, nerr))
+          import pdb; pdb.set_trace()  # XXX BREAKPOINT
+        else:
+          print('time %d, sclae %s, grouped_xyzs of g and e is same'%(b, s))
 
