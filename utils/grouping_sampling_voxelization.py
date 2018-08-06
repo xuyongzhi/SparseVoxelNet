@@ -129,29 +129,34 @@ class BlockGroupSampling():
       npoint_per_block = 32
       max_nblock = 1000
     '''
-    self._width = np.array(sg_settings['width'], dtype=np.float32)
-    self._stride = np.array(sg_settings['stride'], dtype=np.float32)
-    self._nblock = sg_settings['nblock']
-    self._npoint_per_block = sg_settings['npoint_per_block']
+    self._num_scale = len(sg_settings['width'])
+    self._widths = np.array(sg_settings['width'], dtype=np.float32)
+    self._strides = np.array(sg_settings['stride'], dtype=np.float32)
+    self._nblocks = sg_settings['nblock']
+    self._npoint_per_blocks = sg_settings['npoint_per_block']
     # cut all the block with too few points
-    self._npoint_per_block_min = sg_settings['npoint_per_block_min']
-    assert self._width.size == self._stride.size == 3
-    self._nblock_buf_max = sg_settings['max_nblock']
+    self._np_perb_min_includes = sg_settings['np_perb_min_include']
+    assert self._widths.shape[1] == self._strides.shape[1] == 3
+    self._nblock_buf_maxs = sg_settings['max_nblock']
     self._empty_point_index = 'first' # -1(GPU only) or 'first'
+    self._block_pos = sg_settings['block_pos']
+    assert self._block_pos=='mean' or self._block_pos=='center'
 
     # record grouping parameters
     self._record_samplings = sg_settings['record']
-    self.samplings = {}
+    self.samplings = []
     if self._record_samplings:
-      self.samplings['nframes'] = tf.constant(0, tf.int64)
-      self.samplings['t_per_frame_'] = tf.constant(0, tf.float64)
-      self.samplings['nblock_valid_'] = tf.constant(0, tf.int64)
-      self.samplings['nblock_invalid_'] = tf.constant(0, tf.int64)
-      self.samplings['ave_np_perb_'] = tf.constant(0, tf.int64)
-      self.samplings['std_np_perb_'] = tf.constant(0, tf.int64)
-      #self.samplings['valid_grouped_npoint_'] = tf.constant(0, tf.int64)
-      self.samplings['nmissing_perb_'] = tf.constant(0, tf.int64)
-      self.samplings['nempty_perb_'] = tf.constant(0, tf.int64)
+      for i in range(self._num_scale):
+        self.samplings.append({})
+        self.samplings[i]['nframes'] = tf.constant(0, tf.int64)
+        self.samplings[i]['t_per_frame_'] = tf.constant(0, tf.float64)
+        self.samplings[i]['nblock_valid_'] = tf.constant(0, tf.int64)
+        self.samplings[i]['nblock_invalid_'] = tf.constant(0, tf.int64)
+        self.samplings[i]['ave_np_perb_'] = tf.constant(0, tf.int64)
+        self.samplings[i]['std_np_perb_'] = tf.constant(0, tf.int64)
+        #self.samplings[i]['valid_grouped_npoint_'] = tf.constant(0, tf.int64)
+        self.samplings[i]['nmissing_perb_'] = tf.constant(0, tf.int64)
+        self.samplings[i]['nempty_perb_'] = tf.constant(0, tf.int64)
 
 
     # debug flags
@@ -160,7 +165,7 @@ class BlockGroupSampling():
     self._check_nblock_per_points_same = True
     if self._check_nblock_per_points_same:
       #self._n_maxerr_same_nb_perp = 0
-      self._n_maxerr_same_nb_perp = 2
+      self._n_maxerr_same_nb_perps = [2, 2000, 1000]
 
     self._check_xyz_inblock = True
     if self._check_xyz_inblock:
@@ -174,7 +179,7 @@ class BlockGroupSampling():
 
   def show_settings(self):
     items = ['_width', '_stride', '_npoint_per_block', '_nblock',
-              '_npoint_per_block_min','_n_maxerr_same_nb_perp', '_shuffle']
+              '_np_perb_min_include','_n_maxerr_same_nb_perp', '_shuffle']
     print('\n\nsettings:\n')
     for item in items:
       if hasattr(self, item):
@@ -182,57 +187,40 @@ class BlockGroupSampling():
     print('\n\n')
 
 
-  def show_samplings_np(self, samplings_np):
+  def show_samplings_np_multi_scale(self, samplings_np_ms):
+    for s in range(len(samplings_np_ms)):
+      samplings_np = samplings_np_ms[s]
+      self.show_samplings_np(samplings_np,s)
+
+  def show_samplings_np(self, samplings_np, scale):
     t = samplings_np['nframes']
     assert t>0
     def summary_str(item, real, config):
       real = real/t
       return '{}: {}/{}, {:.3f}\n'.format(item, real, config,
                       1.0*tf.cast(real,tf.float32)/tf.cast(config,tf.float32))
-    summary = '\n\n'
-    summary += '\tt={}  Real / Config\n'.format(t)
-    summary += summary_str('nblock_valid', samplings_np['nblock_valid_'], self._nblock)
-    summary += 'nblock_invalid:{}, npoint_per_block_min:{}\n'.format(
-                  self.samplings['nblock_invalid_'], self._npoint_per_block_min)
-    summary += summary_str('ave np per block', samplings_np['ave_np_perb_'], self._npoint_per_block)
-    summary += summary_str('nmissing per block', samplings_np['nmissing_perb_'], self._npoint_per_block)
-    summary += summary_str('nempty per block', samplings_np['nempty_perb_'], self._npoint_per_block)
+    summary = '\n'
+    summary += 'scale={} t={}  Real / Config\n\n'.format(scale, t)
+    summary += summary_str('nblock_valid', samplings_np['nblock_valid_'], self._nblocks[self.scale])
+    summary += 'nblock_invalid:{}, np_perb_min_include:{}\n'.format(
+                  samplings_np['nblock_invalid_'], self._np_perb_min_includes[self.scale])
+    summary += summary_str('ave np per block', samplings_np['ave_np_perb_'], self._npoint_per_blocks[self.scale])
+    summary += summary_str('nmissing per block', samplings_np['nmissing_perb_'], self._npoint_per_blocks[self.scale])
+    summary += summary_str('nempty per block', samplings_np['nempty_perb_'], self._npoint_per_blocks[self.scale])
     for name in samplings_np:
       if name not in ['nframes','nblock_valid_', 'ave_np_perb_', 'nempty_perb_', 'nmissing_perb_', 'nblock_invalid_']:
         summary += '{}: {}\n'.format(name, samplings_np[name]/t)
-    summary += '\n\n'
+    summary += '\n'
     print(summary)
     return summary
-
-
-  def show_summary(self, p_i):
-    def summary_str(item, config, real):
-      return '{}: {}/{}, {:.3f}\n'.format(item, real, config,
-                      1.0*tf.cast(real,tf.float32)/tf.cast(config,tf.float32))
-    summary = '\npoint %d\n'%(p_i)
-    summary += '\tReal / Config\n'
-    summary += summary_str('valid nblock', self._nblock, self.nblock_valid)
-    summary += 'nblock_invalid: {}\n'.format(self.nblock_invalid)
-    summary += 'ave-std np_perb: {}-{:.1f}/{}\n'.format(self.samplings['ave_np_perb'],
-                self.samplings['std_np_perb'], self._npoint_per_block)
-    summary += summary_str('grouped_sampling_rate', self.npoint_grouped,
-                           self.samplings['valid_grouped_npoint'])
-    summary += summary_str('nblock_has_missing', self.nblock,
-                           self.samplings['nblock_has_missing'])
-    summary += summary_str('nmissing_perb', self._npoint_per_block,
-                           self.samplings['nmissing_perb'])
-    summary += summary_str('nempty_perb', self._npoint_per_block,
-                           self.samplings['nempty_perb'])
-    print(summary)
-
 
   def block_index_to_scope(self, block_index):
     '''
     block_index: (n,3)
     '''
     block_index = tf.cast(block_index, tf.float32)
-    bottom = block_index * self._stride
-    center = bottom + self._width*0.5
+    bottom = block_index * self._strides[self.scale]
+    center = bottom + self._widths[self.scale]*0.5
     bottom_center = tf.concat([bottom, center], -1)
     return bottom_center
 
@@ -332,8 +320,8 @@ class BlockGroupSampling():
     '''
     # (1.1) lower and upper block index bound
     self.num_point0 = num_point0 = xyz.shape[0].value
-    low_b_index = (xyz - self._width) / self._stride
-    up_b_index = xyz / self._stride
+    low_b_index = (xyz - self._widths[self.scale]) / self._strides[self.scale]
+    up_b_index = xyz / self._strides[self.scale]
 
     # set a small pos offset. If low_b_index is float, ceil(low_b_index)
     # remains. But if low_b_index is int, ceil(low_b_index) increases.
@@ -346,9 +334,8 @@ class BlockGroupSampling():
 
     #(1.2) the block number for each point should be equal
     nblocks_per_points = up_b_index_fixed - low_b_index_fixed
-    nbpp_max_int = tf.reduce_max(nblocks_per_points, axis=0)
-    nbpp_max = tf.cast(nbpp_max_int, tf.float32)
-    nbpp_min = tf.cast(tf.reduce_min(nblocks_per_points, axis=0), tf.float32)
+    nbpp_max = tf.reduce_max(nblocks_per_points, axis=0)
+    nbpp_min = tf.reduce_min(nblocks_per_points, axis=0)
 
     # *****
     # block index is got by linear ranging from low bound by a fixed offset for
@@ -356,24 +343,21 @@ class BlockGroupSampling():
     # Check: No points will belong to greater nblocks. But few may belong to
     # smaller blocks: err_npoints
     if self._check_nblock_per_points_same:
-      nbpp_mean = tf.reduce_mean(tf.cast(nblocks_per_points,tf.float32), axis=0)
-      # (a) The most are same as nbpp_max
-      # (b) Very few may be nbpp_max - 1
-      tmp_str = '\nnbpp min={}, mean={}, max={}'.format(nbpp_min, nbpp_mean, nbpp_max)
-      check_0 = tf.assert_less(nbpp_max - nbpp_mean, 0.001,
-                    message="nbpp_max > nbpp_mean increase low_b_index_offset"+tmp_str)
-      check_1 = tf.assert_less(nbpp_mean - nbpp_min, 1.0,
-                    message="nbpp_min is too small."+tmp_str)
-      tmp_err_np = tf.cast(tf.not_equal(nblocks_per_points,nbpp_max_int),tf.int32)
-      tmp_err_np = tf.reduce_sum(tmp_err_np, 1)
+      check_gap = tf.reduce_max(nbpp_max)-tf.reduce_min(nbpp_min)
+      check_0 = tf.assert_less_equal(check_gap, 1,
+                                    message="nbpp max min gap > 1."+\
+                "Try increase low_b_index_offset a bit if max is the reason")
+
+      tmp_err_np0 = tf.cast(tf.not_equal(nblocks_per_points,nbpp_max),tf.int32)
+      tmp_err_np = tf.reduce_sum(tmp_err_np0, 1)
       err_npoints = tf.reduce_sum(tf.cast(tf.not_equal(tmp_err_np, 0),tf.int32))
-      check_2 = tf.assert_less_equal(err_npoints, self._n_maxerr_same_nb_perp,
-                    message="err points with not different nblocks: {}".format(err_npoints)+tmp_str)
-      with tf.control_dependencies([check_0, check_1, check_2 ]):
-        nbpp_max_int = tf.identity(nbpp_max_int)
+      check_1 = tf.assert_less_equal(err_npoints, self._n_maxerr_same_nb_perps[self.scale],
+                    message="err points with not different nblocks: {}".format(err_npoints))
+      with tf.control_dependencies([check_0, check_1 ]):
+        nbpp_max = tf.identity(nbpp_max)
     # *****
 
-    self.nblocks_per_point = nbpp_max_int
+    self.nblocks_per_point = nbpp_max
     self.nblock_perp_3d = tf.reduce_prod(self.nblocks_per_point)
     self.npoint_grouped = self.num_point0 * self.nblock_perp_3d
 
@@ -436,17 +420,17 @@ class BlockGroupSampling():
     block_id_unique, blockid_index, npoint_per_block =\
                                                 tf.unique_with_counts(block_id)
     self.nblock = tf.shape(block_id_unique)[0]
-    check_nb = tf.assert_greater(self._nblock_buf_max, self.nblock)
+    check_nb = tf.assert_greater(self._nblock_buf_maxs[self.scale], self.nblock)
     with tf.control_dependencies([check_nb]):
       self.nblock = tf.identity(self.nblock)
 
-    # get blockid_index for blocks with fewer points than self._npoint_per_block_min
-    tmp_valid_b = tf.greater_equal(npoint_per_block, self._npoint_per_block_min)
+    # get blockid_index for blocks with fewer points than self._np_perb_min_include
+    tmp_valid_b = tf.greater_equal(npoint_per_block, self._np_perb_min_includes[self.scale])
     self.valid_bid_index = tf.cast(tf.where(tmp_valid_b)[:,0], tf.int32)
     self.nblock_valid = tf.shape(self.valid_bid_index)[0]
     self.nblock_invalid = self.nblock - self.nblock_valid
     if self._debug_only_blocks_few_points:
-      tmp_invalid_b = tf.less(npoint_per_block, self._npoint_per_block_min)
+      tmp_invalid_b = tf.less(npoint_per_block, self._np_perb_min_includes[self.scale])
       self.invalid_bid_index = tf.cast(tf.where(tmp_invalid_b)[:,0], tf.int32)
 
     #(2.3) Get point index per block
@@ -461,7 +445,7 @@ class BlockGroupSampling():
     bid_index__pindex_inb = tf.concat(
                                     [blockid_index, point_index_per_block], -1)
     # (2.4) sampling fixed number of points for each block
-    remain_mask = tf.less(tf.squeeze(point_index_per_block,1), self._npoint_per_block)
+    remain_mask = tf.less(tf.squeeze(point_index_per_block,1), self._npoint_per_blocks[self.scale])
     remain_index = tf.squeeze(tf.where(remain_mask),1)
     bid_index__pindex_inb = tf.gather(bid_index__pindex_inb, remain_index)
     point_index = tf.gather(point_index, remain_index)
@@ -474,11 +458,11 @@ class BlockGroupSampling():
 
 
   def record_samplings(self, npoint_per_block):
-    self.samplings['nframes'] += tf.constant(1, tf.int64)
-    self.samplings['nblock_valid_'] += tf.cast(self.nblock_valid, tf.int64)
-    self.samplings['nblock_invalid_'] += tf.cast(self.nblock_invalid, tf.int64)
+    self.samplings[self.scale]['nframes'] += tf.constant(1, tf.int64)
+    self.samplings[self.scale]['nblock_valid_'] += tf.cast(self.nblock_valid, tf.int64)
+    self.samplings[self.scale]['nblock_invalid_'] += tf.cast(self.nblock_invalid, tf.int64)
 
-    tmp = npoint_per_block - self._npoint_per_block
+    tmp = npoint_per_block - self._npoint_per_blocks[self.scale]
     missing_mask = tf.cast(tf.greater(tmp,0), tf.int32)
     tmp_missing = missing_mask * tmp
     less_mask = tf.cast(tf.less(tmp,0), tf.int32)
@@ -487,24 +471,25 @@ class BlockGroupSampling():
 
     ave_np_perb, variance = tf.nn.moments(npoint_per_block,0)
     std_np_perb = tf.sqrt(tf.cast(variance,tf.float32))
-    self.samplings['ave_np_perb_'] += tf.cast(ave_np_perb, tf.int64)
-    self.samplings['std_np_perb_'] +=  tf.cast(std_np_perb, tf.int64)
+    self.samplings[self.scale]['ave_np_perb_'] += tf.cast(ave_np_perb, tf.int64)
+    self.samplings[self.scale]['std_np_perb_'] +=  tf.cast(std_np_perb, tf.int64)
     nblock_has_missing = tf.reduce_sum(missing_mask)
     nblock_less = tf.reduce_sum(less_mask)
     nmissing_perb = tf.cond( tf.greater(nblock_has_missing,0),
                     lambda: tf.reduce_sum(tmp_missing) / nblock_has_missing,
                     lambda: 0)
-    self.samplings['nmissing_perb_'] += tf.cast(nmissing_perb, tf.int64)
-    self.samplings['nempty_perb_'] += tf.cast(tf.reduce_sum(tmp_less) / nblock_less, tf.int64)
-    #self.samplings['valid_grouped_npoint_'] += tf.cast(bid_index__pindex_inb.shape[0].value, tf.int64)
-    #self.samplings['nblock_perp_3d_'] += tf.cast(self.nblock_perp_3d, tf.int64)
+    self.samplings[self.scale]['nmissing_perb_'] += tf.cast(nmissing_perb, tf.int64)
+    self.samplings[self.scale]['nempty_perb_'] += tf.cast(tf.reduce_sum(tmp_less) / nblock_less, tf.int64)
+    #self.samplings[self.scale]['valid_grouped_npoint_'] += tf.cast(bid_index__pindex_inb.shape[0].value, tf.int64)
+    #self.samplings[self.scale]['nblock_perp_3d_'] += tf.cast(self.nblock_perp_3d, tf.int64)
 
 
   def gather_grouped_xyz(self, bid_index__pindex_inb, point_index, xyz):
     #(3.1) gather grouped point index
     # gen point index: (real nblock, self._npoint_per_block, 1)
     grouped_pindex0 = tf.sparse_to_dense(bid_index__pindex_inb,
-                              (self._nblock_buf_max, self._npoint_per_block),
+                          (self._nblock_buf_maxs[self.scale],
+                           self._npoint_per_blocks[self.scale]),
                               point_index, default_value=-1)
 
     #(3.2) remove the blocks with too less points
@@ -516,15 +501,15 @@ class BlockGroupSampling():
       nblock_valid = self.nblock_invalid
 
     #(3.3) sampling fixed number of blocks when too many blocks are provided
-    tmp_nb = self._nblock - nblock_valid
+    tmp_nb = self._nblocks[self.scale] - nblock_valid
     if self._shuffle:
       bid_index_sampling = tf.cond( tf.greater(tmp_nb, 0),
              lambda: tf.concat([bid_index_valid, tf.ones(tmp_nb,tf.int32) * bid_index_valid[0]],0),
-             lambda: tf.contrib.framework.sort( tf.random_shuffle(bid_index_valid)[0:self._nblock] ))
+             lambda: tf.contrib.framework.sort( tf.random_shuffle(bid_index_valid)[0:self._nblocks[self.scale]] ))
     else:
       bid_index_sampling = tf.cond( tf.greater(tmp_nb, 0),
              lambda: tf.concat([bid_index_valid, tf.ones(tmp_nb,tf.int32) * bid_index_valid[0]],0),
-             lambda: tf.contrib.framework.sort( bid_index_valid[0:self._nblock] ))
+             lambda: tf.contrib.framework.sort( bid_index_valid[0:self._nblocks[self.scale]] ))
     grouped_pindex = tf.gather(grouped_pindex0, bid_index_sampling)
 
     #(3.4) gather xyz from point index
@@ -558,13 +543,14 @@ class BlockGroupSampling():
     return bids_sampling, block_bottom_center
 
 
-  def grouping(self, xyz):
+  def grouping(self, xyz, scale):
     '''
     xyz: (num_point0,3)
     grouped_xyz: (num_block,npoint_per_block,3)
 
     Search by point: for each point in xyz, find all the block d=ids
     '''
+    self.scale = scale
     assert len(xyz.shape) == 2
     assert xyz.shape[-1].value == 3
     t0 = tf.timestamp()
@@ -580,7 +566,7 @@ class BlockGroupSampling():
         grouped_xyz = tf.identity(grouped_xyz)
 
     if self._record_samplings:
-      self.samplings['t_per_frame_'] += tf.timestamp() - t0
+      self.samplings[self.scale]['t_per_frame_'] += tf.timestamp() - t0
     # **************************************************************************
     #       Add middle tensors to check between graph model and eager model
     others = {}
@@ -602,7 +588,52 @@ class BlockGroupSampling():
       others['value'] += [bids_sampling]
       others['name'] += ['bids_sampling']
 
-    return grouped_xyz, empty_mask, block_bottom_center, others
+    return grouped_xyz, empty_mask, block_bottom_center, self.nblock_valid, others
+
+
+  def grouped_mean(self, grouped_xyz, empty_mask):
+    valid_mask = 1-empty_mask
+    valid_num = tf.expand_dims(tf.cast( tf.reduce_sum(valid_mask, 1), tf.float32),1)
+    valid_mask = tf.expand_dims(tf.cast(valid_mask, tf.float32),2)
+    tmp_sum = tf.reduce_sum(grouped_xyz * valid_mask, 1)
+    grouped_mean = tmp_sum / valid_num
+    return grouped_mean
+
+  def valid_block_xyz(self, grouped_xyz, empty_mask, block_bottom_center, nblock_valid):
+    if self._block_pos == 'mean':
+      block_xyz = self.grouped_mean(grouped_xyz, empty_mask)
+    elif self._block_pos == 'center':
+      block_xyz = block_bottom_center[:,3:6]
+    empty_mask = tf.cast(empty_mask, tf.bool)
+    valid_block_xyz = tf.cond( nblock_valid<block_xyz.shape[0],
+                              lambda: block_xyz[0:nblock_valid],
+                              lambda: block_xyz)
+
+    return valid_block_xyz
+
+  def grouping_multi_scale(self, xyz, num_scale=None):
+    grouped_pos = 'center'
+    grouped_pos = 'mean'
+
+    if num_scale==None:
+      num_scale = self._num_scale
+    new_xyzs = [xyz]
+    grouped_xyz_ms = []
+    empty_mask_ms = []
+    block_bottom_center_ms = []
+    nblock_valid_ms = []
+    others_ms = []
+
+    for s in range(num_scale):
+      grouped_xyz, empty_mask, block_bottom_center, nblock_valid, others = self.grouping(xyz, s)
+      xyz = self.valid_block_xyz(grouped_xyz, empty_mask, block_bottom_center, nblock_valid)
+
+      grouped_xyz_ms.append(grouped_xyz)
+      empty_mask_ms.append(empty_mask)
+      block_bottom_center_ms.append(block_bottom_center)
+      nblock_valid_ms.append(nblock_valid)
+      others_ms.append(others)
+    return grouped_xyz_ms, empty_mask_ms, block_bottom_center_ms, nblock_valid_ms, others_ms
 
 
 def main_eager(DATASET_NAME, filenames, sg_settings, nframes):
@@ -636,44 +667,61 @@ def main_eager(DATASET_NAME, filenames, sg_settings, nframes):
   xyzs = []
   grouped_xyzs = []
   empty_masks = []
-  others = {}
+  others = []
+  for s in range(bsg._num_scale):
+    grouped_xyzs.append([])
+    empty_masks.append([])
+    others.append({})
 
   for i in range(batch_size):
     points_i = points_next[i,:,:]
-    grouped_xyz_i, empty_mask_i, bottom_center_i, others_i = bsg.grouping(points_i)
 
+    grouped_xyz_i, empty_mask_i, bottom_center_i, nblock_valid_i, others_i = \
+          bsg.grouping_multi_scale(points_i)
+
+    #grouped_xyz_i, empty_mask_i, bottom_center_i, nblock_valid_i, others_i = bsg.grouping(points_i, 0)
+
+    num_scale = len(grouped_xyz_i)
     samplings_i = bsg.samplings
-    for name in samplings_i:
-      samplings_i[name] = samplings_i[name].numpy()
-    bsg.show_samplings_np(samplings_i)
+    for s in range(len(samplings_i)):
+      for name in samplings_i[s]:
+        samplings_i[s][name] = samplings_i[s][name].numpy()
+    bsg.show_samplings_np_multi_scale(samplings_i)
 
     xyzs.append(np.expand_dims(points_i.numpy(),0))
-    grouped_xyzs.append(np.expand_dims(grouped_xyz_i.numpy(),0))
-    empty_masks.append(np.expand_dims(empty_mask_i.numpy(),0))
 
-    for k in range(len(others_i['value'])):
-      name_k = others_i['name'][k]
-      if name_k not in others:
-        others[name_k] = []
-      others[name_k].append( np.expand_dims( others_i['value'][k].numpy(),0 ) )
+    for s in range(num_scale):
+      grouped_xyz_i[s] = grouped_xyz_i[s].numpy()
+      grouped_xyzs[s].append( np.expand_dims(grouped_xyz_i[s], 0) )
+      empty_mask_i[s] = empty_mask_i[s].numpy()
+      empty_masks[s].append( np.expand_dims(empty_mask_i[s], 0) )
+      bottom_center_i[s] = bottom_center_i[s].numpy()
 
-    if bsg._gen_ply:
-      valid_flag = '' if not bsg._debug_only_blocks_few_points else '_invalid'
-      if not bsg._shuffle:
-        valid_flag += '_NoShuffle'
-      bids_sampling_i = others['bids_sampling'][k][0]
-      gen_plys(DATASET_NAME, i, points_i.numpy(), grouped_xyz_i.numpy(),
-                bottom_center_i.numpy(), bids_sampling_i, valid_flag, '_E')
+      for k in range(len(others_i[s]['value'])):
+        name_k = others_i[s]['name'][k]
+        if name_k not in others[s]:
+          others[s][name_k] = []
+        others_i[s]['value'][k] = others_i[s]['value'][k].numpy()
+        others[s][name_k].append( np.expand_dims( others_i[s]['value'][k],0 ) )
+
+      if bsg._gen_ply:
+        valid_flag = '' if not bsg._debug_only_blocks_few_points else '_invalid'
+        if not bsg._shuffle:
+          valid_flag += '_NoShuffle'
+        bids_sampling_i = others[s]['bids_sampling'][k][0]
+        gen_plys(DATASET_NAME, i, points_i.numpy(), grouped_xyz_i[s],
+                  bottom_center_i[s], bids_sampling_i, valid_flag, '_ES%s'%(s))
 
   xyzs = np.concatenate(xyzs,0)
-  grouped_xyzs = np.concatenate(grouped_xyzs,0)
-  empty_masks = np.concatenate(empty_masks,0)
+  for s in range(num_scale):
+    grouped_xyzs[s] = np.concatenate(grouped_xyzs[s],0)
+    empty_masks[s] = np.concatenate(empty_masks[s],0)
 
-  for name in others:
-    if name not in ['valid_bid_indexs', 'block_id_unique']:
-      print(name)
-      others[name] = np.concatenate(others[name], 0)
-  others['empty_mask'] = empty_masks
+    for name in others[s]:
+      if name not in ['valid_bid_indexs', 'block_id_unique']:
+        print(name)
+        others[k][name] = np.concatenate(others[k][name], 0)
+    others[s]['empty_mask'] = empty_masks[s]
 
   return xyzs, grouped_xyzs, others, bsg._shuffle
 
@@ -749,9 +797,11 @@ def main(DATASET_NAME, filenames, sg_settings, nframes):
 def gen_plys(DATASET_NAME, i, points, grouped_xyz, bottom_center, bids_sampling, valid_flag='', main_flag=''):
   print('bids_sampling: {}'.format(bids_sampling))
   path = '/tmp/%d_plys'%(i) + main_flag
-  ply_fn = '%s/points.ply'%(path)
-  create_ply_dset(DATASET_NAME, points, ply_fn,
-                  extra='random_same_color')
+
+  if type(points)!=type(None):
+    ply_fn = '%s/points.ply'%(path)
+    create_ply_dset(DATASET_NAME, points, ply_fn,
+                    extra='random_same_color')
 
   ply_fn = '%s/grouped_points_%s.ply'%(path, valid_flag)
   create_ply_dset(DATASET_NAME, grouped_xyz, ply_fn,
@@ -770,6 +820,21 @@ def gen_plys(DATASET_NAME, i, points, grouped_xyz, bottom_center, bids_sampling,
                   extra='random_same_color')
 
 
+def get_sg_settings():
+  sg_settings1 = {}
+  sg_settings1['width'] =   [[0.2,0.2,0.2], [0.6,0.6,0.6]]
+  sg_settings1['stride'] =  [[0.1,0.1,0.1], [0.4,0.4,0.4]]
+  sg_settings1['nblock'] =  [1512,           128]
+  sg_settings1['npoint_per_block'] = [10,   10]
+  sg_settings1['np_perb_min_include'] = [3, 1]
+  sg_settings1['max_nblock'] =      [6000,  500]
+
+  sg_settings = sg_settings1
+  sg_settings['block_pos'] = 'center'
+  #sg_settings['block_pos'] = 'mean'
+  sg_settings['gen_ply'] = True
+  return sg_settings1
+
 if __name__ == '__main__':
   DATASET_NAME = 'MODELNET40'
   path = '/home/z/Research/dynamic_pointnet/data/MODELNET40H5F/Merged_tfrecord/4_mgs0.2048_gs2_2d2-rep_fmn1_mvp1-1-1024--pd3-1M'
@@ -784,30 +849,7 @@ if __name__ == '__main__':
   filenames = glob.glob(os.path.join(path, tmp+'.tfrecord'))
   assert len(filenames) >= 1
 
-  sg_settings0 = {}
-  sg_settings0['width'] = [0.4,0.4,0.4]
-  sg_settings0['stride'] = [0.2,0.2,0.2]
-  sg_settings0['nblock'] = 480
-  sg_settings0['npoint_per_block'] = 48
-  sg_settings0['max_nblock'] = 800
-
-  sg_settings1 = {}
-  sg_settings1['width'] = [0.2, 0.2, 0.2]
-  sg_settings1['stride'] = [0.1, 0.1, 0.1]
-  sg_settings1['nblock'] = 512
-  sg_settings1['npoint_per_block'] = 10
-  sg_settings1['npoint_per_block_min'] = 3
-  sg_settings1['max_nblock'] = 6000
-
-  sg_settings2 = {}
-  sg_settings2['width'] = [0.1, 0.1, 0.1]
-  sg_settings2['stride'] = [0.05, 0.05, 0.05]
-  sg_settings2['nblock'] = 2000
-  sg_settings2['npoint_per_block'] = 6
-  sg_settings2['max_nblock'] = 6000
-
-  sg_settings = sg_settings1
-  sg_settings['gen_ply'] = False
+  sg_settings = get_sg_settings()
 
   if len(sys.argv) > 1:
     main_flag = sys.argv[1]
@@ -817,7 +859,7 @@ if __name__ == '__main__':
     #main_flag = 'e'
   print(main_flag)
 
-  nframes = 20
+  nframes = 2
 
   if 'e' in main_flag:
     sg_settings['record'] = True
