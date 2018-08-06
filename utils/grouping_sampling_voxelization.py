@@ -7,7 +7,7 @@ from datasets.all_datasets_meta.datasets_meta import DatasetsMeta
 from utils.ply_util import create_ply_dset, draw_blocks_by_bottom_center
 import time
 
-DEBUG = True
+DEBUG = False
 
 def get_data_shapes_from_tfrecord(filenames):
   _DATA_PARAS = {}
@@ -169,6 +169,7 @@ class BlockGroupSampling():
 
     self._debug_only_blocks_few_points = False
     self.debugs = {}
+    self._gen_ply = sg_settings['gen_ply']
 
 
   def show_settings(self):
@@ -596,6 +597,9 @@ class BlockGroupSampling():
     #others['name'] += ['block_id_unique', 'bid_index_sampling']
     #others['value'] += [self.grouped_pindex0]
     #others['name'] += ['grouped_pindex0']
+    if self._gen_ply:
+      others['value'] += [bids_sampling]
+      others['name'] += ['bids_sampling']
 
     return grouped_xyz, empty_mask, block_bottom_center, others
 
@@ -652,14 +656,14 @@ def main_eager(DATASET_NAME, filenames, sg_settings, times):
         others[name_k] = []
       others[name_k].append( np.expand_dims( others_i['value'][k].numpy(),0 ) )
 
-    #bsg.show_summary(i)
-    continue
+    #continue
 
-    valid_flag = '' if not self._debug_only_blocks_few_points else '_invalid'
-    if not self._shuffle:
+    valid_flag = '' if not bsg._debug_only_blocks_few_points else '_invalid'
+    if not bsg._shuffle:
       valid_flag += '_NoShuffle'
+    bids_sampling_i = others['bids_sampling'][k][0]
     gen_plys(DATASET_NAME, i, points_i.numpy(), grouped_xyz_i.numpy(),
-              bottom_center_i.numpy(), bids_sampling_i.numpy(), valid_flag, '_E')
+              bottom_center_i.numpy(), bids_sampling_i, valid_flag, '_E')
 
   xyzs = np.concatenate(xyzs,0)
   grouped_xyzs = np.concatenate(grouped_xyzs,0)
@@ -803,6 +807,7 @@ if __name__ == '__main__':
   sg_settings2['max_nblock'] = 6000
 
   sg_settings = sg_settings1
+  sg_settings['gen_ply'] = True
 
   if len(sys.argv) > 1:
     main_flag = sys.argv[1]
@@ -812,7 +817,7 @@ if __name__ == '__main__':
     #main_flag = 'e'
   print(main_flag)
 
-  times = 10
+  times = 2
 
   if 'e' in main_flag:
     sg_settings['record'] = True
