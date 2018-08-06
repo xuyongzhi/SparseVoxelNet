@@ -134,7 +134,7 @@ class BlockGroupSampling():
     self._nblock = sg_settings['nblock']
     self._npoint_per_block = sg_settings['npoint_per_block']
     # cut all the block with too few points
-    self._npoint_per_block_min = max(int(sg_settings['npoint_per_block']*0.02), 2)
+    self._npoint_per_block_min = sg_settings['npoint_per_block_min']
     assert self._width.size == self._stride.size == 3
     self._nblock_buf_max = sg_settings['max_nblock']
     self._empty_point_index = 'first' # -1(GPU only) or 'first'
@@ -143,8 +143,8 @@ class BlockGroupSampling():
     self._record_samplings = sg_settings['record']
     self.samplings = {}
     if self._record_samplings:
-      self.samplings['times'] = tf.constant(0, tf.int64)
-      self.samplings['tsg_'] = tf.constant(0, tf.float64)
+      self.samplings['nframes'] = tf.constant(0, tf.int64)
+      self.samplings['t_per_frame_'] = tf.constant(0, tf.float64)
       self.samplings['nblock_valid_'] = tf.constant(0, tf.int64)
       self.samplings['nblock_invalid_'] = tf.constant(0, tf.int64)
       self.samplings['ave_np_perb_'] = tf.constant(0, tf.int64)
@@ -155,7 +155,7 @@ class BlockGroupSampling():
 
 
     # debug flags
-    self._shuffle = False
+    self._shuffle = True
     # Theoretically, num_block_per_point should be same for all. This is 0.
     self._check_nblock_per_points_same = True
     if self._check_nblock_per_points_same:
@@ -165,7 +165,7 @@ class BlockGroupSampling():
     self._check_xyz_inblock = True
     if self._check_xyz_inblock:
       self._replace_points_outside_block = True
-    self._check_grouped_xyz_inblock = False
+    self._check_grouped_xyz_inblock = True
 
     self._debug_only_blocks_few_points = False
     self.debugs = {}
@@ -183,7 +183,7 @@ class BlockGroupSampling():
 
 
   def show_samplings_np(self, samplings_np):
-    t = samplings_np['times']
+    t = samplings_np['nframes']
     assert t>0
     def summary_str(item, real, config):
       real = real/t
@@ -198,7 +198,7 @@ class BlockGroupSampling():
     summary += summary_str('nmissing per block', samplings_np['nmissing_perb_'], self._npoint_per_block)
     summary += summary_str('nempty per block', samplings_np['nempty_perb_'], self._npoint_per_block)
     for name in samplings_np:
-      if name not in ['times','nblock_valid_', 'ave_np_perb_', 'nempty_perb_', 'nmissing_perb_', 'nblock_invalid_']:
+      if name not in ['nframes','nblock_valid_', 'ave_np_perb_', 'nempty_perb_', 'nmissing_perb_', 'nblock_invalid_']:
         summary += '{}: {}\n'.format(name, samplings_np[name]/t)
     summary += '\n\n'
     print(summary)
@@ -474,7 +474,7 @@ class BlockGroupSampling():
 
 
   def record_samplings(self, npoint_per_block):
-    self.samplings['times'] += tf.constant(1, tf.int64)
+    self.samplings['nframes'] += tf.constant(1, tf.int64)
     self.samplings['nblock_valid_'] += tf.cast(self.nblock_valid, tf.int64)
     self.samplings['nblock_invalid_'] += tf.cast(self.nblock_invalid, tf.int64)
 
@@ -579,7 +579,8 @@ class BlockGroupSampling():
       with tf.control_dependencies(check_gs):
         grouped_xyz = tf.identity(grouped_xyz)
 
-    self.samplings['tsg_'] += tf.timestamp() - t0
+    if self._record_samplings:
+      self.samplings['t_per_frame_'] += tf.timestamp() - t0
     # **************************************************************************
     #       Add middle tensors to check between graph model and eager model
     others = {}
@@ -604,7 +605,7 @@ class BlockGroupSampling():
     return grouped_xyz, empty_mask, block_bottom_center, others
 
 
-def main_eager(DATASET_NAME, filenames, sg_settings, times):
+def main_eager(DATASET_NAME, filenames, sg_settings, nframes):
   tf.enable_eager_execution()
   dataset_meta = DatasetsMeta(DATASET_NAME)
   num_classes = dataset_meta.num_classes
@@ -614,7 +615,7 @@ def main_eager(DATASET_NAME, filenames, sg_settings, times):
                                       buffer_size=1024*100,
                                       num_parallel_reads=1)
 
-  batch_size = times
+  batch_size = nframes
   is_training = False
 
   dataset = dataset.prefetch(buffer_size=batch_size)
@@ -656,14 +657,13 @@ def main_eager(DATASET_NAME, filenames, sg_settings, times):
         others[name_k] = []
       others[name_k].append( np.expand_dims( others_i['value'][k].numpy(),0 ) )
 
-    #continue
-
-    valid_flag = '' if not bsg._debug_only_blocks_few_points else '_invalid'
-    if not bsg._shuffle:
-      valid_flag += '_NoShuffle'
-    bids_sampling_i = others['bids_sampling'][k][0]
-    gen_plys(DATASET_NAME, i, points_i.numpy(), grouped_xyz_i.numpy(),
-              bottom_center_i.numpy(), bids_sampling_i, valid_flag, '_E')
+    if bsg._gen_ply:
+      valid_flag = '' if not bsg._debug_only_blocks_few_points else '_invalid'
+      if not bsg._shuffle:
+        valid_flag += '_NoShuffle'
+      bids_sampling_i = others['bids_sampling'][k][0]
+      gen_plys(DATASET_NAME, i, points_i.numpy(), grouped_xyz_i.numpy(),
+                bottom_center_i.numpy(), bids_sampling_i, valid_flag, '_E')
 
   xyzs = np.concatenate(xyzs,0)
   grouped_xyzs = np.concatenate(grouped_xyzs,0)
@@ -675,22 +675,21 @@ def main_eager(DATASET_NAME, filenames, sg_settings, times):
       others[name] = np.concatenate(others[name], 0)
   others['empty_mask'] = empty_masks
 
-  return xyzs, grouped_xyzs, others
+  return xyzs, grouped_xyzs, others, bsg._shuffle
 
 
-def main(DATASET_NAME, filenames, sg_settings, times):
-    is_gen_ply = False
-    _DATA_PARAS = get_data_shapes_from_tfrecord(filenames)
-    dataset_meta = DatasetsMeta(DATASET_NAME)
-    num_classes = dataset_meta.num_classes
+def main(DATASET_NAME, filenames, sg_settings, nframes):
+  _DATA_PARAS = get_data_shapes_from_tfrecord(filenames)
+  dataset_meta = DatasetsMeta(DATASET_NAME)
+  num_classes = dataset_meta.num_classes
 
-  #with tf.Graph().as_default():
-   #with tf.device('/device:GPU:0'):
+  with tf.Graph().as_default():
+   with tf.device('/device:GPU:0'):
     dataset = tf.data.TFRecordDataset(filenames,
                                         compression_type="",
                                         buffer_size=1024*100,
                                         num_parallel_reads=1)
-    batch_size = times
+    batch_size = nframes
     is_training = False
     bsg = BlockGroupSampling(sg_settings)
     bsg.show_settings()
@@ -721,7 +720,7 @@ def main(DATASET_NAME, filenames, sg_settings, times):
 
     config = tf.ConfigProto(allow_soft_placement=True)
     with tf.Session(config=config) as sess:
-      sess.run(init)
+      #sess.run(init)
       #if DEBUG:
       #  debugs = sess.run(self.debugs)
 
@@ -737,14 +736,14 @@ def main(DATASET_NAME, filenames, sg_settings, times):
 
       print('group OK')
 
-      if is_gen_ply:
+      if bsg._gen_ply:
         valid_flag = '' if not self._debug_only_blocks_few_points else '_invalid'
         if not self._shuffle:
           valid_flag += '_NoShuffle'
         gen_plys(DATASET_NAME, i, points_i, grouped_xyz_i, bottom_center_i,\
                   bids_sampling_i, valid_flag)
 
-    return xyzs, grouped_xyzs, others
+    return xyzs, grouped_xyzs, others, bsg._shuffle
 
 
 def gen_plys(DATASET_NAME, i, points, grouped_xyz, bottom_center, bids_sampling, valid_flag='', main_flag=''):
@@ -795,8 +794,9 @@ if __name__ == '__main__':
   sg_settings1 = {}
   sg_settings1['width'] = [0.2, 0.2, 0.2]
   sg_settings1['stride'] = [0.1, 0.1, 0.1]
-  sg_settings1['nblock'] = 1000
+  sg_settings1['nblock'] = 512
   sg_settings1['npoint_per_block'] = 10
+  sg_settings1['npoint_per_block_min'] = 3
   sg_settings1['max_nblock'] = 6000
 
   sg_settings2 = {}
@@ -807,7 +807,7 @@ if __name__ == '__main__':
   sg_settings2['max_nblock'] = 6000
 
   sg_settings = sg_settings1
-  sg_settings['gen_ply'] = True
+  sg_settings['gen_ply'] = False
 
   if len(sys.argv) > 1:
     main_flag = sys.argv[1]
@@ -817,18 +817,18 @@ if __name__ == '__main__':
     #main_flag = 'e'
   print(main_flag)
 
-  times = 2
+  nframes = 20
 
   if 'e' in main_flag:
     sg_settings['record'] = True
-    xyzs_E, grouped_xyzs_E, others_E = \
-      main_eager(DATASET_NAME, filenames, sg_settings, times)
+    xyzs_E, grouped_xyzs_E, others_E, shuffle_E = \
+      main_eager(DATASET_NAME, filenames, sg_settings, nframes)
   if 'g' in main_flag:
     sg_settings['record'] = False
-    xyzs, grouped_xyzs, others = \
-      main(DATASET_NAME, filenames, sg_settings, times)
+    xyzs, grouped_xyzs, others, shuffle = \
+      main(DATASET_NAME, filenames, sg_settings, nframes)
 
-  if main_flag=='eg':
+  if main_flag=='eg' and shuffle==False and shuffle_E==False:
     batch_size = min(xyzs.shape[0], xyzs_E.shape[0])
     for b in range(batch_size):
       assert (xyzs_E[b] == xyzs[b]).all(), 'time %d xyz different'%(b)
