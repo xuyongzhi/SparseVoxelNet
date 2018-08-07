@@ -32,7 +32,7 @@ import resnet_model
 import resnet_run_loop
 import os, glob, sys
 import numpy as np
-from modelnet_configs import get_block_paras, DEFAULTS
+from modelnet_configs import get_block_paras, DEFAULTS, get_sg_settings
 from dataset_utils import parse_pl_record, get_dataset_summary
 
 _DATA_PARAS = None
@@ -304,6 +304,7 @@ def define_net_configs(flags_obj):
   _DATA_PARAS['batch_size'] = flags_obj.batch_size
   _DATA_PARAS['model_flag'] = flags_obj.model_flag
   _get_block_paras()
+  _DATA_PARAS['sg_settings'] = get_sg_settings()
 
   feed_data_eles = flags_obj.feed_data
   feed_data = flags_obj.feed_data.split('-')

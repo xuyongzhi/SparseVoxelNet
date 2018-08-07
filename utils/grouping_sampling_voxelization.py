@@ -913,7 +913,7 @@ def get_sg_settings():
   sg_settings['block_pos'] = 'center'
   #sg_settings['block_pos'] = 'mean'
   sg_settings['gen_ply'] = False
-  return sg_settings1
+  return sg_settings
 
 if __name__ == '__main__':
   DATASET_NAME = 'MODELNET40'

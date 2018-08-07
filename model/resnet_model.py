@@ -917,10 +917,9 @@ class Model(ResConvOps):
     else:
         self.num_neighbors= None
     self.global_numpoint = self.data_net_configs['points'][0]
-    #self.cascade_num = int(self.model_flag[0])
-    self.cascade_num = len(self.data_net_configs['block_params']['filters'])
-    assert self.cascade_num <= self.data_net_configs['sg_bm_extract_idx'].shape[0]-1
-    #self.log('cascade_num:{}'.format(self.cascade_num))
+    self.net_num_scale = len(self.data_net_configs['block_params']['filters'])
+    self.sg_num_scale = len(self.data_net_configs['sg_settings']['width'])
+    assert self.sg_num_scale + 1 == self.net_num_scale
     self.IsOnlineGlobal = self.model_flag[-1] == 'G'
     for key in ['feed_data', 'data_idxs','flatten_bm_extract_idx',
                 'sub_block_step_candis','xyz_elements','sub_block_stride_candis',
@@ -994,7 +993,7 @@ class Model(ResConvOps):
                              custom_getter=self._custom_dtype_getter)
 
 
-  def pre_pro_inputs(self, inputs_dic):
+  def pre_pro_inputs_unused(self, inputs_dic):
     if type(inputs_dic) !=dict:
       points = inputs_dic
       inputs_dic = {}
@@ -1006,11 +1005,21 @@ class Model(ResConvOps):
       inputs_dic['bidxmaps_flat'] = [[]]
       inputs_dic['fmap_neighbor_idis'] = [[]]
     else:
-      self.globalb_bottom_center_mm = inputs_dic['b_bottom_centers_mm'][self.cascade_num-1]
+      self.globalb_bottom_center_mm = inputs_dic['b_bottom_centers_mm'][self.net_num_scale-1]
       globalb_bottom_center = tf.multiply( tf.cast( self.globalb_bottom_center_mm, tf.float32), 0.001, name='globalb_bottom_center' ) # gpu_0/globalb_bottom_center
       self.max_step_stride = tf.multiply( globalb_bottom_center[:,:,3:6] - globalb_bottom_center[:,:,0:3], 2.0, name='max_step_stride') # gpu_0/max_step_stride
 
     return inputs_dic
+
+  def pre_pro_inputs(self, inputs_dic):
+    inputs_dic1 = {}
+    inputs_dic1['points'] = inputs_dic['points']
+    items = ['grouped_xyz', 'empty_mask', 'block_bottom_center']
+    for item in items:
+      inputs_dic1[item] = []
+      for s in range(self.sg_num_scale):
+        inputs_dic1[item].append(inputs_dic[item+'_%d'%(s)])
+    return inputs_dic1
 
   def __call__(self, inputs_dic, is_training):
     """Add operations to classify a batch of input images.
@@ -1026,15 +1035,11 @@ class Model(ResConvOps):
 
     inputs_dic = self.pre_pro_inputs(inputs_dic)
     IsMultiView = len(inputs_dic['points'].shape) == 4
-    #self.batch_size = inputs_dic['points'].shape[0].value
     if not IsMultiView:
       assert len(inputs_dic['points'].shape) == 3
+      import pdb; pdb.set_trace()  # XXX BREAKPOINT
       outputs = self._call(
             inputs_dic['points'],
-            inputs_dic['sg_bidxmaps'],
-            inputs_dic['b_bottom_centers_mm'],
-            inputs_dic['bidxmaps_flat'],
-            inputs_dic['fmap_neighbor_idis'],
             is_training)
     else:
       eval_views = inputs_dic['points'].shape[1].value
@@ -1043,8 +1048,8 @@ class Model(ResConvOps):
         batch_size  = -1
       b_bottom_centers_mm = {}
       sg_bidxmaps = {}
-      cascade_num = len(inputs_dic['b_bottom_centers_mm'])
-      for c in range(cascade_num):
+      net_num_scale = len(inputs_dic['b_bottom_centers_mm'])
+      for c in range(net_num_scale):
         #b_bottom_centers_mm[c] = inputs_dic['b_bottom_centers_mm'][c][:,v,:,:]
 
         tmp = inputs_dic['b_bottom_centers_mm'][c]
@@ -1107,8 +1112,8 @@ class Model(ResConvOps):
         import pdb; pdb.set_trace()  # XXX BREAKPOINT
         new_points = tf.transpose(new_points, [0, 2, 1])
 
-      for k in range(self.cascade_num):
-          if k==self.cascade_num-1 and self.IsOnlineGlobal:
+      for k in range(self.net_num_scale):
+          if k==self.net_num_scale-1 and self.IsOnlineGlobal:
             sg_bidxmap_k = None
             block_bottom_center_mm = self.globalb_bottom_center_mm
           else:
@@ -1211,7 +1216,7 @@ class Model(ResConvOps):
           tmp = np.array( [outputs.shape[j].value for j in channels_idxs] )
           tmp = tmp[0]*tmp[1]*tmp[2]
           # Except the last cascade, the voxel size should be reduced to 1
-          if cascade_id != self.cascade_num-1:
+          if cascade_id != self.net_num_scale-1:
             assert tmp==1
           else:
             assert outputs.shape[0].value == batch_size # global block
@@ -1270,7 +1275,7 @@ class Model(ResConvOps):
     with tf.variable_scope('sa_%d'%(cascade_id)):
       if self.IsShowModel:
         self.log('-------------------  cascade_id %d  ---------------------'%(cascade_id))
-      if self.cascade_num > 1+cascade_id:
+      if self.net_num_scale > 1+cascade_id:
         new_xyz, grouped_xyz_feed, inputs, valid_mask = self.grouping(cascade_id, xyz,
                           points, bidmap, block_bottom_center_mm)
         assert len(inputs.shape)==4
@@ -1296,8 +1301,8 @@ class Model(ResConvOps):
     if self.data_format == 'channels_first':
       points = tf.transpose(points, [0, 2, 1])
 
-    assert self.cascade_num <= self.flatten_bm_extract_idx.shape[0]-1  # include global here (Note: cascade_num does not include global in block_pre_util )
-    assert self.sub_block_step_candis.size >= self.cascade_num-1
+    assert self.net_num_scale <= self.flatten_bm_extract_idx.shape[0]-1  # include global here (Note: net_num_scale does not include global in block_pre_util )
+    assert self.sub_block_step_candis.size >= self.net_num_scale-1
     #if cascade_id==0:
     #    indrop_keep_mask = tf.get_default_graph().get_tensor_by_name('indrop_keep_mask:0') # indrop_keep_mask:0
 
@@ -1375,7 +1380,7 @@ class Model(ResConvOps):
         #        valid_mask = tf.logical_and( valid_mask, tf.equal(grouped_indrop_keep_mask,0), name='valid_mask_droped' )   # gpu_1/sa_layer0/valid_mask_droped
 
     else:
-      if self.use_xyz and (not cascade_id==self.cascade_num-1):
+      if self.use_xyz and (not cascade_id==self.net_num_scale-1):
           grouped_points = tf.concat([grouped_points, grouped_xyz_feed],axis=-1)
           self.log_tensor_p(grouped_points, 'use xyz', 'cas%d'%(cascade_id))
 
@@ -1456,7 +1461,7 @@ class Model(ResConvOps):
     else:
         IsTolerateBug = 1
 
-    if cascade_id==self.cascade_num-1:
+    if cascade_id==self.net_num_scale-1:
         # only in this global cascde, the steps and strides in each dimension
         # can be different
         if self.dataset_name == 'MODELNET40' and self.global_step[0]==3.5:

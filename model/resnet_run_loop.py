@@ -81,12 +81,18 @@ def process_record_dataset(dataset, is_training, batch_size, shuffle_buffer,
     total_batches = total_examples // batch_size // num_gpus * num_gpus
     dataset.take(total_batches * batch_size)
 
+  if data_net_configs!=None:
+    from utils.grouping_sampling_voxelization import BlockGroupSampling
+    bsg = BlockGroupSampling(data_net_configs['sg_settings'])
+  else:
+    bsg = None
+
   # Parse the raw records into images and labels. Testing has shown that setting
   # num_parallel_batches > 1 produces no improvement in throughput, since
   # batch_size is almost always much greater than the number of CPU cores.
   dataset = dataset.apply(
       tf.contrib.data.map_and_batch(
-          lambda value: parse_record_fn(value, is_training, data_net_configs),
+          lambda value: parse_record_fn(value, is_training, data_net_configs, bsg),
           batch_size=batch_size,
           num_parallel_batches=1,
           drop_remainder=True if num_gpus>1 else True))
