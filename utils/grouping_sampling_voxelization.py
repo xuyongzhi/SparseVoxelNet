@@ -912,7 +912,7 @@ def get_sg_settings():
   sg_settings = sg_settings1
   sg_settings['block_pos'] = 'center'
   #sg_settings['block_pos'] = 'mean'
-  sg_settings['gen_ply'] = True
+  sg_settings['gen_ply'] = False
   return sg_settings1
 
 if __name__ == '__main__':
@@ -939,7 +939,7 @@ if __name__ == '__main__':
     #main_flag = 'e'
   print(main_flag)
 
-  nframes = 2
+  nframes = 20
 
   if 'e' in main_flag:
     sg_settings['record'] = True
