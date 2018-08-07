@@ -163,14 +163,11 @@ class BlockGroupSampling():
     self._shuffle = False
     self._use_less_points_block_when_not_enough = True
     # Theoretically, num_block_per_point should be same for all. This is 0.
-    self._check_nblock_per_points_same = True
+    self._check_nblock_per_points_same = True # (optional)
     if self._check_nblock_per_points_same:
       #self._n_maxerr_same_nb_perp = 0
       self._n_maxerr_same_nb_perps = [2, 2000, 1000]
 
-    self._check_xyz_inblock = True
-    if self._check_xyz_inblock:
-      self._replace_points_outside_block = True
     self._check_grouped_xyz_inblock = True
 
     self._debug_only_blocks_few_points = False
@@ -233,30 +230,17 @@ class BlockGroupSampling():
     block_top = block_bottom + 2 * (block_center - block_bottom)
     xyz = tf.expand_dims(xyz, 1)
 
-    check_top = tf.less(xyz, block_top)
-    check_top = tf.reduce_all(check_top, 2)
-    nerr_top = tf.reduce_sum(1-tf.cast(check_top, tf.int32))
+    check_top = tf.reduce_all(tf.less(xyz, block_top),2)
     check_bottom = tf.reduce_all(tf.less_equal(block_bottom, xyz),2)
-    nerr_bottom = tf.reduce_sum(1-tf.cast(check_bottom,tf.int32))
-    nerr = nerr_top + nerr_bottom
+    is_pinb = tf.logical_and(check_bottom, check_top)
+    nerr_scope = tf.reduce_sum(1-tf.cast(is_pinb, tf.int32))
+    is_poutb = tf.logical_not(is_pinb)
+    is_poutb_any = tf.reduce_any(is_poutb)
 
-    if self._replace_points_outside_block:
-      check_scope = tf.logical_and(check_bottom, check_top)
-      block_index = tf.cond( tf.greater(nerr, 0),
-            lambda: self.replace_points_outside_block(block_index, check_scope),
-            lambda: block_index)
-    else:
-      assert_top = tf.assert_equal(nerr_top, 0,
-                message='check_xyz_inblock nerr_top:{}'.format(nerr_top))
-      assert_bottom = tf.assert_equal(nerr_bottom, 0,
-                message='check_xyz_inblock nerr_bottom:{}'.format(nerr_bottom))
-      with tf.control_dependencies([assert_top, assert_bottom]):
-        block_index = tf.identity(block_index)
-
-    return block_index
+    return is_pinb, is_poutb_any
 
 
-  def replace_points_outside_block(self, block_index, check_scope):
+  def replace_points_outside_block_UNUSED(self, block_index, is_pinb):
     '''
     Replace the points out of block with the first one in this block.
     The first one must inside the block.
@@ -280,7 +264,7 @@ class BlockGroupSampling():
       sparse_values = tf.sparse_to_dense(sparse_indices, dense_shape, sparse_values)
       return sparse_values
 
-    invalid_indices = tf.cast(tf.where(tf.logical_not(check_scope)),tf.int32)
+    invalid_indices = tf.cast(tf.where(tf.logical_not(is_pinb)),tf.int32)
     tmp0 = tf.constant([[1,0],[0,0]], tf.int32)
     valid_indices = tf.matmul( invalid_indices, tmp0)
 
@@ -311,7 +295,8 @@ class BlockGroupSampling():
     assert_top = tf.assert_equal(nerr_top, 0,
         message='check_grouped_xyz_inblock nerr_top')
     assert_bottom = tf.assert_equal(nerr_bottom, 0,
-        message='check_grouped_xyz_inblock nerr_bottom: {}'.format(nerr_bottom))
+        message='scale {} check_grouped_xyz_inblock nerr_bottom: {}'.format(
+              self.scale, nerr_bottom))
     return [assert_top, assert_bottom]
 
 
@@ -352,14 +337,14 @@ class BlockGroupSampling():
     #(1.2) the block number for each point should be equal
     nblocks_per_points = up_b_index_fixed - low_b_index_fixed
     nbpp_max = tf.reduce_max(nblocks_per_points, axis=0)
-    nbpp_min = tf.reduce_min(nblocks_per_points, axis=0)
 
-    # *****
+    # ***** (optional)
     # block index is got by linear ranging from low bound by a fixed offset for
     # all the points. This is based on: num block per point is the same for all!
     # Check: No points will belong to greater nblocks. But few may belong to
     # smaller blocks: err_npoints
     if self._check_nblock_per_points_same:
+      nbpp_min = tf.reduce_min(nblocks_per_points, axis=0)
       check_gap = tf.reduce_max(nbpp_max)-tf.reduce_min(nbpp_min)
       check_0 = tf.assert_less_equal(check_gap, 1,
                                     message="nbpp max min gap > 1."+\
@@ -376,7 +361,6 @@ class BlockGroupSampling():
 
     self.nblocks_per_point = nbpp_max
     self.nblock_perp_3d = tf.reduce_prod(self.nblocks_per_point)
-    self.npoint_grouped = self.num_point0 * self.nblock_perp_3d
 
     pairs_3d = permutation_combination_3D(self.nblocks_per_point)
     pairs_3d = tf.tile( tf.expand_dims(pairs_3d, 0), [self.num_point0,1,1])
@@ -386,8 +370,7 @@ class BlockGroupSampling():
     block_index = tf.tile(block_index, [1, self.nblock_perp_3d, 1])
     block_index += pairs_3d
 
-    if self._check_xyz_inblock:
-      block_index = self.check_xyz_inblock(block_index, xyz)
+    is_pinb, is_poutb_any = self.check_xyz_inblock(block_index, xyz)
 
     # (1.3) block index -> block id
     tmp_bindex = tf.reshape(block_index, (-1,3))
@@ -410,6 +393,14 @@ class BlockGroupSampling():
 
     bid_pindex = tf.reshape(bid_pindex, (-1,2))
     block_index = tf.reshape(block_index, (-1,3))
+    is_pinb = tf.reshape(is_pinb, (-1,))
+
+    # (1.5) rm grouped points out of block
+    def rm_poutb():
+      pindex_inb = tf.cast(tf.where(is_pinb)[:,0], tf.int32)
+      return tf.gather(bid_pindex, pindex_inb, 0)
+    bid_pindex = tf.cond( is_poutb_any, rm_poutb, lambda: bid_pindex )
+    self.npoint_grouped = tf.shape(bid_pindex)[0]
 
     return bid_pindex
 
