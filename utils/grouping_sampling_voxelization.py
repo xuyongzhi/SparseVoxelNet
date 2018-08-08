@@ -141,6 +141,7 @@ class BlockGroupSampling():
     self._nblock_buf_maxs = sg_settings['max_nblock']
     self._empty_point_index = 'first' # -1(GPU only) or 'first'
     self._block_pos = sg_settings['block_pos']
+    self._vox_sizes = sg_settings['vox_size']
     assert self._block_pos=='mean' or self._block_pos=='center'
 
     # record grouping parameters
@@ -173,6 +174,7 @@ class BlockGroupSampling():
       self._n_maxerr_same_nb_perps = [2, 2000, 1000]
 
     self._check_grouped_xyz_inblock = True
+    self._check_voxelization = True
 
     self._debug_only_blocks_few_points = False
     self.debugs = {}
@@ -609,6 +611,33 @@ class BlockGroupSampling():
     return bids_sampling, block_bottom_center
 
 
+  def voxelization(self, grouped_xyz, block_bottom_center):
+    if self.scale == 0:
+      return []
+    zero = tf.expand_dims(block_bottom_center[:,0:3], 1) +\
+            tf.reshape( self._widths[self.scale-1]*0.5, [1,1,-1])
+    grouped_xyz_aligned  = grouped_xyz - zero
+    vox_index0 = grouped_xyz_aligned / self._strides[self.scale-1]
+    vox_index1 = tf.round(vox_index0)
+    vox_index = tf.cast(vox_index1, tf.int32)
+    vox_size = self._vox_sizes[self.scale]
+
+    if self._check_voxelization:
+      vox_index_align_err = tf.abs(vox_index0 - vox_index1)
+      max_vox_index_align_err = tf.reduce_max(vox_index_align_err)
+      check_align = tf.assert_less(max_vox_index_align_err, 1e-5,
+                                  message="points are not aligned")
+
+      import pdb; pdb.set_trace()  # XXX BREAKPOINT
+      check_low_bound = tf.assert_greater_equal(vox_index, 0,
+                                                message="vox index < 0")
+      check_up_bound = tf.assert_less(vox_index, vox_size,
+                                                message="vox index > size-1")
+      with tf.control_dependencies([check_align, check_low_bound, check_up_bound]):
+        vox_index = tf.identity(vox_index)
+    import pdb; pdb.set_trace()  # XXX BREAKPOINT
+    return vox_index
+
   def grouping(self, xyz, scale):
     '''
     xyz: (num_point0,3)
@@ -622,14 +651,20 @@ class BlockGroupSampling():
     t0 = tf.timestamp()
 
     bid_pindex = self.get_block_id(xyz)
+
     bid_index__pindex_inb, point_index, block_id_unique = self.get_bid_point_index(bid_pindex)
+
     grouped_pindex, grouped_xyz, empty_mask, bid_index_sampling = self.gather_grouped_xyz(
                                       bid_index__pindex_inb, point_index, xyz)
+
+
     bids_sampling, block_bottom_center = self.all_bottom_centers(block_id_unique, bid_index_sampling)
     if self._check_grouped_xyz_inblock:
       check_gs = self.check_grouped_xyz_inblock(grouped_xyz, block_bottom_center, empty_mask)
       with tf.control_dependencies(check_gs):
         grouped_xyz = tf.identity(grouped_xyz)
+
+    self.voxelization(grouped_xyz, block_bottom_center)
 
     if self._record_samplings:
       self.samplings[self.scale]['t_per_frame_'] += tf.timestamp() - t0
@@ -904,6 +939,18 @@ def gen_plys(DATASET_NAME, frame, points, grouped_xyz, bottom_center, bids_sampl
                   extra='random_same_color')
 
 
+def check_sg_setting_for_vox(sg_settings):
+  vox_sizes = [[]]
+  for s in range(1, sg_settings['num_sg_scale']):
+    vox_size0 = (np.array(sg_settings['width'][s]) - np.array(sg_settings['width'][s-1]))/\
+                np.array(sg_settings['stride'][s-1]) + 1
+    vox_size = np.round(vox_size0).astype(np.int32)
+    vox_size_err = np.max(np.abs(vox_size0-vox_size))
+    assert vox_size_err < 1e-5, "the sg_settings cannot do voxelization"
+    vox_sizes.append(vox_size)
+  sg_settings['vox_size'] = vox_sizes
+  return sg_settings
+
 def get_sg_settings():
   sg_settings1 = {}
   sg_settings1['width'] =   [[0.2,0.2,0.2], [0.6,0.6,0.6]]
@@ -914,9 +961,13 @@ def get_sg_settings():
   sg_settings1['max_nblock'] =      [6000,  500]
 
   sg_settings = sg_settings1
+  sg_settings['num_sg_scale'] = len(sg_settings['width'])
   sg_settings['block_pos'] = 'center'
   #sg_settings['block_pos'] = 'mean'
   sg_settings['gen_ply'] = False
+  sg_settings['record'] = False
+
+  sg_settings = check_sg_setting_for_vox(sg_settings)
   return sg_settings
 
 if __name__ == '__main__':

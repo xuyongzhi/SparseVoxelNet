@@ -32,8 +32,9 @@ import resnet_model
 import resnet_run_loop
 import os, glob, sys
 import numpy as np
-from modelnet_configs import get_block_paras, DEFAULTS, get_sg_settings
+from modelnet_configs import get_block_paras, DEFAULTS
 from dataset_utils import parse_pl_record, get_dataset_summary
+from utils.grouping_sampling_voxelization import get_sg_settings
 
 _DATA_PARAS = None
 
