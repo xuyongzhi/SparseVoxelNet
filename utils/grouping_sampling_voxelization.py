@@ -173,7 +173,7 @@ class BlockGroupSampling():
       #self._n_maxerr_same_nb_perp = 0
       self._n_maxerr_same_nb_perps = [2, 2000, 1000]
 
-    self._check_grouped_xyz_inblock = True
+    self._check_binb = True
     self._check_voxelization = True
 
     self._debug_only_blocks_few_points = False
@@ -275,7 +275,8 @@ class BlockGroupSampling():
     return block_index_fixed
 
 
-  def check_grouped_xyz_inblock(self, grouped_xyz, bot_cen_top, empty_mask):
+  def check_binb(self, grouped_xyz, bot_cen_top, empty_mask):
+    import pdb; pdb.set_trace()  # XXX BREAKPOINT
     bot_cen_top = tf.expand_dims(bot_cen_top, 1)
     top_check = tf.reduce_all(tf.less(grouped_xyz, bot_cen_top[:,:,6:9]), -1)
     bottom_check = tf.reduce_all(tf.less_equal(bot_cen_top[:,:,0:3], grouped_xyz), -1)
@@ -286,9 +287,9 @@ class BlockGroupSampling():
     nerr_bottom = tf.reduce_sum(1-tf.cast(bottom_check, tf.int32))
 
     assert_top = tf.assert_equal(nerr_top, 0,
-        message='check_grouped_xyz_inblock nerr_top')
+        message='check_binb nerr_top')
     assert_bottom = tf.assert_equal(nerr_bottom, 0,
-        message='scale {} check_grouped_xyz_inblock nerr_bottom: {}'.format(
+        message='scale {} check_binb nerr_bottom: {}'.format(
               self.scale, nerr_bottom))
     return [assert_top, assert_bottom]
 
@@ -313,15 +314,20 @@ class BlockGroupSampling():
     return b_in_bound_mask, ngp_edge_block
 
 
-  def check_block_inblock(self, block_index, bot_cen_top):
-    block_bottom_center = self.block_index_to_scope(block_index)
-    block_bottom = block_bottom_center[:,:,0:3]
-    block_center = block_bottom_center[:,:,3:6]
-    block_top = block_bottom + 2 * (block_center - block_bottom)
-    bot_cen_top = tf.expand_dims(bot_cen_top, 1)
+  def check_bindex_inblock(self, block_index, bot_cen_top_small):
+    bot_cen_top_large = self.block_index_to_scope(block_index)
+    return self.check_block_inblock(bot_cen_top_small, bot_cen_top_large)
 
-    check_top = tf.reduce_all(tf.less(bot_cen_top[:,:,6:9], block_top),2)
-    check_bottom = tf.reduce_all(tf.less_equal(block_bottom, bot_cen_top[:,:,0:3]),2)
+  def check_block_inblock(self, bot_cen_top_small, bot_cen_top_large):
+    if len(bot_cen_top_large.shape) == 2:
+      bot_cen_top_large = tf.expand_dims(bot_cen_top_large, 1)
+    if len(bot_cen_top_small.shape) == 2:
+      bot_cen_top_small = tf.expand_dims(bot_cen_top_small, 1)
+
+    check_top = tf.reduce_all(tf.less(bot_cen_top_small[:,:,6:9],
+                                      bot_cen_top_large[:,:,6:9]),2)
+    check_bottom = tf.reduce_all(tf.less_equal(bot_cen_top_large[:,:,0:3],
+                                               bot_cen_top_small[:,:,0:3]),2)
     pinb_mask = tf.logical_and(check_bottom, check_top)
     nerr_scope = tf.reduce_sum(1-tf.cast(pinb_mask, tf.int32))
     ngp_out_block = tf.reduce_sum(1 - tf.cast(pinb_mask, tf.int32))
@@ -394,7 +400,7 @@ class BlockGroupSampling():
     block_index = tf.tile(block_index, [1, self.nblock_perp_3d, 1])
     block_index += pairs_3d
 
-    pinb_mask, ngp_out_block = self.check_block_inblock(block_index, bot_cen_top)
+    pinb_mask, ngp_out_block = self.check_bindex_inblock(block_index, bot_cen_top)
 
     # (1.3) Remove the points belong to blocks out of edge bound
     b_in_bound_mask, ngp_edge_block = self.block_index_bound(block_index)
@@ -656,12 +662,13 @@ class BlockGroupSampling():
     grouped_pindex, empty_mask, bid_index_sampling = self.gather_grouped_xyz(
                                       bid_index__pindex_inb, point_index)
 
-    grouped_center = tf.gather(bot_cen_top[:,3:6], grouped_pindex)
+    grouped_bot_cen_top = tf.gather(bot_cen_top, grouped_pindex)
+    grouped_center = grouped_bot_cen_top[:,:,3:6]
 
-    bids_sampling, bot_cen_top = self.all_bottom_centers(block_id_unique, bid_index_sampling)
+    bids_sampling, out_bot_cen_top = self.all_bottom_centers(block_id_unique, bid_index_sampling)
 
-    if self._check_grouped_xyz_inblock:
-      check_gs = self.check_grouped_xyz_inblock(grouped_center, bot_cen_top, empty_mask)
+    if self._check_binb:
+      check_gs = self.check_block_inblock(grouped_bot_cen_top, out_bot_cen_top)
       with tf.control_dependencies(check_gs):
         grouped_center = tf.identity(grouped_center)
 
