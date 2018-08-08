@@ -79,6 +79,7 @@
 \end{tikzpicture}
 
 \subsection{GROUP}
+\subsubsection{point in block}
 From $(P_i)$ to $({P_{jk}})$: k is random, only need to get block index j. j solutions indicate all the blocks contain point $(P_i)$.
 \par
 Set parameters of block j as: 
@@ -94,9 +95,19 @@ $$ j_L = ceil(L)\ if\ L\ is\ float\ otherwise\ L+1 $$
 $$ j_U =  floor( \frac{P_i}{s}) $$
 $$ j:range(j_L, j_U+1) $$
 Note: Simplify programming of $j_L$:
-$$j_L=ceil(L+1e^{-5})$$
+$$j_L=ceil(L+1^{-5})$$
 
-\subsubsection{block index bound}
+\subsubsection{block in block}
+On scale 0, the scope of block $j_0$ is: $[s_0j_0,s_0j_0+w_0]$ \par
+On scale 1, the scope of block $j_1$ is: $[s_1j_1,s_1j_1+w_1]$ \par
+Block $j_0$ is inside of block $j_1$.
+$$ s_1j_1 \leq s_0j_0 = L_0$$
+$$ U_0=s_0j_0+w_0 < s_1j_1+w_1 $$
+$$ \frac{U_0-w_1}{s_1} = \frac{s_0j_0+w_0-w_1}{s_1} < j_1 \leq \frac{s_0j_0}{s_1} = \frac{L_0}{s_1}$$
+$$j_{1L}=ceil(\frac{s_0j_0+w_0-w_1}{s_1} +1^{-5}) = ceil(\frac{U_0-w_1}{s_1}+1^{-5})$$
+$$j_{1U} = floor(\frac{s_0j_0}{s_1}) = floor(\frac{L_0}{s_1})$$
+
+\subsubsection{block index bound by whole raw points scope}
 The scope of all points are $[P_{min}, P_{max}]$. The scope of all block index is $[j_l, j_u]$.
 $$ sj_l+ padding = P_{min}$$
 $$ sj_u+w-padding = P_{max} $$

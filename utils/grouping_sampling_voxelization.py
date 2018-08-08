@@ -231,8 +231,9 @@ class BlockGroupSampling():
     block_index = tf.cast(block_index, tf.float32)
     bottom = block_index * self._strides[self.scale]
     center = bottom + self._widths[self.scale]*0.5
-    bottom_center = tf.concat([bottom, center], -1)
-    return bottom_center
+    top = bottom + self._widths[self.scale]
+    bot_cen_top = tf.concat([bottom, center, top], -1)
+    return bot_cen_top
 
 
   def replace_points_outside_block_UNUSED(self, block_index, pinb_mask):
@@ -274,13 +275,10 @@ class BlockGroupSampling():
     return block_index_fixed
 
 
-  def check_grouped_xyz_inblock(self, grouped_xyz, block_bottom_center, empty_mask):
-    block_bottom_center = tf.expand_dims(block_bottom_center, 1)
-    block_bottom = block_bottom_center[:,:,0:3]
-    block_center = block_bottom_center[:,:, 3:6]
-    block_top = block_bottom + 2 * (block_center - block_bottom)
-    top_check = tf.reduce_all(tf.less(grouped_xyz, block_top), -1)
-    bottom_check = tf.reduce_all(tf.less_equal(block_bottom, grouped_xyz), -1)
+  def check_grouped_xyz_inblock(self, grouped_xyz, bot_cen_top, empty_mask):
+    bot_cen_top = tf.expand_dims(bot_cen_top, 1)
+    top_check = tf.reduce_all(tf.less(grouped_xyz, bot_cen_top[:,:,6:9]), -1)
+    bottom_check = tf.reduce_all(tf.less_equal(bot_cen_top[:,:,0:3], grouped_xyz), -1)
     empty_mask = tf.cast(empty_mask, tf.bool)
     top_check = tf.logical_or(top_check, empty_mask)
     bottom_check = tf.logical_or(bottom_check, empty_mask)
@@ -295,15 +293,13 @@ class BlockGroupSampling():
     return [assert_top, assert_bottom]
 
 
-  def block_index_bound(self, block_index, xyz):
+  def block_index_bound(self, block_index):
     '''
     The blocks at the edge
     '''
-    xyz_max = tf.reduce_max(xyz, 0)
-    xyz_min = tf.reduce_min(xyz, 0)
     padding = self._widths[self.scale] * self._padding_rate[self.scale]  # very important
-    bindex_min = (xyz_min - padding)/self._strides[self.scale]
-    bindex_max = (xyz_max + padding-self._widths[self.scale])/self._strides[self.scale]
+    bindex_min = (self.xyz_min - padding)/self._strides[self.scale]
+    bindex_max = (self.xyz_max + padding-self._widths[self.scale])/self._strides[self.scale]
     bindex_min = tf.reshape(bindex_min, (1,1,-1))
     bindex_max = tf.reshape(bindex_max, (1,1,-1))
 
@@ -317,15 +313,15 @@ class BlockGroupSampling():
     return b_in_bound_mask, ngp_edge_block
 
 
-  def check_xyz_inblock(self, block_index, xyz):
+  def check_block_inblock(self, block_index, bot_cen_top):
     block_bottom_center = self.block_index_to_scope(block_index)
     block_bottom = block_bottom_center[:,:,0:3]
     block_center = block_bottom_center[:,:,3:6]
     block_top = block_bottom + 2 * (block_center - block_bottom)
-    xyz = tf.expand_dims(xyz, 1)
+    bot_cen_top = tf.expand_dims(bot_cen_top, 1)
 
-    check_top = tf.reduce_all(tf.less(xyz, block_top),2)
-    check_bottom = tf.reduce_all(tf.less_equal(block_bottom, xyz),2)
+    check_top = tf.reduce_all(tf.less(bot_cen_top[:,:,6:9], block_top),2)
+    check_bottom = tf.reduce_all(tf.less_equal(block_bottom, bot_cen_top[:,:,0:3]),2)
     pinb_mask = tf.logical_and(check_bottom, check_top)
     nerr_scope = tf.reduce_sum(1-tf.cast(pinb_mask, tf.int32))
     ngp_out_block = tf.reduce_sum(1 - tf.cast(pinb_mask, tf.int32))
@@ -333,18 +329,23 @@ class BlockGroupSampling():
     return pinb_mask, ngp_out_block
 
 
-  def get_block_id(self, xyz):
+  def get_block_id(self, bot_cen_top):
     '''
     (1) Get the responding block index of each point
-    xyz: (num_point0, 3)
+    bot_cen_top: (num_point0, 9)
       block_index: (num_point0, nblock_perp_3d, 3)
     block_id: (num_point0, nblock_perp_3d, 1)
     '''
+    assert bot_cen_top.shape[-1] == 9
     # (1.1) lower and upper block index bound
-    self.num_point0 = num_point0 = tf.shape(xyz)[0]
-    low_b_index = (xyz - self._widths[self.scale]) / self._strides[self.scale]
-    up_b_index = xyz / self._strides[self.scale]
-
+    self.num_point0 = num_point0 = tf.shape(bot_cen_top)[0]
+    if self.scale==0:
+      xyz = bot_cen_top[:,3:6]
+      low_b_index = (xyz - self._widths[self.scale]) / self._strides[self.scale]
+      up_b_index = xyz / self._strides[self.scale]
+    else:
+      low_b_index = (bot_cen_top[:,6:9] - self._widths[self.scale])/self._strides[self.scale]
+      up_b_index = bot_cen_top[:,0:3] / self._strides[self.scale]
 
     # set a small pos offset. If low_b_index is float, ceil(low_b_index)
     # remains. But if low_b_index is int, ceil(low_b_index) increases.
@@ -393,10 +394,10 @@ class BlockGroupSampling():
     block_index = tf.tile(block_index, [1, self.nblock_perp_3d, 1])
     block_index += pairs_3d
 
-    pinb_mask, ngp_out_block = self.check_xyz_inblock(block_index, xyz)
+    pinb_mask, ngp_out_block = self.check_block_inblock(block_index, bot_cen_top)
 
     # (1.3) Remove the points belong to blocks out of edge bound
-    b_in_bound_mask, ngp_edge_block = self.block_index_bound(block_index, xyz)
+    b_in_bound_mask, ngp_edge_block = self.block_index_bound(block_index)
 
     # (1.4) block index -> block id
     tmp_bindex = tf.reshape(block_index, (-1,3))
@@ -530,7 +531,7 @@ class BlockGroupSampling():
     #self.samplings[self.scale]['nblock_perp_3d_'] += tf.cast(self.nblock_perp_3d, tf.int64)
 
 
-  def gather_grouped_xyz(self, bid_index__pindex_inb, point_index, xyz):
+  def gather_grouped_xyz(self, bid_index__pindex_inb, point_index):
     #(3.1) gather grouped point index
     # gen point index: (real nblock, self._npoint_per_block, 1)
     grouped_pindex0 = tf.sparse_to_dense(bid_index__pindex_inb,
@@ -580,7 +581,7 @@ class BlockGroupSampling():
     #         lambda: tf.contrib.framework.sort( bid_index_valid[0:self._nblocks[self.scale]] ))
     grouped_pindex = tf.gather(grouped_pindex0, bid_index_sampling)
 
-    #(3.4) gather xyz from point index
+    #(3.4) replace -1 by the first pindex of each block
     empty_mask = tf.less(grouped_pindex,0)
     if self._empty_point_index != -1:
       # replace -1 with first one of each block
@@ -593,10 +594,7 @@ class BlockGroupSampling():
       first_pindices_dense = tf.sparse_to_dense(empty_indices, tf.shape(grouped_pindex), first_pindices)
       grouped_pindex = grouped_pindex + first_pindices_dense
 
-    grouped_xyz = tf.gather(xyz, grouped_pindex)
-    #empty_mask = tf.cast(empty_mask, tf.int8) # to feed into input pipeline
-
-    return grouped_pindex, grouped_xyz, empty_mask, bid_index_sampling
+    return grouped_pindex, empty_mask, bid_index_sampling
 
 
   def all_bottom_centers(self, block_id_unique, bid_index_sampling):
@@ -607,17 +605,17 @@ class BlockGroupSampling():
     bids_sampling = tf.gather(block_id_unique, bid_index_sampling)
     bindex_sampling = block_id_to_block_index(bids_sampling, self.block_size)
     bindex_sampling += self.min_block_index
-    block_bottom_center = self.block_index_to_scope(bindex_sampling)
-    return bids_sampling, block_bottom_center
+    bot_cen_top = self.block_index_to_scope(bindex_sampling)
+    return bids_sampling, bot_cen_top
 
 
-  def voxelization(self, grouped_xyz, block_bottom_center):
+  def voxelization(self, grouped_center, bot_cen_top):
     if self.scale == 0:
       return []
-    zero = tf.expand_dims(block_bottom_center[:,0:3], 1) +\
+    zero = tf.expand_dims(bot_cen_top[:,0:3], 1) +\
             tf.reshape( self._widths[self.scale-1]*0.5, [1,1,-1])
-    grouped_xyz_aligned  = grouped_xyz - zero
-    vox_index0 = grouped_xyz_aligned / self._strides[self.scale-1]
+    grouped_center_aligned  = grouped_center - zero
+    vox_index0 = grouped_center_aligned / self._strides[self.scale-1]
     vox_index1 = tf.round(vox_index0)
     vox_index = tf.cast(vox_index1, tf.int32)
     vox_size = self._vox_sizes[self.scale]
@@ -638,33 +636,36 @@ class BlockGroupSampling():
     import pdb; pdb.set_trace()  # XXX BREAKPOINT
     return vox_index
 
-  def grouping(self, xyz, scale):
+  def grouping(self, scale, bot_cen_top):
     '''
-    xyz: (num_point0,3)
+    bottom_center: (num_point0, 6)
     grouped_xyz: (num_block,npoint_per_block,3)
 
     Search by point: for each point in xyz, find all the block d=ids
     '''
     self.scale = scale
-    assert len(xyz.shape) == 2
-    assert xyz.shape[-1].value == 3
+    assert len(bot_cen_top.shape) == 2
+    assert bot_cen_top.shape[-1].value == 9
     t0 = tf.timestamp()
 
-    bid_pindex = self.get_block_id(xyz)
+    self._widths[self.scale]
+    bid_pindex = self.get_block_id(bot_cen_top)
 
     bid_index__pindex_inb, point_index, block_id_unique = self.get_bid_point_index(bid_pindex)
 
-    grouped_pindex, grouped_xyz, empty_mask, bid_index_sampling = self.gather_grouped_xyz(
-                                      bid_index__pindex_inb, point_index, xyz)
+    grouped_pindex, empty_mask, bid_index_sampling = self.gather_grouped_xyz(
+                                      bid_index__pindex_inb, point_index)
 
+    grouped_center = tf.gather(bot_cen_top[:,3:6], grouped_pindex)
 
-    bids_sampling, block_bottom_center = self.all_bottom_centers(block_id_unique, bid_index_sampling)
+    bids_sampling, bot_cen_top = self.all_bottom_centers(block_id_unique, bid_index_sampling)
+
     if self._check_grouped_xyz_inblock:
-      check_gs = self.check_grouped_xyz_inblock(grouped_xyz, block_bottom_center, empty_mask)
+      check_gs = self.check_grouped_xyz_inblock(grouped_center, bot_cen_top, empty_mask)
       with tf.control_dependencies(check_gs):
-        grouped_xyz = tf.identity(grouped_xyz)
+        grouped_center = tf.identity(grouped_center)
 
-    self.voxelization(grouped_xyz, block_bottom_center)
+    #self.voxelization(grouped_center, bot_cen_top)
 
     if self._record_samplings:
       self.samplings[self.scale]['t_per_frame_'] += tf.timestamp() - t0
@@ -689,7 +690,7 @@ class BlockGroupSampling():
       others['value'] += [bids_sampling]
       others['name'] += ['bids_sampling']
 
-    return grouped_pindex, grouped_xyz, empty_mask, block_bottom_center, self.nblock_valid, others
+    return grouped_pindex, grouped_center, empty_mask, bot_cen_top, self.nblock_valid, others
 
 
   def grouped_mean(self, grouped_xyz, empty_mask):
@@ -701,43 +702,51 @@ class BlockGroupSampling():
     return grouped_mean
 
 
-  def valid_block_xyz(self, grouped_xyz, empty_mask, block_bottom_center, nblock_valid):
-    if self._block_pos == 'mean':
-      block_xyz = self.grouped_mean(grouped_xyz, empty_mask)
-    elif self._block_pos == 'center':
-      block_xyz = block_bottom_center[:,3:6]
+  def valid_block_pos(self, empty_mask, bot_cen_top, nblock_valid):
+    #if self._block_pos == 'mean':
+    #  block_xyz = self.grouped_mean(grouped_xyz, empty_mask)
+    #  block_bottom = tf.reduce_min(grouped_xyz, 1)
+    #  block_bottom_center = tf.concat([block_bottom, block_xyz], -1)
+    #elif self._block_pos == 'center':
+    #  block_bottom_center = block_bottom_center
     empty_mask = tf.cast(empty_mask, tf.bool)
-    valid_block_xyz = tf.cond( tf.less(nblock_valid, tf.shape(block_xyz)[0]),
-                              lambda: block_xyz[0:nblock_valid],
-                              lambda: block_xyz)
+    valid_block_bottom_center = tf.cond(
+                       tf.less(nblock_valid, tf.shape(bot_cen_top)[0]),
+                       lambda: block_bottom_center[0:nblock_valid],
+                       lambda: block_bottom_center)
+    valid_block_bottom = valid_block_bottom_center[:,0:3]
+    valid_block_center = valid_block_bottom_center[:,3:6]
 
-    return valid_block_xyz
+    return valid_block_center, valid_block_bottom
 
 
   def grouping_multi_scale(self, xyz, num_scale=None):
-    grouped_pos = 'center'
-    grouped_pos = 'mean'
+    self.xyz_max = tf.reduce_max(xyz, 0)
+    self.xyz_min = tf.reduce_min(xyz, 0)
 
     if num_scale==None:
       num_scale = self._num_scale
     grouped_pindex_ms = []
-    grouped_xyz_ms = []
+    grouped_center_ms = []
     empty_mask_ms = []
-    block_bottom_center_ms = []
+    bot_cen_top_ms = []
     nblock_valid_ms = []
     others_ms = []
 
+    bot_cen_top = tf.tile(xyz, [1,3])
     for s in range(num_scale):
-      grouped_pindex, grouped_xyz, empty_mask, block_bottom_center, nblock_valid, others = self.grouping(xyz, s)
-      xyz = self.valid_block_xyz(grouped_xyz, empty_mask, block_bottom_center, nblock_valid)
+      grouped_pindex, grouped_center, empty_mask, bot_cen_top, nblock_valid, others = \
+          self.grouping(s, bot_cen_top)
+      bot_cen_top = bot_cen_top[:,0:nblock_valid]
+      #center, bottom = self.valid_block_pos(empty_mask, bot_cen_top, nblock_valid)
 
       grouped_pindex_ms.append(grouped_pindex)
-      grouped_xyz_ms.append(grouped_xyz)
+      grouped_center_ms.append(grouped_center)
       empty_mask_ms.append(empty_mask)
-      block_bottom_center_ms.append(block_bottom_center)
+      bot_cen_top_ms.append(bot_cen_top)
       nblock_valid_ms.append(nblock_valid)
       others_ms.append(others)
-    return grouped_pindex_ms, grouped_xyz_ms, empty_mask_ms, block_bottom_center_ms, nblock_valid_ms, others_ms
+    return grouped_pindex_ms, grouped_center_ms, empty_mask_ms, bot_cen_top_ms, nblock_valid_ms, others_ms
 
 
 def main(DATASET_NAME, filenames, sg_settings, nframes):
