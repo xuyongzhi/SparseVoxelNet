@@ -594,14 +594,10 @@ class BlockGroupSampling():
     empty_mask = tf.less(grouped_pindex,0)
     if self._empty_point_index != -1:
       # replace -1 with first one of each block
-      first_pindices = grouped_pindex[0,0:1]
-      empty_indices = tf.cast(tf.where(empty_mask), tf.int32)
-      # Incorrect!!!: use the first point of first block always.
-      # Should use the first one of each block, but it's hard to implement.
-      # So always use empty mask to avoid this error!
-      first_pindices = tf.tile(first_pindices, [tf.shape(empty_indices)[0]]) + 1
-      first_pindices_dense = tf.sparse_to_dense(empty_indices, tf.shape(grouped_pindex), first_pindices)
-      grouped_pindex = grouped_pindex + first_pindices_dense
+      first_pindices0 = grouped_pindex[:,0:1] + 1
+      first_pindices1 = tf.tile(first_pindices0, [1,grouped_pindex.shape[1]])
+      first_pindices2 = first_pindices1 * tf.cast(empty_mask, tf.int32)
+      grouped_pindex = grouped_pindex + first_pindices2
 
     return grouped_pindex, empty_mask, bid_index_sampling
 
@@ -647,6 +643,7 @@ class BlockGroupSampling():
         vox_index = tf.identity(vox_index)
     import pdb; pdb.set_trace()  # XXX BREAKPOINT
     return vox_index
+
 
   def grouping(self, scale, bot_cen_top):
     '''
@@ -972,6 +969,7 @@ def check_sg_setting_for_vox(sg_settings):
     vox_sizes.append(vox_size)
   sg_settings['vox_size'] = vox_sizes
   return sg_settings
+
 
 def get_sg_settings():
   sg_settings1 = {}
