@@ -705,102 +705,6 @@ class BlockGroupSampling():
     return grouped_pindex_ms, grouped_xyz_ms, empty_mask_ms, block_bottom_center_ms, nblock_valid_ms, others_ms
 
 
-def main_eager(DATASET_NAME, filenames, sg_settings, nframes):
-  tf.enable_eager_execution()
-  dataset_meta = DatasetsMeta(DATASET_NAME)
-  num_classes = dataset_meta.num_classes
-
-  dataset = tf.data.TFRecordDataset(filenames,
-                                      compression_type="",
-                                      buffer_size=1024*100,
-                                      num_parallel_reads=1)
-
-  batch_size = nframes
-  is_training = False
-
-  dataset = dataset.prefetch(buffer_size=batch_size)
-  dataset = dataset.apply(
-    tf.contrib.data.map_and_batch(
-      lambda value: parse_pl_record(value, is_training),
-      batch_size=batch_size,
-      num_parallel_batches=1,
-      drop_remainder=False))
-  dataset = dataset.prefetch(buffer_size=tf.contrib.data.AUTOTUNE)
-  get_next = dataset.make_one_shot_iterator().get_next()
-  features_next, label_next = get_next
-  points_next = features_next['points'][:,:,0:3]
-
-  bsg = BlockGroupSampling(sg_settings)
-  bsg.show_settings()
-
-  xyzs = []
-  grouped_pindexs = []
-  grouped_xyzs = []
-  empty_masks = []
-  others = []
-  for s in range(bsg._num_scale):
-    grouped_pindexs.append([])
-    grouped_xyzs.append([])
-    empty_masks.append([])
-    others.append({})
-
-  for i in range(batch_size):
-    points_i = points_next[i,:,:]
-
-    grouped_pindex_i, grouped_xyz_i, empty_mask_i, bottom_center_i, nblock_valid_i, others_i = \
-          bsg.grouping_multi_scale(points_i)
-
-    #grouped_xyz_i, empty_mask_i, bottom_center_i, nblock_valid_i, others_i = bsg.grouping(points_i, 0)
-
-    num_scale = len(grouped_xyz_i)
-    samplings_i = bsg.samplings
-    samplings_np_ms = []
-    for s in range(len(samplings_i)):
-      samplings_np_ms.append({})
-      for name in samplings_i[s]:
-        samplings_np_ms[s][name] = samplings_i[s][name].numpy()
-    bsg.show_samplings_np_multi_scale(samplings_np_ms)
-
-    xyzs.append(np.expand_dims(points_i.numpy(),0))
-
-    for s in range(num_scale):
-      grouped_pindex_i[s] = grouped_pindex_i[s].numpy()
-      grouped_pindexs[s].append(np.expand_dims(grouped_xyz_i[s],0))
-      grouped_xyz_i[s] = grouped_xyz_i[s].numpy()
-      grouped_xyzs[s].append( np.expand_dims(grouped_xyz_i[s], 0) )
-      empty_mask_i[s] = empty_mask_i[s].numpy()
-      empty_masks[s].append( np.expand_dims(empty_mask_i[s], 0) )
-      bottom_center_i[s] = bottom_center_i[s].numpy()
-
-      for k in range(len(others_i[s]['value'])):
-        name_k = others_i[s]['name'][k]
-        if name_k not in others[s]:
-          others[s][name_k] = []
-        others_i[s]['value'][k] = others_i[s]['value'][k].numpy()
-        others[s][name_k].append( np.expand_dims( others_i[s]['value'][k],0 ) )
-
-      if bsg._gen_ply:
-        valid_flag = '' if not bsg._debug_only_blocks_few_points else '_invalid'
-        if not bsg._shuffle:
-          valid_flag += '_NoShuffle'
-        bids_sampling_i = others[s]['bids_sampling'][k][0]
-        gen_plys(DATASET_NAME, i, points_i.numpy(), grouped_xyz_i[s],
-                  bottom_center_i[s], bids_sampling_i, valid_flag, '_ES%s'%(s))
-
-  xyzs = np.concatenate(xyzs,0)
-  for s in range(num_scale):
-    grouped_xyzs[s] = np.concatenate(grouped_xyzs[s],0)
-    empty_masks[s] = np.concatenate(empty_masks[s],0)
-
-    for name in others[s]:
-      if name not in ['valid_bid_indexs', 'block_id_unique']:
-        print(name)
-        others[k][name] = np.concatenate(others[k][name], 0)
-    others[s]['empty_mask'] = empty_masks[s]
-
-  return xyzs, grouped_xyzs, others, bsg._shuffle
-
-
 def main(DATASET_NAME, filenames, sg_settings, nframes):
   _DATA_PARAS = get_data_shapes_from_tfrecord(filenames)
   dataset_meta = DatasetsMeta(DATASET_NAME)
@@ -878,6 +782,100 @@ def main(DATASET_NAME, filenames, sg_settings, nframes):
                       bids_sampling, valid_flag, 'S%d'%(s))
 
     return xyzs, grouped_xyzs, others, bsg._shuffle
+
+
+def main_eager(DATASET_NAME, filenames, sg_settings, nframes):
+  tf.enable_eager_execution()
+  dataset_meta = DatasetsMeta(DATASET_NAME)
+  num_classes = dataset_meta.num_classes
+
+  dataset = tf.data.TFRecordDataset(filenames,
+                                      compression_type="",
+                                      buffer_size=1024*100,
+                                      num_parallel_reads=1)
+
+  batch_size = nframes
+  is_training = False
+
+  dataset = dataset.prefetch(buffer_size=batch_size)
+  dataset = dataset.apply(
+    tf.contrib.data.map_and_batch(
+      lambda value: parse_pl_record(value, is_training),
+      batch_size=batch_size,
+      num_parallel_batches=1,
+      drop_remainder=False))
+  dataset = dataset.prefetch(buffer_size=tf.contrib.data.AUTOTUNE)
+  get_next = dataset.make_one_shot_iterator().get_next()
+  features_next, label_next = get_next
+  points_next = features_next['points'][:,:,0:3]
+
+  bsg = BlockGroupSampling(sg_settings)
+  bsg.show_settings()
+
+  xyzs = []
+  grouped_pindexs = []
+  grouped_xyzs = []
+  empty_masks = []
+  others = []
+  for s in range(bsg._num_scale):
+    grouped_pindexs.append([])
+    grouped_xyzs.append([])
+    empty_masks.append([])
+    others.append({})
+
+  for i in range(batch_size):
+    points_i = points_next[i,:,:]
+
+    grouped_pindex_i, grouped_xyz_i, empty_mask_i, bottom_center_i, nblock_valid_i, others_i = \
+          bsg.grouping_multi_scale(points_i)
+
+    num_scale = len(grouped_xyz_i)
+    samplings_i = bsg.samplings
+    samplings_np_ms = []
+    for s in range(len(samplings_i)):
+      samplings_np_ms.append({})
+      for name in samplings_i[s]:
+        samplings_np_ms[s][name] = samplings_i[s][name].numpy()
+    bsg.show_samplings_np_multi_scale(samplings_np_ms)
+
+    xyzs.append(np.expand_dims(points_i.numpy(),0))
+
+    for s in range(num_scale):
+      grouped_pindex_i[s] = grouped_pindex_i[s].numpy()
+      grouped_pindexs[s].append(np.expand_dims(grouped_xyz_i[s],0))
+      grouped_xyz_i[s] = grouped_xyz_i[s].numpy()
+      grouped_xyzs[s].append( np.expand_dims(grouped_xyz_i[s], 0) )
+      empty_mask_i[s] = empty_mask_i[s].numpy()
+      empty_masks[s].append( np.expand_dims(empty_mask_i[s], 0) )
+      bottom_center_i[s] = bottom_center_i[s].numpy()
+
+      for k in range(len(others_i[s]['value'])):
+        name_k = others_i[s]['name'][k]
+        if name_k not in others[s]:
+          others[s][name_k] = []
+        others_i[s]['value'][k] = others_i[s]['value'][k].numpy()
+        others[s][name_k].append( np.expand_dims( others_i[s]['value'][k],0 ) )
+
+      if bsg._gen_ply:
+        valid_flag = '' if not bsg._debug_only_blocks_few_points else '_invalid'
+        if not bsg._shuffle:
+          valid_flag += '_NoShuffle'
+        bids_sampling_i = others[s]['bids_sampling'][k][0]
+        gen_plys(DATASET_NAME, i, points_i.numpy(), grouped_xyz_i[s],
+                  bottom_center_i[s], bids_sampling_i, valid_flag, '_ES%s'%(s))
+
+  xyzs = np.concatenate(xyzs,0)
+  for s in range(num_scale):
+    grouped_xyzs[s] = np.concatenate(grouped_xyzs[s],0)
+    empty_masks[s] = np.concatenate(empty_masks[s],0)
+
+    for name in others[s]:
+      if name not in ['valid_bid_indexs', 'block_id_unique']:
+        print(name)
+        others[k][name] = np.concatenate(others[k][name], 0)
+    others[s]['empty_mask'] = empty_masks[s]
+
+  return xyzs, grouped_xyzs, others, bsg._shuffle
 
 
 def gen_plys(DATASET_NAME, frame, points, grouped_xyz, bottom_center, bids_sampling, valid_flag='', main_flag=''):

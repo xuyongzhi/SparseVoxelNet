@@ -37,7 +37,7 @@ DEFAULTS['lr_decay_epochs'] = 20
 DEFAULTS['lr_warmup'] = 0
 DEFAULTS['batch_norm_decay0'] = 0.7
 
-DEFAULTS['model_flag'] = 'm'
+DEFAULTS['model_flag'] = 'V'
 DEFAULTS['resnet_size'] = 26
 DEFAULTS['feed_data'] = 'xyzs'
 DEFAULTS['use_xyz'] = 1

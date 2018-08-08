@@ -1018,6 +1018,7 @@ class Model(ResConvOps):
       inputs_dic1[item] = []
       for s in range(self.sg_num_scale):
         inputs_dic1[item].append(inputs_dic[item+'_%d'%(s)])
+      inputs_dic1[item].append([])
     return inputs_dic1
 
   def __call__(self, inputs_dic, is_training):
@@ -1136,7 +1137,6 @@ class Model(ResConvOps):
           inputs = self.batch_norm(inputs, is_training, tf.nn.relu)
 
       # ----------------------
-      import pdb; pdb.set_trace()  # XXX BREAKPOINT
       inputs = new_points
       axis = [2] if self.data_format == 'channels_first' else [1]
       if self.get_feature_shape(inputs)!=1:
@@ -1174,6 +1174,7 @@ class Model(ResConvOps):
         self.log('------------------------------------------------------------\n\n')
         self.log_model_summary()
 
+      import pdb; pdb.set_trace()  # XXX BREAKPOINT
       return inputs
 
   @staticmethod
@@ -1233,16 +1234,19 @@ class Model(ResConvOps):
   def res_sa_module(self, scale, points, grouped_xyz,
                       grouped_pindex,  empty_mask, block_bottom_center ):
     with tf.variable_scope('scale_%d'%(scale)):
-      grouped_points = Model.grouping_online(points, grouped_pindex)
-      grouped_points = self.cat_xyz_elements(scale, grouped_xyz,
-                                          block_bottom_center, grouped_points)
+      if scale < self.net_num_scale-1:
+        grouped_points = Model.grouping_online(points, grouped_pindex)
+        grouped_points = self.cat_xyz_elements(scale, grouped_xyz,
+                                            block_bottom_center, grouped_points)
+      else:
+        grouped_points = tf.expand_dims(points, -2)
 
       if scale == 0:
         grouped_points = self.initial_layer(grouped_points)
       else:
         if self.voxel3d:
           grouped_points = self.grouped_points_to_voxel_points( scale, grouped_points,
-                            valid_mask, block_bottom_center_mm, grouped_xyz)
+                            empty_mask, block_bottom_center, grouped_xyz)
 
       outputs = self.res_sa_model(scale, grouped_points)
 
@@ -1278,7 +1282,6 @@ class Model(ResConvOps):
           else:
             outputs = tf.reshape(outputs, [batch_size,outputs.shape[1].value,-1])
 
-      import pdb; pdb.set_trace()  # XXX BREAKPOINT
       return outputs, root_point_features
 
   def initial_layer(self, grouped_inputs, scope_ini='initial'):
@@ -1451,13 +1454,13 @@ class Model(ResConvOps):
       new_points = tf.transpose(new_points, [0, 3, 1, 2])
     return new_xyz, grouped_xyz, new_points, valid_mask
 
-  def grouped_points_to_voxel_points (self, scale, new_points, valid_mask, block_bottom_center_mm, grouped_xyz):
+  def grouped_points_to_voxel_points (self, scale, new_points, empty_mask, block_bottom_center, grouped_xyz):
+    import pdb; pdb.set_trace()  # XXX BREAKPOINT
     IS_merge_blocks_while_fix_bmap = True
 
     if self.data_format == 'channels_first':
       new_points = tf.transpose(new_points, [0, 2, 3, 1])
 
-    block_bottom_center_mm = tf.identity( block_bottom_center_mm,'block_bottom_center_mm' )      # gpu_0/sa_layer3/block_bottom_center_mm:0
     new_points = tf.identity(new_points,name='points_tov') # gpu_0/sa_layer4/points_tov:0
     c500 = tf.constant([500],tf.float32)
     c1000 = tf.constant([1000],tf.float32)
