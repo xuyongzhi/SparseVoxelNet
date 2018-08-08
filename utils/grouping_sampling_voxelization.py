@@ -316,9 +316,12 @@ class BlockGroupSampling():
 
   def check_bindex_inblock(self, block_index, bot_cen_top_small):
     bot_cen_top_large = self.block_index_to_scope(block_index)
-    return self.check_block_inblock(bot_cen_top_small, bot_cen_top_large)
+    pinb_mask, ngp_out_block  = self.check_block_inblock(bot_cen_top_small, bot_cen_top_large)
+    self.ngp_out_block = ngp_out_block
+    return pinb_mask, ngp_out_block
 
-  def check_block_inblock(self, bot_cen_top_small, bot_cen_top_large):
+
+  def check_block_inblock(self, bot_cen_top_small, bot_cen_top_large, empty_mask=None):
     if len(bot_cen_top_large.shape) == 2:
       bot_cen_top_large = tf.expand_dims(bot_cen_top_large, 1)
     if len(bot_cen_top_small.shape) == 2:
@@ -328,11 +331,11 @@ class BlockGroupSampling():
                                       bot_cen_top_large[:,:,6:9]),2)
     check_bottom = tf.reduce_all(tf.less_equal(bot_cen_top_large[:,:,0:3],
                                                bot_cen_top_small[:,:,0:3]),2)
-    pinb_mask = tf.logical_and(check_bottom, check_top)
-    nerr_scope = tf.reduce_sum(1-tf.cast(pinb_mask, tf.int32))
-    ngp_out_block = tf.reduce_sum(1 - tf.cast(pinb_mask, tf.int32))
-    self.ngp_out_block = ngp_out_block
-    return pinb_mask, ngp_out_block
+    correct_mask = tf.logical_and(check_bottom, check_top)
+    if empty_mask!=None:
+      correct_mask = tf.logical_or(empty_mask, correct_mask)
+    nerr_scope = tf.reduce_sum(1-tf.cast(correct_mask, tf.int32))
+    return correct_mask, nerr_scope
 
 
   def get_block_id(self, bot_cen_top):
@@ -615,13 +618,15 @@ class BlockGroupSampling():
     return bids_sampling, bot_cen_top
 
 
-  def voxelization(self, grouped_center, bot_cen_top):
+  def voxelization(self, grouped_bot_cen_top, out_bot_cen_top, empty_mask):
     if self.scale == 0:
       return []
-    zero = tf.expand_dims(bot_cen_top[:,0:3], 1) +\
-            tf.reshape( self._widths[self.scale-1]*0.5, [1,1,-1])
-    grouped_center_aligned  = grouped_center - zero
-    vox_index0 = grouped_center_aligned / self._strides[self.scale-1]
+    #zero = tf.expand_dims(bot_cen_top[:,0:3], 1) +\
+    #        tf.reshape( self._widths[self.scale-1]*0.5, [1,1,-1])
+    #grouped_center_aligned  = grouped_center - zero
+    out_bot_cen_top = tf.expand_dims(out_bot_cen_top, 1)
+    grouped_bot_aligned = grouped_bot_cen_top[:,:,0:3] - out_bot_cen_top[:,:,0:3]
+    vox_index0 = grouped_bot_aligned / self._strides[self.scale-1]
     vox_index1 = tf.round(vox_index0)
     vox_index = tf.cast(vox_index1, tf.int32)
     vox_size = self._vox_sizes[self.scale]
@@ -629,6 +634,7 @@ class BlockGroupSampling():
     if self._check_voxelization:
       vox_index_align_err = tf.abs(vox_index0 - vox_index1)
       max_vox_index_align_err = tf.reduce_max(vox_index_align_err)
+      import pdb; pdb.set_trace()  # XXX BREAKPOINT
       check_align = tf.assert_less(max_vox_index_align_err, 1e-5,
                                   message="points are not aligned")
 
@@ -668,11 +674,11 @@ class BlockGroupSampling():
     bids_sampling, out_bot_cen_top = self.all_bottom_centers(block_id_unique, bid_index_sampling)
 
     if self._check_binb:
-      check_gs = self.check_block_inblock(grouped_bot_cen_top, out_bot_cen_top)
-      with tf.control_dependencies(check_gs):
+      gb_in_outb_mask, nerr_gb_in_ob = self.check_block_inblock(grouped_bot_cen_top, out_bot_cen_top, empty_mask)
+      with tf.control_dependencies(tf.assert_equal(nerr_gb_in_ob, 0)):
         grouped_center = tf.identity(grouped_center)
 
-    #self.voxelization(grouped_center, bot_cen_top)
+    #self.voxelization(grouped_bot_cen_top, out_bot_cen_top, empty_mask)
 
     if self._record_samplings:
       self.samplings[self.scale]['t_per_frame_'] += tf.timestamp() - t0
@@ -697,7 +703,7 @@ class BlockGroupSampling():
       others['value'] += [bids_sampling]
       others['name'] += ['bids_sampling']
 
-    return grouped_pindex, grouped_center, empty_mask, bot_cen_top, self.nblock_valid, others
+    return grouped_pindex, grouped_center, empty_mask, out_bot_cen_top, self.nblock_valid, others
 
 
   def grouped_mean(self, grouped_xyz, empty_mask):
@@ -962,7 +968,7 @@ def check_sg_setting_for_vox(sg_settings):
                 np.array(sg_settings['stride'][s-1]) + 1
     vox_size = np.round(vox_size0).astype(np.int32)
     vox_size_err = np.max(np.abs(vox_size0-vox_size))
-    assert vox_size_err < 1e-5, "the sg_settings cannot do voxelization"
+    assert vox_size_err < 1e-5, "the sg_settings cannot do Voxelization"
     vox_sizes.append(vox_size)
   sg_settings['vox_size'] = vox_sizes
   return sg_settings
