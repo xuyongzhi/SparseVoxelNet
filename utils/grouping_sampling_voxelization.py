@@ -453,7 +453,7 @@ class BlockGroupSampling():
                                                 axis = 0)
     bid_pindex = tf.gather(bid_pindex, sort_indices, axis=0)
     block_id = bid_pindex[:,0]
-    point_index = bid_pindex[:,1]
+    grouped_point_index = bid_pindex[:,1]
 
     #(2.2) block id -> block id index
     # get valid block num
@@ -487,13 +487,13 @@ class BlockGroupSampling():
     remain_mask = tf.less(tf.squeeze(point_index_per_block,1), self._npoint_per_blocks[self.scale])
     remain_index = tf.squeeze(tf.where(remain_mask),1)
     bid_index__pindex_inb = tf.gather(bid_index__pindex_inb, remain_index)
-    point_index = tf.gather(point_index, remain_index)
+    grouped_point_index = tf.gather(grouped_point_index, remain_index)
 
     # (2.5) record sampling parameters
     if self._record_samplings:
       self.record_samplings(npoint_per_block)
 
-    return bid_index__pindex_inb, point_index, block_id_unique
+    return bid_index__pindex_inb, grouped_point_index, block_id_unique
 
 
   def record_samplings(self, npoint_per_block):
@@ -564,6 +564,7 @@ class BlockGroupSampling():
     bid_index_sampling = tf.cond( tf.greater(tmp_nb, 0),
                                  block_not_enough,
                                  block_too_many )
+    bid_index_sampling.set_shape([self._nblocks[self.scale]])
 
     #(3.3) sampling fixed number of blocks when too many blocks are provided
 
@@ -591,9 +592,9 @@ class BlockGroupSampling():
       grouped_pindex = grouped_pindex + first_pindices_dense
 
     grouped_xyz = tf.gather(xyz, grouped_pindex)
-    empty_mask = tf.cast(empty_mask, tf.int8) # to feed into input pipeline
+    #empty_mask = tf.cast(empty_mask, tf.int8) # to feed into input pipeline
 
-    return grouped_xyz, empty_mask, bid_index_sampling
+    return grouped_pindex, grouped_xyz, empty_mask, bid_index_sampling
 
 
   def all_bottom_centers(self, block_id_unique, bid_index_sampling):
@@ -622,7 +623,7 @@ class BlockGroupSampling():
 
     bid_pindex = self.get_block_id(xyz)
     bid_index__pindex_inb, point_index, block_id_unique = self.get_bid_point_index(bid_pindex)
-    grouped_xyz, empty_mask, bid_index_sampling = self.gather_grouped_xyz(
+    grouped_pindex, grouped_xyz, empty_mask, bid_index_sampling = self.gather_grouped_xyz(
                                       bid_index__pindex_inb, point_index, xyz)
     bids_sampling, block_bottom_center = self.all_bottom_centers(block_id_unique, bid_index_sampling)
     if self._check_grouped_xyz_inblock:
@@ -653,7 +654,7 @@ class BlockGroupSampling():
       others['value'] += [bids_sampling]
       others['name'] += ['bids_sampling']
 
-    return grouped_xyz, empty_mask, block_bottom_center, self.nblock_valid, others
+    return grouped_pindex, grouped_xyz, empty_mask, block_bottom_center, self.nblock_valid, others
 
 
   def grouped_mean(self, grouped_xyz, empty_mask):
@@ -684,7 +685,7 @@ class BlockGroupSampling():
 
     if num_scale==None:
       num_scale = self._num_scale
-    new_xyzs = [xyz]
+    grouped_pindex_ms = []
     grouped_xyz_ms = []
     empty_mask_ms = []
     block_bottom_center_ms = []
@@ -692,15 +693,16 @@ class BlockGroupSampling():
     others_ms = []
 
     for s in range(num_scale):
-      grouped_xyz, empty_mask, block_bottom_center, nblock_valid, others = self.grouping(xyz, s)
+      grouped_pindex, grouped_xyz, empty_mask, block_bottom_center, nblock_valid, others = self.grouping(xyz, s)
       xyz = self.valid_block_xyz(grouped_xyz, empty_mask, block_bottom_center, nblock_valid)
 
+      grouped_pindex_ms.append(grouped_pindex)
       grouped_xyz_ms.append(grouped_xyz)
       empty_mask_ms.append(empty_mask)
       block_bottom_center_ms.append(block_bottom_center)
       nblock_valid_ms.append(nblock_valid)
       others_ms.append(others)
-    return grouped_xyz_ms, empty_mask_ms, block_bottom_center_ms, nblock_valid_ms, others_ms
+    return grouped_pindex_ms, grouped_xyz_ms, empty_mask_ms, block_bottom_center_ms, nblock_valid_ms, others_ms
 
 
 def main_eager(DATASET_NAME, filenames, sg_settings, nframes):
@@ -732,10 +734,12 @@ def main_eager(DATASET_NAME, filenames, sg_settings, nframes):
   bsg.show_settings()
 
   xyzs = []
+  grouped_pindexs = []
   grouped_xyzs = []
   empty_masks = []
   others = []
   for s in range(bsg._num_scale):
+    grouped_pindexs.append([])
     grouped_xyzs.append([])
     empty_masks.append([])
     others.append({})
@@ -743,7 +747,7 @@ def main_eager(DATASET_NAME, filenames, sg_settings, nframes):
   for i in range(batch_size):
     points_i = points_next[i,:,:]
 
-    grouped_xyz_i, empty_mask_i, bottom_center_i, nblock_valid_i, others_i = \
+    grouped_pindex_i, grouped_xyz_i, empty_mask_i, bottom_center_i, nblock_valid_i, others_i = \
           bsg.grouping_multi_scale(points_i)
 
     #grouped_xyz_i, empty_mask_i, bottom_center_i, nblock_valid_i, others_i = bsg.grouping(points_i, 0)
@@ -760,6 +764,8 @@ def main_eager(DATASET_NAME, filenames, sg_settings, nframes):
     xyzs.append(np.expand_dims(points_i.numpy(),0))
 
     for s in range(num_scale):
+      grouped_pindex_i[s] = grouped_pindex_i[s].numpy()
+      grouped_pindexs[s].append(np.expand_dims(grouped_xyz_i[s],0))
       grouped_xyz_i[s] = grouped_xyz_i[s].numpy()
       grouped_xyzs[s].append( np.expand_dims(grouped_xyz_i[s], 0) )
       empty_mask_i[s] = empty_mask_i[s].numpy()
