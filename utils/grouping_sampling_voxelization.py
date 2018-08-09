@@ -212,7 +212,20 @@ class BlockGroupSampling():
       bot_cen_top_ms.append(bot_cen_top)
       nblock_valid_ms.append(nblock_valid)
       others_ms.append(others)
+    global_vox_index = self.gen_global_voxelization(bot_cen_top_ms[-1], empty_mask_ms[-1])
+    vox_index_ms.append(global_vox_index)
     return grouped_pindex_ms, vox_index_ms, grouped_center_ms, empty_mask_ms, bot_cen_top_ms, nblock_valid_ms, others_ms
+
+  def gen_global_voxelization(self, bot_cen_top, empty_mask):
+    self.scale += 1
+    bot_min = tf.reduce_min(bot_cen_top[:,0:3], 0)
+    cen_mean = tf.reduce_mean(bot_cen_top[:,3:6], 0)
+    top_max = tf.reduce_max(bot_cen_top[:,6:9], 0)
+    center = (bot_min + top_max) / 2
+    global_bot_cen_top = tf.expand_dims(tf.concat([bot_min, center, top_max],0),0)
+    grouped_bot_cen_top = tf.expand_dims(bot_cen_top, 0)
+    global_vox_index = self.voxelization(grouped_bot_cen_top, global_bot_cen_top, empty_mask)
+    return global_vox_index
 
 
   def grouping(self, scale, bot_cen_top):
@@ -720,9 +733,9 @@ class BlockGroupSampling():
     vox_index0 = grouped_bot_aligned / self._strides[self.scale-1]
     vox_index1 = tf.round(vox_index0)
     vox_index = tf.cast(vox_index1, tf.int32)
-    vox_size = self._vox_sizes[self.scale]
 
     if self._check_voxelization:
+      vox_size = self._vox_sizes[self.scale]
       vox_index_align_err = tf.abs(vox_index0 - vox_index1)
       max_vox_index_align_err = tf.reduce_max(vox_index_align_err)
       check_align = tf.assert_less(max_vox_index_align_err, 1e-5,
@@ -895,7 +908,7 @@ def main_eager(DATASET_NAME, filenames, sg_settings, nframes):
     grouped_pindex_i, vox_index_i, grouped_center_i, empty_mask_i, bot_cen_top_i, nblock_valid_i, others_i = \
           bsg.grouping_multi_scale(points_i)
 
-    test_sparse_to_dense(vox_index_i)
+    #test_sparse_to_dense(vox_index_i)
 
     num_scale = len(grouped_center_i)
     samplings_i = bsg.samplings
@@ -994,6 +1007,7 @@ def check_sg_setting_for_vox(sg_settings):
     vox_size_err = np.max(np.abs(vox_size0-vox_size))
     assert vox_size_err < 1e-5, "the sg_settings cannot do Voxelization"
     vox_sizes.append(vox_size)
+  vox_sizes.append(np.array([6,6,6]).astype(np.int32))
   sg_settings['vox_size'] = vox_sizes
   return sg_settings
 
