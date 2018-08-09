@@ -38,7 +38,7 @@ DEFAULTS['lr_warmup'] = 0
 DEFAULTS['batch_norm_decay0'] = 0.7
 
 DEFAULTS['model_flag'] = 'V'
-DEFAULTS['resnet_size'] = 26
+DEFAULTS['resnet_size'] = 16
 DEFAULTS['feed_data'] = 'xyzs'
 DEFAULTS['use_xyz'] = 1
 DEFAULTS['aug_types'] = 'N' # 'rpsfj-360_0_0'
@@ -193,9 +193,9 @@ def get_block_paras_bottle_regu(resnet_size, model_flag, block_style):
       num_filters0s[rs] = 32
       block_sizes[rs]    = [[1,1], [1,1], [1,1,1]]
       block_filters[rs] = [[32,64], [128,128], [128,256,512]]
-      block_kernels[rs]  = [[], [3,1], [3,3,3]]
+      block_kernels[rs]  = [[], [3,3], [3,3,3]]
       block_strides[rs]  = [[], [1,1], [1,1,1]]
-      block_paddings[rs] = [[], ['v','s'], ['v','v','v']]
+      block_paddings[rs] = [[], ['v','v'], ['v','v','v']]
 
       rs = 24
       num_filters0s[rs] = 32

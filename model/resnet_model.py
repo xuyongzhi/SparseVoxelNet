@@ -326,6 +326,10 @@ bnd optimizer block_config\n'
     elif len(inputs.shape) == 4:
       conv_fn = tf.layers.conv2d
       self._conv2d_num += 1
+    else:
+      import pdb; pdb.set_trace()  # XXX BREAKPOINT
+      pass
+      raise NotImplementedError
 
     inputs, padding = self.padding2d3d(inputs, kernels, strides, padding_s1)
 
@@ -920,11 +924,11 @@ class Model(ResConvOps):
     self.net_num_scale = len(self.data_net_configs['block_params']['filters'])
     self.sg_num_scale = len(self.data_net_configs['sg_settings']['width'])
     assert self.sg_num_scale + 1 == self.net_num_scale
-    for key in ['feed_data', 'data_idxs','flatten_bm_extract_idx',
-                'sub_block_step_candis','xyz_elements','sub_block_stride_candis',
-                'dataset_name','global_step']:
+    for key in ['feed_data', 'sg_settings', 'data_metas',
+                'xyz_elements']:
       setattr(self, key, self.data_net_configs[key])
 
+    self.data_idxs = self.data_metas['data_idxs']
     for e in self.feed_data:
       assert e in self.data_idxs
     IsAllInputs = len(self.data_idxs) == len(self.feed_data)
@@ -1013,7 +1017,8 @@ class Model(ResConvOps):
   def pre_pro_inputs(self, inputs_dic):
     inputs_dic1 = {}
     inputs_dic1['points'] = inputs_dic['points']
-    items = ['grouped_pindex','grouped_xyz', 'empty_mask', 'block_bottom_center']
+    items = ['grouped_pindex','grouped_xyz', 'empty_mask', 'bot_cen_top',
+             'vox_index']
     for item in items:
       inputs_dic1[item] = []
       for s in range(self.sg_num_scale):
@@ -1042,7 +1047,8 @@ class Model(ResConvOps):
             inputs_dic['grouped_xyz'],
             inputs_dic['grouped_pindex'],
             inputs_dic['empty_mask'],
-            inputs_dic['block_bottom_center'],
+            inputs_dic['bot_cen_top'],
+            inputs_dic['vox_index'],
             is_training)
     else:
       eval_views = inputs_dic['points'].shape[1].value
@@ -1085,8 +1091,8 @@ class Model(ResConvOps):
       self.model_log_f.close()
     return outputs
 
-  def _call(self, inputs, grouped_xyz_ms, grouped_pindex_ms, empty_mask_ms, block_bottom_center_ms,
-            is_training, eval_views=-1):
+  def _call(self, inputs, grouped_xyz_ms, grouped_pindex_ms, empty_mask_ms,
+            bot_cen_top_ms, vox_index_ms, is_training, eval_views=-1):
 
     tf.add_to_collection('raw_inputs', inputs)
     if self.IsShowModel: self.log('')
@@ -1114,16 +1120,16 @@ class Model(ResConvOps):
         new_points = tf.transpose(new_points, [0, 2, 1])
 
       for k in range(self.net_num_scale):
-          #block_bottom_center_mm = b_bottom_centers_mm[k]
-          #block_bottom_center_mm = tf.cast(block_bottom_center_mm, tf.float32)
+          #bot_cen_top_mm = b_bottom_centers_mm[k]
+          #bot_cen_top_mm = tf.cast(bot_cen_top_mm, tf.float32)
 
           if self.block_style == 'PointNet':
             l_xyz, new_points, root_point_features = self.pointnet2_module(k, l_xyz,
-                          new_points, sg_bidxmap_k, block_bottom_center_mm )
+                          new_points, sg_bidxmap_k, bot_cen_top_mm )
           else:
             new_points, root_point_features = self.res_sa_module(k,
                             new_points, grouped_xyz_ms[k], grouped_pindex_ms[k],
-                            empty_mask_ms[k], block_bottom_center_ms[k] )
+                            empty_mask_ms[k], bot_cen_top_ms[k], vox_index_ms[k] )
 
           if k == 0:
               l_points[0] = root_point_features
@@ -1189,11 +1195,11 @@ class Model(ResConvOps):
       return grouped_points
 
   def cat_xyz_elements(self, scale, grouped_xyz,
-                       block_bottom_center, grouped_points):
+                       bot_cen_top, grouped_points):
     if self.mean_grouping_position and (not self.voxel3d):
       sub_block_mid = tf.reduce_mean(grouped_xyz, 2, keepdims=True)
     else:
-      sub_block_mid = tf.expand_dims(block_bottom_center[:,:,3:6], 2)
+      sub_block_mid = tf.expand_dims(bot_cen_top[:,:,3:6], 2)
     global_block_mid = tf.reduce_mean( sub_block_mid,1, keepdims=True, name = 'global_block_mid' )
     grouped_xyz_submid = grouped_xyz - sub_block_mid
     grouped_xyz_glomid = grouped_xyz - global_block_mid
@@ -1231,22 +1237,26 @@ class Model(ResConvOps):
           self.log_tensor_p(grouped_points, 'use xyz', 'cas%d'%(scale))
     return grouped_points
 
+
   def res_sa_module(self, scale, points, grouped_xyz,
-                      grouped_pindex,  empty_mask, block_bottom_center ):
+                      grouped_pindex,  empty_mask, bot_cen_top, vox_index ):
     with tf.variable_scope('scale_%d'%(scale)):
       if scale < self.net_num_scale-1:
         grouped_points = Model.grouping_online(points, grouped_pindex)
         grouped_points = self.cat_xyz_elements(scale, grouped_xyz,
-                                            block_bottom_center, grouped_points)
+                                            bot_cen_top, grouped_points)
       else:
         grouped_points = tf.expand_dims(points, -2)
 
       if scale == 0:
         grouped_points = self.initial_layer(grouped_points)
       else:
-        if self.voxel3d:
-          grouped_points = self.grouped_points_to_voxel_points( scale, grouped_points,
-                            empty_mask, block_bottom_center, grouped_xyz)
+        if self.voxel3d and scale < self.net_num_scale-1:
+            grouped_points = self.voxelization(scale, grouped_points,
+                                               vox_index, empty_mask)
+        else:
+          import pdb; pdb.set_trace()  # XXX BREAKPOINT
+          pass
 
       outputs = self.res_sa_model(scale, grouped_points)
 
@@ -1274,13 +1284,13 @@ class Model(ResConvOps):
           tmp = tmp[0]*tmp[1]*tmp[2]
           # Except the last cascade, the voxel size should be reduced to 1
           if scale != self.net_num_scale-1:
-            assert tmp==1
+            assert tmp==1, "Network design not match grouping configuration"
           else:
-            assert outputs.shape[0].value == batch_size # global block
+            assert outputs.shape[0].value == self.batch_size # global block
           if self.data_format=='channels_last':
-            outputs = tf.reshape(outputs, [batch_size,-1,outputs.shape[-1].value])
+            outputs = tf.reshape(outputs, [self.batch_size,-1,outputs.shape[-1].value])
           else:
-            outputs = tf.reshape(outputs, [batch_size,outputs.shape[1].value,-1])
+            outputs = tf.reshape(outputs, [self.batch_size,outputs.shape[1].value,-1])
 
       return outputs, root_point_features
 
@@ -1327,13 +1337,13 @@ class Model(ResConvOps):
         self.block_num_count += 1
       return inputs
 
-  def pointnet2_module(self, scale, xyz, points, bidmap, block_bottom_center_mm):
+  def pointnet2_module(self, scale, xyz, points, bidmap, bot_cen_top_mm):
     with tf.variable_scope('sa_%d'%(scale)):
       if self.IsShowModel:
         self.log('-------------------  scale %d  ---------------------'%(scale))
       if self.net_num_scale > 1+scale:
         new_xyz, grouped_xyz_feed, inputs, valid_mask = self.grouping(scale, xyz,
-                          points, bidmap, block_bottom_center_mm)
+                          points, bidmap, bot_cen_top_mm)
         assert len(inputs.shape)==4
       else:
         inputs = tf.expand_dims(xyz, 1)
@@ -1353,7 +1363,7 @@ class Model(ResConvOps):
 
       return new_xyz, outputs, None
 
-  def grouping(self, scale, xyz, points, bidmap, block_bottom_center_mm):
+  def grouping(self, scale, xyz, points, bidmap, bot_cen_top_mm):
     if self.data_format == 'channels_first':
       points = tf.transpose(points, [0, 2, 1])
 
@@ -1364,7 +1374,7 @@ class Model(ResConvOps):
 
     assert len(xyz.shape) == 3
     if not ( len(xyz.shape) == len(points.shape) == len(bidmap.shape) == \
-            len(block_bottom_center_mm.shape) == 3 ):
+            len(bot_cen_top_mm.shape) == 3 ):
       assert False, "grouping"
 
     if bidmap==None:
@@ -1398,10 +1408,10 @@ class Model(ResConvOps):
     if self.mean_grouping_position and (not self.voxel3d):
         new_xyz = my_reduce_mean(grouped_xyz)
     else:
-        new_xyz = block_bottom_center_mm[:,:,3:6] * tf.constant( 0.001, tf.float32 )
+        new_xyz = bot_cen_top_mm[:,:,3:6] * tf.constant( 0.001, tf.float32 )
     tf.add_to_collection('grouped_xyz_COLC', grouped_xyz)
     tf.add_to_collection('new_xyz_COLC', new_xyz)
-    tf.add_to_collection('block_bottom_center_COLC', block_bottom_center_mm * tf.constant( 0.001, tf.float32 ))
+    tf.add_to_collection('bot_cen_top_COLC', bot_cen_top_mm * tf.constant( 0.001, tf.float32 ))
     # the mid can be mean or block center, decided by configs['mean_grouping_position']
     sub_block_mid = tf.expand_dims( new_xyz,-2, name = 'sub_block_mid' )   # gpu_1/sa_layer0/sub_block_mid
     global_block_mid = tf.reduce_mean( sub_block_mid,1, keepdims=True, name = 'global_block_mid' )
@@ -1454,7 +1464,7 @@ class Model(ResConvOps):
       new_points = tf.transpose(new_points, [0, 3, 1, 2])
     return new_xyz, grouped_xyz, new_points, valid_mask
 
-  def grouped_points_to_voxel_points (self, scale, new_points, empty_mask, block_bottom_center, grouped_xyz):
+  def grouped_points_to_voxel_points (self, scale, new_points, empty_mask, bot_cen_top, grouped_xyz):
     import pdb; pdb.set_trace()  # XXX BREAKPOINT
     IS_merge_blocks_while_fix_bmap = True
 
@@ -1472,7 +1482,7 @@ class Model(ResConvOps):
     stride_last = tf.minimum( stride_last_org, self.max_step_stride, name='stride_last' )  # gpu_0/sa_layer1/stride_last:0
     stride_last = tf.expand_dims(stride_last,1)
 
-    voxel_bottom_xyz_mm = block_bottom_center_mm[:,:,0:3]
+    voxel_bottom_xyz_mm = bot_cen_top_mm[:,:,0:3]
     # NOTE: c1=[1,1,1]*0.5 ONLY when the sh5 step is also the same on three dimensions.
     #                      Otherwise, the stride at each cascade may also be changed.
     min_point_bottom_xyz_mm = voxel_bottom_xyz_mm
@@ -1598,4 +1608,32 @@ class Model(ResConvOps):
     self.log_tensor_p(voxel_points, 'voxel', 'cas%d'%(scale))
     return voxel_points
 
+  def voxelization(self, scale, grouped_points, vox_index, empty_mask):
+    gp_size = grouped_points.shape
+    batch_size = gp_size[0]
+    block_num = gp_size[1]
+    point_num = gp_size[2]
+
+    #if scale == self.net_num_scale-1:
+    #  grouped_voxels = tf.reshape(grouped_points, [batch_size*block_num, 1,1,1, gp_size[3]])
+    #  import pdb; pdb.set_trace()  # XXX BREAKPOINT
+    #  return grouped_voxels
+
+    vox_size = self.sg_settings['vox_size'][scale]
+    grouped_vox_size = [batch_size, block_num, vox_size[0], vox_size[1],
+                        vox_size[2], gp_size[3]]
+
+    batch_idx = tf.reshape( tf.range(batch_size),[batch_size,1,1,1] )
+    batch_idx = tf.tile( batch_idx, [1,block_num,point_num,1] )
+    bn_idx = tf.reshape( tf.range(block_num),[1,block_num,1,1] )
+    bn_idx = tf.tile( bn_idx, [batch_size,1,point_num,1] )
+    vox_index = tf.concat( [batch_idx, bn_idx, vox_index], -1 )
+    grouped_voxels = tf.sparse_to_dense( vox_index, grouped_vox_size,
+                      grouped_points, default_value=0, validate_indices=False )
+
+    grouped_vox_size = [batch_size * block_num, vox_size[0], vox_size[1],
+                        vox_size[2], gp_size[3]]
+    grouped_voxels = tf.reshape(grouped_voxels, grouped_vox_size)
+    self.log_tensor_p(grouped_voxels, 'voxel', 'cas%d'%(scale))
+    return grouped_voxels
 

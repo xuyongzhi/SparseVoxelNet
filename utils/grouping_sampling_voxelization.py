@@ -765,7 +765,6 @@ class BlockGroupSampling():
 
 
 
-
 def main(DATASET_NAME, filenames, sg_settings, nframes):
   _DATA_PARAS = get_data_shapes_from_tfrecord(filenames)
   dataset_meta = DatasetsMeta(DATASET_NAME)
@@ -896,6 +895,8 @@ def main_eager(DATASET_NAME, filenames, sg_settings, nframes):
     grouped_pindex_i, vox_index_i, grouped_center_i, empty_mask_i, bot_cen_top_i, nblock_valid_i, others_i = \
           bsg.grouping_multi_scale(points_i)
 
+    test_sparse_to_dense(vox_index_i)
+
     num_scale = len(grouped_center_i)
     samplings_i = bsg.samplings
     samplings_np_ms = []
@@ -945,6 +946,18 @@ def main_eager(DATASET_NAME, filenames, sg_settings, nframes):
 
   return xyzs, grouped_xyzs, others, bsg._shuffle
 
+
+def test_sparse_to_dense(vox_index):
+  vox_index = vox_index[1][0]
+  s0 = vox_index.shape[0]
+  tmp0 = tf.reshape(tf.range(0,s0,1), [s0,1])
+  #vox_index = tf.concat([tmp0, vox_index], -1)
+  value = tf.range(0,s0,1)+11
+  dense = tf.sparse_to_dense(vox_index, [5,5,5], value, validate_indices=False)
+
+  print(dense)
+  import pdb; pdb.set_trace()  # XXX BREAKPOINT
+  pass
 
 def gen_plys(DATASET_NAME, frame, points, grouped_xyz, bottom_center, bids_sampling, valid_flag='', main_flag=''):
   print('bids_sampling: {}'.format(bids_sampling))

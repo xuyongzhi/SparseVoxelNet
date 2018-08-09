@@ -170,6 +170,20 @@ def check_data():
         pass
 
 
+
+def get_data_meta(data_dir):
+  global _DATA_PARAS
+  data_idxs = {}
+  data_idxs['xyz'] = np.array([0,1,2]).astype(np.int32)
+  data_idxs['nxnynz'] = np.array([3,4,5]).astype(np.int32)
+
+  data_metas = {}
+  data_metas['data_idxs'] = data_idxs
+  data_metas['dataset_name'] = DATASET_NAME
+
+  _DATA_PARAS['data_metas'] = data_metas
+
+
 def get_data_meta_from_hdf5(data_dir):
   global _DATA_PARAS
   from datasets.block_data_prep_util import GlobalSubBaseBLOCK
@@ -486,7 +500,8 @@ def define_modelnet_flags():
   flags.DEFINE_integer('gpu_id',DEFAULTS['gpu_id'],'')
   flags.DEFINE_float('steps_per_epoch',
                      _NUM_IMAGES['train']/DEFAULTS['batch_size'],'')
-  get_data_meta_from_hdf5(data_dir)
+  #get_data_meta_from_hdf5(data_dir)
+  get_data_meta(data_dir)
   get_data_shapes_from_tfrecord(data_dir)
 
 

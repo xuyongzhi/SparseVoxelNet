@@ -192,14 +192,14 @@ def parse_pl_record(tfrecord_serialized, is_training, data_shaps=None, bsg=None)
       if data_shaps != None and data_shaps['aug_types']!='none':
         points, b_bottom_centers_mm, augs = aug_main(points, b_bottom_centers_mm,
                     data_shaps['aug_types'],
-                    data_shaps['data_idxs'])
+                    data_shaps['data_metas']['data_idxs'])
         #features['augs'] = augs
     else:
       if data_shaps!=None and 'eval_views' in data_shaps and data_shaps['eval_views'] > 1:
         #features['eval_views'] = data_shaps['eval_views']
         points, b_bottom_centers_mm, augs = aug_views(points, b_bottom_centers_mm,
                     data_shaps['eval_views'],
-                    data_shaps['data_idxs'])
+                    data_shaps['data_metas']['data_idxs'])
     features['points'] = points
     # ------------------------------------------------
     #             grouping and sampling on line
