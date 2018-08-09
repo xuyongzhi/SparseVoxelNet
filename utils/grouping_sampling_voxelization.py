@@ -212,11 +212,12 @@ class BlockGroupSampling():
       bot_cen_top_ms.append(bot_cen_top)
       nblock_valid_ms.append(nblock_valid)
       others_ms.append(others)
-    global_vox_index = self.gen_global_voxelization(bot_cen_top_ms[-1], empty_mask_ms[-1])
+    global_vox_index, global_empty_mask = self.gen_global_voxelization(bot_cen_top_ms[-1], empty_mask_ms[-1], nblock_valid_ms[-1])
     vox_index_ms.append(global_vox_index)
+    empty_mask_ms.append(global_empty_mask)
     return grouped_pindex_ms, vox_index_ms, grouped_center_ms, empty_mask_ms, bot_cen_top_ms, nblock_valid_ms, others_ms
 
-  def gen_global_voxelization(self, bot_cen_top, empty_mask):
+  def gen_global_voxelization(self, bot_cen_top, empty_mask, nblock_valid):
     self.scale += 1
     bot_min = tf.reduce_min(bot_cen_top[:,0:3], 0)
     cen_mean = tf.reduce_mean(bot_cen_top[:,3:6], 0)
@@ -225,7 +226,14 @@ class BlockGroupSampling():
     global_bot_cen_top = tf.expand_dims(tf.concat([bot_min, center, top_max],0),0)
     grouped_bot_cen_top = tf.expand_dims(bot_cen_top, 0)
     global_vox_index = self.voxelization(grouped_bot_cen_top, global_bot_cen_top, empty_mask)
-    return global_vox_index
+
+    global_empty_mask0 = tf.cast(tf.ones([nblock_valid], tf.int8), tf.bool)
+    nblock = global_vox_index.shape[1].value
+    global_empty_mask1 = tf.cast(tf.zeros([nblock - nblock_valid], tf.int8), tf.bool)
+    global_empty_mask = tf.concat([global_empty_mask0, global_empty_mask1],0)
+    global_empty_mask.set_shape([nblock])
+    global_empty_mask = tf.reshape(global_empty_mask, [1,-1])
+    return global_vox_index, global_empty_mask
 
 
   def grouping(self, scale, bot_cen_top):

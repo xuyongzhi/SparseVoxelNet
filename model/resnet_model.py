@@ -200,9 +200,9 @@ bnd optimizer block_config\n'
 
       self.key_paras_str = key_para_names + key_paras_str
 
-      items_to_write = ['model_flag', 'block_config_str', 'dataset_name', 'aug_types', 'drop_imo', \
-        'feed_data', 'xyz_elements', 'points', 'global_step','global_stride',\
-        'sub_block_stride_candis', 'sub_block_step_candis','optimizer',\
+      items_to_write = ['model_flag', 'block_config_str',  'aug_types', 'drop_imo', \
+        'feed_data', 'xyz_elements', 'points', \
+        'optimizer',\
         'learning_rate0', 'lr_decay_rate', 'batch_norm_decay0', 'lr_vals', \
         'bndecay_vals', 'use_bias', 'shortcut',\
         'weight_decay', 'resnet_size', 'data_dir', 'label_num_weights']
@@ -1021,9 +1021,11 @@ class Model(ResConvOps):
              'vox_index']
     for item in items:
       inputs_dic1[item] = []
-      for s in range(self.sg_num_scale):
-        inputs_dic1[item].append(inputs_dic[item+'_%d'%(s)])
-      inputs_dic1[item].append([])
+      for s in range(self.sg_num_scale+1):
+        if item+'_%d'%(s) in inputs_dic:
+          inputs_dic1[item].append(inputs_dic[item+'_%d'%(s)])
+        else:
+          inputs_dic1[item].append([])
     return inputs_dic1
 
   def __call__(self, inputs_dic, is_training):
@@ -1246,17 +1248,14 @@ class Model(ResConvOps):
         grouped_points = self.cat_xyz_elements(scale, grouped_xyz,
                                             bot_cen_top, grouped_points)
       else:
-        grouped_points = tf.expand_dims(points, -2)
+        grouped_points = tf.expand_dims(points, 1)
 
       if scale == 0:
         grouped_points = self.initial_layer(grouped_points)
       else:
-        if self.voxel3d and scale < self.net_num_scale-1:
-            grouped_points = self.voxelization(scale, grouped_points,
-                                               vox_index, empty_mask)
-        else:
-          import pdb; pdb.set_trace()  # XXX BREAKPOINT
-          pass
+        if self.voxel3d:
+          grouped_points = self.voxelization(scale, grouped_points,
+                                              vox_index, empty_mask)
 
       outputs = self.res_sa_model(scale, grouped_points)
 
