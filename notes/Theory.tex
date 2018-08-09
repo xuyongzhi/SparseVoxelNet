@@ -88,24 +88,27 @@ $$ s: stride $$
 $$ n: point\ number\ per\ block $$
 Note: do not need a parameter of padding. The containing relation should always be absolutely containing. The padding operation like CNN can be achieved just set lower limit of j.\par
 The scope of block j is: $[sj,sj+w]$ \par
-$$ sj \leq P_i < sj+w $$
-$$ \frac{P_i-w}{s} < j \leq \frac{P_i}{s} $$
-$$ L = \frac{P_i-w}{s} $$ 
-$$ j_L = ceil(L)\ if\ L\ is\ float\ otherwise\ L+1 $$
+Let intersection point to be in both blocks.\par
+$$ sj \leq P_i \leq sj+w $$
+$$ \frac{P_i-w}{s} \leq j \leq \frac{P_i}{s} $$
+
+$$ j_L = ceil(\frac{P_i-w}{s}) $$
 $$ j_U =  floor( \frac{P_i}{s}) $$
 $$ j:range(j_L, j_U+1) $$
-Note: Simplify programming of $j_L$:
-$$j_L=ceil(L+1^{-5})$$
+To allow a bit drift of float:
+$$ j_L = ceil(\frac{P_i-w}{s} - 1^{-5}) $$
+$$ j_U =  floor( \frac{P_i}{s} + 1^{-5}) $$
+
 
 \subsubsection{block in block}
 On scale 0, the scope of block $j_0$ is: $[s_0j_0,s_0j_0+w_0]$ \par
 On scale 1, the scope of block $j_1$ is: $[s_1j_1,s_1j_1+w_1]$ \par
 Block $j_0$ is inside of block $j_1$.
 $$ s_1j_1 \leq s_0j_0 = L_0$$
-$$ U_0=s_0j_0+w_0 < s_1j_1+w_1 $$
-$$ \frac{U_0-w_1}{s_1} = \frac{s_0j_0+w_0-w_1}{s_1} < j_1 \leq \frac{s_0j_0}{s_1} = \frac{L_0}{s_1}$$
-$$j_{1L}=ceil(\frac{s_0j_0+w_0-w_1}{s_1} +1^{-5}) = ceil(\frac{U_0-w_1}{s_1}+1^{-5})$$
-$$j_{1U} = floor(\frac{s_0j_0}{s_1}) = floor(\frac{L_0}{s_1})$$
+$$ U_0=s_0j_0+w_0 \leq  s_1j_1+w_1 $$
+$$ \frac{U_0-w_1}{s_1}  \leq j_1 \leq \frac{L_0}{s_1}$$
+$$j_{1L}= ceil(\frac{U_0-w_1}{s_1}-1^{-5})$$
+$$j_{1U} = floor(\frac{L_0}{s_1}+1^{-5})$$
 
 \subsubsection{block index bound by whole raw points scope}
 The scope of all points are $[P_{min}, P_{max}]$. The scope of all block index is $[j_l, j_u]$.
