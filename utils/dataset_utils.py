@@ -204,14 +204,15 @@ def parse_pl_record(tfrecord_serialized, is_training, data_shaps=None, bsg=None)
     # ------------------------------------------------
     #             grouping and sampling on line
     if bsg!=None:
-      grouped_pindex, grouped_xyz, empty_mask, block_bottom_center, nblock_valid, others = \
+      grouped_pindex, vox_index, grouped_xyz, empty_mask, bot_cen_top, nblock_valid, others = \
                         bsg.grouping_multi_scale(points[:,0:3])
       num_scale = len(grouped_xyz)
       for s in range(num_scale):
         features['grouped_pindex_%d'%(s)] = grouped_pindex[s]
         features['grouped_xyz_%d'%(s)] = grouped_xyz[s]
         features['empty_mask_%d'%(s)] = tf.cast(empty_mask[s], tf.int8)
-        features['block_bottom_center_%d'%(s)] = block_bottom_center[s]
+        features['bot_cen_top_%d'%(s)] = bot_cen_top[s]
+        features['vox_index_%d'%(s)] = vox_index[s]
         for k in range(len(others[s]['name'])):
           name = others[s]['name'][k]+'_%d'%(s)
           if name not in features:
@@ -337,9 +338,9 @@ def extract_sg_bidxmap(sg_all_bidxmaps, sg_bm_extract_idx):
     start = sg_bm_extract_idx[k]
     end = sg_bm_extract_idx[k+1]
     sg_bidxmap_k = sg_all_bidxmaps[ start[0]:end[0],0:end[1] ]
-    block_bottom_center_mm = sg_all_bidxmaps[ start[0]:end[0],end[1]:end[1]+6 ]
+    bot_cen_top_mm = sg_all_bidxmaps[ start[0]:end[0],end[1]:end[1]+6 ]
     sg_bidxmaps[k] = sg_bidxmap_k
-    b_bottom_centers_mm[k] = block_bottom_center_mm
+    b_bottom_centers_mm[k] = bot_cen_top_mm
   return sg_bidxmaps, b_bottom_centers_mm
 
 def get_dataset_summary(DATASET_NAME, path, loss_lw_gama=2):

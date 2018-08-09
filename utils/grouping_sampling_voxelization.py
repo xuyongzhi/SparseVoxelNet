@@ -120,6 +120,7 @@ def permutation_combination_3D(up_bound_3d, low_bound_3d=[0,0,0]):
   return pairs_3d
 
 
+
 class BlockGroupSampling():
   def __init__(self, sg_settings ):
     '''
@@ -169,7 +170,7 @@ class BlockGroupSampling():
     # debug flags
     self._shuffle = True
     self._use_less_points_block_when_not_enough = True
-    self._bound_bindex_by_rawxyzscope = False
+    self._bound_bindex_by_rawxyzscope = True
     # Theoretically, num_block_per_point should be same for all. This is 0.
     self._check_nblock_per_points_same = True # (optional)
 
@@ -179,6 +180,99 @@ class BlockGroupSampling():
     self._debug_only_blocks_few_points = False
     self.debugs = {}
     self._gen_ply = sg_settings['gen_ply']
+
+
+  def grouping_multi_scale(self, xyz, num_scale=None):
+    self.xyz_max = tf.reduce_max(xyz, 0)
+    self.xyz_min = tf.reduce_min(xyz, 0)
+
+    if num_scale==None:
+      num_scale = self._num_scale
+    grouped_pindex_ms = []
+    vox_index_ms = []
+    grouped_center_ms = []
+    empty_mask_ms = []
+    bot_cen_top_ms = []
+    nblock_valid_ms = []
+    others_ms = []
+
+    bot_cen_top = tf.tile(xyz, [1,3])
+    for s in range(num_scale):
+      grouped_pindex, vox_index, grouped_center, empty_mask, bot_cen_top, nblock_valid, others = \
+          self.grouping(s, bot_cen_top)
+      #bot_cen_top = tf.cond( tf.greater( bot_cen_top.shape[0],nblock_valid ),
+      #                       lambda: bot_cen_top[0:nblock_valid,:],
+      #                       lambda: bot_cen_top )
+      #center, bottom = self.valid_block_pos(empty_mask, bot_cen_top, nblock_valid)
+
+      grouped_pindex_ms.append(grouped_pindex)
+      vox_index_ms.append(vox_index)
+      grouped_center_ms.append(grouped_center)
+      empty_mask_ms.append(empty_mask)
+      bot_cen_top_ms.append(bot_cen_top)
+      nblock_valid_ms.append(nblock_valid)
+      others_ms.append(others)
+    return grouped_pindex_ms, vox_index_ms, grouped_center_ms, empty_mask_ms, bot_cen_top_ms, nblock_valid_ms, others_ms
+
+
+  def grouping(self, scale, bot_cen_top):
+    '''
+    bottom_center: (num_point0, 6)
+    grouped_xyz: (num_block,npoint_per_block,3)
+
+    Search by point: for each point in xyz, find all the block d=ids
+    '''
+    self.scale = scale
+    assert len(bot_cen_top.shape) == 2
+    if not bot_cen_top.shape[-1].value == 9:
+      import pdb; pdb.set_trace()  # XXX BREAKPOINT
+      pass
+    t0 = tf.timestamp()
+
+    self._widths[self.scale]
+    bid_pindex = self.get_block_id(bot_cen_top)
+
+    bid_index__pindex_inb, point_index, block_id_unique = self.get_bid_point_index(bid_pindex)
+
+    grouped_pindex, empty_mask, bid_index_sampling = self.gather_grouped_xyz(
+                                      bid_index__pindex_inb, point_index)
+
+    grouped_bot_cen_top = tf.gather(bot_cen_top, grouped_pindex)
+    grouped_center = grouped_bot_cen_top[:,:,3:6]
+
+    bids_sampling, out_bot_cen_top = self.all_bot_cen_tops(block_id_unique, bid_index_sampling)
+
+    if self._check_binb:
+      gb_in_outb_mask, nerr_gb_in_ob = self.check_block_inblock(grouped_bot_cen_top, out_bot_cen_top, empty_mask)
+      with tf.control_dependencies([tf.assert_equal(nerr_gb_in_ob, 0)]):
+        grouped_center = tf.identity(grouped_center)
+
+    vox_index = self.voxelization(grouped_bot_cen_top, out_bot_cen_top, empty_mask)
+
+    if self._record_samplings:
+      self.samplings[self.scale]['t_per_frame_'] += tf.timestamp() - t0
+    # **************************************************************************
+    #       Add middle tensors to check between graph model and eager model
+    others = {}
+    others['value'] = []
+    others['name'] = []
+    #point_index_O = tf.concat([point_index, tf.zeros(self.npoint_grouped-tf.shape(point_index),tf.int32)],0)
+    #bid_index__pindex_inb_O = tf.concat([bid_index__pindex_inb,
+    #        tf.zeros([self.npoint_grouped-tf.shape(bid_index__pindex_inb)[0],2],tf.int32)],0)
+    #others['value'] += [bid_pindex, bid_index__pindex_inb_O, point_index_O]
+    #others['name'] += ['bid_pindex', 'bid_index__pindex_inb', 'point_index']
+
+    #block_id_unique_O = tf.concat([block_id_unique, tf.zeros(1000-tf.shape(block_id_unique),tf.int32)],0)
+    #bid_index_sampling_O = tf.concat([bid_index_sampling, tf.zeros(1000-tf.shape(bid_index_sampling),tf.int32)],0)
+    #others['value'] += [block_id_unique_O, bid_index_sampling_O]
+    #others['name'] += ['block_id_unique', 'bid_index_sampling']
+    #others['value'] += [self.grouped_pindex0]
+    #others['name'] += ['grouped_pindex0']
+    if self._gen_ply:
+      others['value'] += [bids_sampling]
+      others['name'] += ['bids_sampling']
+
+    return grouped_pindex, vox_index, grouped_center, empty_mask, out_bot_cen_top, self.nblock_valid, others
 
 
   def show_settings(self):
@@ -603,7 +697,7 @@ class BlockGroupSampling():
     return grouped_pindex, empty_mask, bid_index_sampling
 
 
-  def all_bottom_centers(self, block_id_unique, bid_index_sampling):
+  def all_bot_cen_tops(self, block_id_unique, bid_index_sampling):
     '''
     block_id_unique: (self.nblock,)
     bid_index_sampling: (self._nblock,)
@@ -643,64 +737,6 @@ class BlockGroupSampling():
     return vox_index
 
 
-  def grouping(self, scale, bot_cen_top):
-    '''
-    bottom_center: (num_point0, 6)
-    grouped_xyz: (num_block,npoint_per_block,3)
-
-    Search by point: for each point in xyz, find all the block d=ids
-    '''
-    self.scale = scale
-    assert len(bot_cen_top.shape) == 2
-    assert bot_cen_top.shape[-1].value == 9
-    t0 = tf.timestamp()
-
-    self._widths[self.scale]
-    bid_pindex = self.get_block_id(bot_cen_top)
-
-    bid_index__pindex_inb, point_index, block_id_unique = self.get_bid_point_index(bid_pindex)
-
-    grouped_pindex, empty_mask, bid_index_sampling = self.gather_grouped_xyz(
-                                      bid_index__pindex_inb, point_index)
-
-    grouped_bot_cen_top = tf.gather(bot_cen_top, grouped_pindex)
-    grouped_center = grouped_bot_cen_top[:,:,3:6]
-
-    bids_sampling, out_bot_cen_top = self.all_bottom_centers(block_id_unique, bid_index_sampling)
-
-    if self._check_binb:
-      gb_in_outb_mask, nerr_gb_in_ob = self.check_block_inblock(grouped_bot_cen_top, out_bot_cen_top, empty_mask)
-      with tf.control_dependencies(tf.assert_equal(nerr_gb_in_ob, 0)):
-        grouped_center = tf.identity(grouped_center)
-
-    self.voxelization(grouped_bot_cen_top, out_bot_cen_top, empty_mask)
-
-    if self._record_samplings:
-      self.samplings[self.scale]['t_per_frame_'] += tf.timestamp() - t0
-    # **************************************************************************
-    #       Add middle tensors to check between graph model and eager model
-    others = {}
-    others['value'] = []
-    others['name'] = []
-    #point_index_O = tf.concat([point_index, tf.zeros(self.npoint_grouped-tf.shape(point_index),tf.int32)],0)
-    #bid_index__pindex_inb_O = tf.concat([bid_index__pindex_inb,
-    #        tf.zeros([self.npoint_grouped-tf.shape(bid_index__pindex_inb)[0],2],tf.int32)],0)
-    #others['value'] += [bid_pindex, bid_index__pindex_inb_O, point_index_O]
-    #others['name'] += ['bid_pindex', 'bid_index__pindex_inb', 'point_index']
-
-    #block_id_unique_O = tf.concat([block_id_unique, tf.zeros(1000-tf.shape(block_id_unique),tf.int32)],0)
-    #bid_index_sampling_O = tf.concat([bid_index_sampling, tf.zeros(1000-tf.shape(bid_index_sampling),tf.int32)],0)
-    #others['value'] += [block_id_unique_O, bid_index_sampling_O]
-    #others['name'] += ['block_id_unique', 'bid_index_sampling']
-    #others['value'] += [self.grouped_pindex0]
-    #others['name'] += ['grouped_pindex0']
-    if self._gen_ply:
-      others['value'] += [bids_sampling]
-      others['name'] += ['bids_sampling']
-
-    return grouped_pindex, grouped_center, empty_mask, out_bot_cen_top, self.nblock_valid, others
-
-
   def grouped_mean(self, grouped_xyz, empty_mask):
     valid_mask = 1-empty_mask
     valid_num = tf.expand_dims(tf.cast( tf.reduce_sum(valid_mask, 1), tf.float32),1)
@@ -728,33 +764,6 @@ class BlockGroupSampling():
     return valid_block_center, valid_block_bottom
 
 
-  def grouping_multi_scale(self, xyz, num_scale=None):
-    self.xyz_max = tf.reduce_max(xyz, 0)
-    self.xyz_min = tf.reduce_min(xyz, 0)
-
-    if num_scale==None:
-      num_scale = self._num_scale
-    grouped_pindex_ms = []
-    grouped_center_ms = []
-    empty_mask_ms = []
-    bot_cen_top_ms = []
-    nblock_valid_ms = []
-    others_ms = []
-
-    bot_cen_top = tf.tile(xyz, [1,3])
-    for s in range(num_scale):
-      grouped_pindex, grouped_center, empty_mask, bot_cen_top, nblock_valid, others = \
-          self.grouping(s, bot_cen_top)
-      bot_cen_top = bot_cen_top[:,0:nblock_valid]
-      #center, bottom = self.valid_block_pos(empty_mask, bot_cen_top, nblock_valid)
-
-      grouped_pindex_ms.append(grouped_pindex)
-      grouped_center_ms.append(grouped_center)
-      empty_mask_ms.append(empty_mask)
-      bot_cen_top_ms.append(bot_cen_top)
-      nblock_valid_ms.append(nblock_valid)
-      others_ms.append(others)
-    return grouped_pindex_ms, grouped_center_ms, empty_mask_ms, bot_cen_top_ms, nblock_valid_ms, others_ms
 
 
 def main(DATASET_NAME, filenames, sg_settings, nframes):
@@ -786,16 +795,20 @@ def main(DATASET_NAME, filenames, sg_settings, nframes):
     features_next, label_next = get_next
 
     points_next = features_next['points']
+    grouped_pindex_next = []
+    vox_index_next = []
     grouped_xyz_next = []
     empty_mask_next = []
-    bottom_center_next = []
+    bot_cen_top_next = []
     others_next = []
 
     num_scale = bsg._num_scale
     for s in range(num_scale):
+      grouped_pindex_next.append(features_next['grouped_pindex_%d'%(s)])
+      vox_index_next.append(features_next['vox_index_%d'%(s)])
       grouped_xyz_next.append(features_next['grouped_xyz_%d'%(s)])
       empty_mask_next.append(features_next['empty_mask_%d'%(s)])
-      bottom_center_next.append(features_next['block_bottom_center_%d'%(s)])
+      bot_cen_top_next.append(features_next['bot_cen_top_%d'%(s)])
 
       others_next.append({})
       for name in ['bids_sampling']:
@@ -814,8 +827,8 @@ def main(DATASET_NAME, filenames, sg_settings, nframes):
 
       #points_i = sess.run(points_next)
 
-      points, grouped_xyzs, empty_masks, bottom_centers, others = \
-        sess.run([points_next, grouped_xyz_next, empty_mask_next, bottom_center_next, others_next] )
+      points, grouped_pindex, vox_index, grouped_xyzs, empty_masks, bot_cen_tops, others = \
+        sess.run([points_next, grouped_pindex_next, vox_index_next, grouped_xyz_next, empty_mask_next, bot_cen_top_next, others_next] )
 
       #bsg.show_samplings_np(samplings)
       xyzs = points[:,:,0:3]
@@ -830,7 +843,7 @@ def main(DATASET_NAME, filenames, sg_settings, nframes):
             if not bsg._shuffle:
               valid_flag += '_NoShuffle'
             bids_sampling = others[s]['bids_sampling_%d'%(s)][frame,0]
-            gen_plys(DATASET_NAME, frame, points[frame], grouped_xyzs[s][frame], bottom_centers[s][frame],\
+            gen_plys(DATASET_NAME, frame, points[frame], grouped_xyzs[s][frame], bot_cen_tops[s][frame],\
                       bids_sampling, valid_flag, 'S%d'%(s))
 
     return xyzs, grouped_xyzs, others, bsg._shuffle
@@ -866,11 +879,13 @@ def main_eager(DATASET_NAME, filenames, sg_settings, nframes):
 
   xyzs = []
   grouped_pindexs = []
+  vox_indexs = []
   grouped_xyzs = []
   empty_masks = []
   others = []
   for s in range(bsg._num_scale):
     grouped_pindexs.append([])
+    vox_indexs.append([])
     grouped_xyzs.append([])
     empty_masks.append([])
     others.append({})
@@ -878,10 +893,10 @@ def main_eager(DATASET_NAME, filenames, sg_settings, nframes):
   for i in range(batch_size):
     points_i = points_next[i,:,:]
 
-    grouped_pindex_i, grouped_xyz_i, empty_mask_i, bottom_center_i, nblock_valid_i, others_i = \
+    grouped_pindex_i, vox_index_i, grouped_center_i, empty_mask_i, bot_cen_top_i, nblock_valid_i, others_i = \
           bsg.grouping_multi_scale(points_i)
 
-    num_scale = len(grouped_xyz_i)
+    num_scale = len(grouped_center_i)
     samplings_i = bsg.samplings
     samplings_np_ms = []
     for s in range(len(samplings_i)):
@@ -894,12 +909,13 @@ def main_eager(DATASET_NAME, filenames, sg_settings, nframes):
 
     for s in range(num_scale):
       grouped_pindex_i[s] = grouped_pindex_i[s].numpy()
-      grouped_pindexs[s].append(np.expand_dims(grouped_xyz_i[s],0))
-      grouped_xyz_i[s] = grouped_xyz_i[s].numpy()
-      grouped_xyzs[s].append( np.expand_dims(grouped_xyz_i[s], 0) )
+      grouped_pindexs[s].append(np.expand_dims(grouped_center_i[s],0))
+      vox_indexs[s].append(np.expand_dims(vox_index_i[s],0))
+      grouped_center_i[s] = grouped_center_i[s].numpy()
+      grouped_xyzs[s].append( np.expand_dims(grouped_center_i[s], 0) )
       empty_mask_i[s] = empty_mask_i[s].numpy()
       empty_masks[s].append( np.expand_dims(empty_mask_i[s], 0) )
-      bottom_center_i[s] = bottom_center_i[s].numpy()
+      bot_cen_top_i[s] = bot_cen_top_i[s].numpy()
 
       for k in range(len(others_i[s]['value'])):
         name_k = others_i[s]['name'][k]
@@ -913,8 +929,8 @@ def main_eager(DATASET_NAME, filenames, sg_settings, nframes):
         if not bsg._shuffle:
           valid_flag += '_NoShuffle'
         bids_sampling_i = others[s]['bids_sampling'][k][0]
-        gen_plys(DATASET_NAME, i, points_i.numpy(), grouped_xyz_i[s],
-                  bottom_center_i[s], bids_sampling_i, valid_flag, '_ES%s'%(s))
+        gen_plys(DATASET_NAME, i, points_i.numpy(), grouped_center_i[s],
+                  bot_cen_top_i[s], bids_sampling_i, valid_flag, '_ES%s'%(s))
 
   xyzs = np.concatenate(xyzs,0)
   for s in range(num_scale):
@@ -979,14 +995,20 @@ def get_sg_settings():
   sg_settings1['max_nblock'] =      [6000,  500]
 
   sg_settings = sg_settings1
+
+  for item in sg_settings:
+    sg_settings[item] = np.array(sg_settings[item])
+    if item in ['width', 'stride']:
+      sg_settings[item] = sg_settings[item].astype(np.float32)
+    else:
+      sg_settings[item] = sg_settings[item].astype(np.int32)
+
   sg_settings['num_sg_scale'] = len(sg_settings['width'])
   sg_settings['block_pos'] = 'center'
   #sg_settings['block_pos'] = 'mean'
   sg_settings['gen_ply'] = False
   sg_settings['record'] = False
 
-  for item in sg_settings:
-    sg_settings[item] = np.array(sg_settings[item])
 
   sg_settings['nblocks_per_point'] = np.ceil(sg_settings['width']/sg_settings['stride']-MAX_FLOAT_DRIFT).astype(np.int32)
   sg_settings = check_sg_setting_for_vox(sg_settings)
