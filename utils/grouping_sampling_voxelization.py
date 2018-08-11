@@ -274,6 +274,7 @@ class BlockGroupSampling():
       self.samplings[self.scale]['t_per_frame_'] += tf.timestamp() - t0
     # **************************************************************************
     #       Add middle tensors to check between graph model and eager model
+    ots = 'OTS_'
     others = {}
     others['value'] = []
     others['name'] = []
@@ -292,6 +293,11 @@ class BlockGroupSampling():
     if self._gen_ply:
       others['value'] += [bids_sampling]
       others['name'] += ['bids_sampling']
+
+    if DEBUG:
+      for name in self.debugs:
+        others['value'] += [self.debugs[name]]
+        others['name'] += [ots + name]
 
     return grouped_pindex, vox_index, grouped_center, empty_mask, out_bot_cen_top, self.nblock_valid, others
 
@@ -727,6 +733,14 @@ class BlockGroupSampling():
     bindex_sampling = block_id_to_block_index(bids_sampling, self.block_size)
     bindex_sampling += self.min_block_index
     bot_cen_top = self.block_index_to_scope(bindex_sampling)
+    if DEBUG:
+      #self.debugs['bid_index_sampling_%d'%(self.scale)] = bid_index_sampling
+      #self.debugs['block_id_unique_%d'%(self.scale)] = block_id_unique
+      #self.debugs['bids_sampling_%d'%(self.scale)] = bids_sampling
+      #self.debugs['bindex_sampling_%d'%(self.scale)] = bindex_sampling
+      self.debugs['bot_cen_top_%d'%(self.scale)] = bot_cen_top
+
+      pass
     return bids_sampling, bot_cen_top
 
 
@@ -797,7 +811,7 @@ def main(DATASET_NAME, filenames, sg_settings, nframes):
                                         compression_type="",
                                         buffer_size=1024*100,
                                         num_parallel_reads=1)
-    batch_size = nframes
+    batch_size = 1
     is_training = False
     bsg = BlockGroupSampling(sg_settings)
     bsg.show_settings()
@@ -831,40 +845,42 @@ def main(DATASET_NAME, filenames, sg_settings, nframes):
       bot_cen_top_next.append(features_next['bot_cen_top_%d'%(s)])
 
       others_next.append({})
-      for name in ['bids_sampling']:
-        name_s = name+'_%d'%(s)
-        if name_s in features_next:
-          others_next[s][name_s] = features_next[name_s]
+      for name0 in features_next:
+        if 'OTS_' in name0:
+          name = name0.split('OTS_')[1]
+          others_next[s][name] = features_next[name0]
     #samplings_next = bsg.samplings
 
     init = tf.global_variables_initializer()
 
     config = tf.ConfigProto(allow_soft_placement=True)
     with tf.Session(config=config) as sess:
-      #sess.run(init)
-      #if DEBUG:
-      #  debugs = sess.run(self.debugs)
+      n_run = nframes // batch_size
+      for i in range(n_run):
+        #points_i = sess.run(points_next)
+        #grouped_pindex = sess.run(grouped_pindex_next)
+        #empty_masks = sess.run(empty_mask_next)
+        #bot_cen_tops = sess.run(bot_cen_top_next)
+        others = sess.run(others_next)
 
-      #points_i = sess.run(points_next)
+        points, grouped_pindex, vox_index, grouped_xyzs, empty_masks, bot_cen_tops, others = \
+          sess.run([points_next, grouped_pindex_next, vox_index_next, grouped_xyz_next, empty_mask_next, bot_cen_top_next, others_next] )
 
-      points, grouped_pindex, vox_index, grouped_xyzs, empty_masks, bot_cen_tops, others = \
-        sess.run([points_next, grouped_pindex_next, vox_index_next, grouped_xyz_next, empty_mask_next, bot_cen_top_next, others_next] )
+        #bsg.show_samplings_np(samplings)
+        xyzs = points[:,:,0:3]
+        print('group OK %d'%(i))
 
-      #bsg.show_samplings_np(samplings)
-      xyzs = points[:,:,0:3]
-      print('group OK')
+        for s in range(num_scale):
+          others[s]['empty_mask'] = empty_masks[s]
 
-      for s in range(num_scale):
-        others[s]['empty_mask'] = empty_masks[s]
-
-        for frame in range(batch_size):
-          if bsg._gen_ply:
-            valid_flag = '' if not bsg._debug_only_blocks_few_points else '_invalid'
-            if not bsg._shuffle:
-              valid_flag += '_NoShuffle'
-            bids_sampling = others[s]['bids_sampling_%d'%(s)][frame,0]
-            gen_plys(DATASET_NAME, frame, points[frame], grouped_xyzs[s][frame], bot_cen_tops[s][frame],\
-                      bids_sampling, valid_flag, 'S%d'%(s))
+          for frame in range(batch_size):
+            if bsg._gen_ply:
+              valid_flag = '' if not bsg._debug_only_blocks_few_points else '_invalid'
+              if not bsg._shuffle:
+                valid_flag += '_NoShuffle'
+              bids_sampling = others[s]['bids_sampling_%d'%(s)][frame,0]
+              gen_plys(DATASET_NAME, frame, points[frame], grouped_xyzs[s][frame], bot_cen_tops[s][frame],\
+                        bids_sampling, valid_flag, 'S%d'%(s))
 
     return xyzs, grouped_xyzs, others, bsg._shuffle
 
@@ -1052,7 +1068,7 @@ def get_sg_settings():
 if __name__ == '__main__':
   DATASET_NAME = 'MODELNET40'
   path = '/home/z/Research/dynamic_pointnet/data/MODELNET40H5F/Merged_tfrecord/4_mgs0.2048_gs2_2d2-rep_fmn1_mvp1-1-1024--pd3-1M'
-  path = '/home/z/Research/SparseVoxelNet/data/MODELNET40__H5F/ORG_tfrecord/1024_mgs0.2048_gs2_2d2-rep_fmn1_mvp1-1-1024--pd3-1M'
+  #path = '/home/z/Research/SparseVoxelNet/data/MODELNET40__H5F/ORG_tfrecord/1024_mgs0.2048_gs2_2d2-rep_fmn1_mvp1-1-1024--pd3-1M'
   tmp = 'chair_0056'
   tmp = 'dresser_0282'
   tmp= 'plant_0199'

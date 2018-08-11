@@ -1182,7 +1182,6 @@ class Model(ResConvOps):
         self.log('------------------------------------------------------------\n\n')
         self.log_model_summary()
 
-      import pdb; pdb.set_trace()  # XXX BREAKPOINT
       return inputs
 
   @staticmethod
