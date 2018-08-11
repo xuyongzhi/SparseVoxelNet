@@ -38,6 +38,11 @@ MERGED_DATA_DIR = os.path.join(DATA_DIR, DATASET+'H5F' )
 
 #CLASS_NAMES = DS_Meta.label_names
 
+def WriteRawh5_to_Tfrecord(rawh5_file_ls, rawtfrecord_path, IsShowInfoFinished):
+    from datasets.rawh5_to_tfrecord import RawH5_To_Tfrecord
+    raw_to_tf = RawH5_To_Tfrecord(rawtfrecord_path)
+    raw_to_tf(rawh5_file_ls)
+
 def WriteSortH5f_FromRawH5f(rawh5_file_ls,block_step_xyz,sorted_path, RotateBeforeSort, IsShowInfoFinished):
     Sort_RawH5f(rawh5_file_ls,block_step_xyz,sorted_path,RotateBeforeSort, IsShowInfoFinished)
     return rawh5_file_ls
@@ -337,6 +342,7 @@ class H5Prepare():
     def __init__(self):
         self.rawh5f_dir =  self.BasicDataDir+'/rawh5'
 
+
     def ParseRaw(self, MultiProcess):
         raw_path = '/DS/' + DATASET
 
@@ -381,6 +387,36 @@ class H5Prepare():
             print("\n\nParseRaw:all %d files successed\n******************************\n"%(len(success_fns)))
 
 
+    def RawToTfrecord(self, MultiProcess=0):
+
+      t0 = time.time()
+      if DATASET == 'MODELNET40':
+          rawh5_file_ls = glob.glob( os.path.join( self.rawh5f_dir,'*/*.rh5' ) )
+      else:
+          rawh5_file_ls = glob.glob( os.path.join( self.rawh5f_dir,'*.rh5' ) )
+      rawh5_file_ls.sort()
+      rawtfrecord_path = self.BasicDataDir + '/raw_tfrecord'
+      IsShowInfoFinished = True
+
+      IsMultiProcess = MultiProcess>1
+      if not IsMultiProcess:
+          WriteRawh5_to_Tfrecord(rawh5_file_ls, rawtfrecord_path, IsShowInfoFinished)
+      else:
+          pool = mp.Pool(MultiProcess)
+          for rawh5f_fn in rawh5_file_ls:
+              results = pool.apply_async(WriteRawh5_to_Tfrecord,([rawh5f_fn],rawtfrecord_path, IsShowInfoFinished))
+          pool.close()
+          pool.join()
+
+          success_fns = []
+          success_N = len(rawh5_file_ls)
+          try:
+              for k in range(success_N):
+                  success_fns.append(results.get(timeout=0.1))
+          except:
+              assert len(success_fns)==success_N,"SortRaw failed. only %d files successed"%(len(success_fns))
+          print("\n\nSortRaw:all %d files successed\n******************************\n"%(len(success_fns)))
+      print('sort raw t= %f'%(time.time()-t0))
 
     def SortRaw(self, block_step_xyz, MultiProcess=0 , RxyzBeforeSort=None ):
         t0 = time.time()
@@ -418,6 +454,7 @@ class H5Prepare():
                 assert len(success_fns)==success_N,"SortRaw failed. only %d files successed"%(len(success_fns))
             print("\n\nSortRaw:all %d files successed\n******************************\n"%(len(success_fns)))
         print('sort raw t= %f'%(time.time()-t0))
+
 
     def GenPyramid(self, base_stride, base_step, data_aug_configs, MultiProcess=0):
         sh5f_dir = self.BasicDataDir+'/%s'%(get_stride_step_name(base_stride,base_step))
@@ -554,6 +591,7 @@ class H5Prepare():
                         print( 'After merging, shape match check ok: %s'%(os.path.basename( merged_file_names[0] )) )
                         pass
 
+
 def GenObj_rh5():
     xyz_cut_rate= [0,0,0.9]
     xyz_cut_rate= None
@@ -601,25 +639,28 @@ def main( ):
     MultiProcess = 0
     h5prep = H5Prepare()
 
-    #h5prep.ParseRaw( MultiProcess )
-    if DATASET == 'SCANNET':
-        base_step_stride = [0.1,0.1,0.1]
-    elif DATASET == 'ETH':
-        base_step_stride = [0.2,0.2,0.2]
-    elif DATASET == 'MODELNET40':
-        base_step_stride = [0.05,0.05,0.05]
-    elif DATASET  == 'KITTI':
-        base_step_stride = [0.2, 0.2, 0.4]
-    #RxyzBeforeSort = np.array([0,0,45])*np.pi/180
-    RxyzBeforeSort = None
-    # h5prep.SortRaw( base_step_stride, MultiProcess, RxyzBeforeSort )
+    ##h5prep.ParseRaw( MultiProcess )
+    h5prep.RawToTfrecord(MultiProcess)
 
-    data_aug_configs = {}
-    # data_aug_configs['delete_unlabelled'] = True
-    # data_aug_configs['delete_easy_categories_num'] = 3
+    #if DATASET == 'SCANNET':
+    #    base_step_stride = [0.1,0.1,0.1]
+    #elif DATASET == 'ETH':
+    #    base_step_stride = [0.2,0.2,0.2]
+    #elif DATASET == 'MODELNET40':
+    #    base_step_stride = [0.05,0.05,0.05]
+    #elif DATASET  == 'KITTI':
+    #    base_step_stride = [0.2, 0.2, 0.4]
+    ##RxyzBeforeSort = np.array([0,0,45])*np.pi/180
+    #RxyzBeforeSort = None
+    ## h5prep.SortRaw( base_step_stride, MultiProcess, RxyzBeforeSort )
 
-    #h5prep.GenPyramid(base_step_stride, base_step_stride, data_aug_configs,  MultiProcess)
-    h5prep.MergeNormed( data_aug_configs )
+    #data_aug_configs = {}
+    ## data_aug_configs['delete_unlabelled'] = True
+    ## data_aug_configs['delete_easy_categories_num'] = 3
+
+    ##h5prep.GenPyramid(base_step_stride, base_step_stride, data_aug_configs,  MultiProcess)
+
+    #h5prep.MergeNormed( data_aug_configs )
     print('T = %f sec'%(time.time()-t0))
 
 if __name__ == '__main__':
