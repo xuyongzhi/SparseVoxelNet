@@ -39,7 +39,7 @@ from official.utils.misc import model_helpers
 # pylint: enable=g-bad-import-order
 
 # must be False when num_gpus>1
-IsCheckNet = True
+IsCheckNet = False
 
 ################################################################################
 # Functions for input processing.
