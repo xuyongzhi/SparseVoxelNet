@@ -2,12 +2,12 @@
 import tensorflow as tf
 import glob, os, sys
 import numpy as np
-from utils.dataset_utils import parse_pl_record
+from datasets.rawh5_to_tfrecord import parse_pl_record
 from datasets.all_datasets_meta.datasets_meta import DatasetsMeta
 from utils.ply_util import create_ply_dset, draw_blocks_by_bottom_center
 import time
 
-DEBUG = True
+DEBUG = False
 MAX_FLOAT_DRIFT = 1e-5
 
 def get_data_shapes_from_tfrecord(filenames):
@@ -170,7 +170,7 @@ class BlockGroupSampling():
     # debug flags
     self._shuffle = True
     self._use_less_points_block_when_not_enough = True
-    self._bound_bindex_by_rawxyzscope = True
+    self._bound_bindex_by_rawxyzscope = False
     # Theoretically, num_block_per_point should be same for all. This is 0.
     self._check_nblock_per_points_same = True # (optional)
 
@@ -227,9 +227,11 @@ class BlockGroupSampling():
     grouped_bot_cen_top = tf.expand_dims(bot_cen_top, 0)
     global_vox_index = self.voxelization(grouped_bot_cen_top, global_bot_cen_top, empty_mask)
 
-    global_empty_mask0 = tf.cast(tf.ones([nblock_valid], tf.int8), tf.bool)
     nblock = global_vox_index.shape[1].value
-    global_empty_mask1 = tf.cast(tf.zeros([nblock - nblock_valid], tf.int8), tf.bool)
+    tmp = tf.minimum(nblock_valid, nblock)
+    global_empty_mask0 = tf.cast(tf.ones([tmp], tf.int8), tf.bool)
+    tmp = tf.maximum(nblock - nblock_valid, 0)
+    global_empty_mask1 = tf.cast(tf.zeros([tmp], tf.int8), tf.bool)
     global_empty_mask = tf.concat([global_empty_mask0, global_empty_mask1],0)
     global_empty_mask.set_shape([nblock])
     global_empty_mask = tf.reshape(global_empty_mask, [1,-1])
@@ -419,6 +421,7 @@ class BlockGroupSampling():
     '''
     The blocks at the edge
     '''
+    raise NotImplementedError, "Sometimes seems not correct. Fix it before use"
     padding = self._widths[self.scale] * self._padding_rate[self.scale]  # very important
     bindex_min = (self.xyz_min - padding)/self._strides[self.scale]
     bindex_max = (self.xyz_max + padding-self._widths[self.scale])/self._strides[self.scale]
@@ -503,7 +506,7 @@ class BlockGroupSampling():
       nb_per_ps_err = tf.reduce_sum(nb_per_ps_err, 1)
       nb_per_ps_err = tf.reduce_sum(tf.cast(tf.greater(nb_per_ps_err, 0),tf.int32))
       nb_per_ps_err_rate = tf.cast(nb_per_ps_err, tf.float32) / tf.cast(self.num_point0, tf.float32)
-      check_nbpp = tf.assert_less(nb_per_ps_err_rate, 0.08,
+      check_nbpp = tf.assert_less(nb_per_ps_err_rate, 0.1,
                     message="nb_per_ps_err {} is too large, at scale {}".format(
                     nb_per_ps_err, self.scale))
       with tf.control_dependencies([check_nbpp ]):
@@ -563,10 +566,19 @@ class BlockGroupSampling():
     def rm_poutb():
       pindex_inb = tf.cast(tf.where(gp_valid_mask)[:,0], tf.int32)
       return tf.gather(bid_pindex, pindex_inb, 0)
+    ngb_invalid_rate = tf.cast(ngb_invalid,tf.float32) /\
+                        tf.cast(tf.shape(bid_pindex)[0],tf.float32)
     bid_pindex = tf.cond( tf.greater(ngb_invalid, 0),
                          rm_poutb,
                          lambda: bid_pindex )
     self.npoint_grouped = tf.shape(bid_pindex)[0]
+
+    check0 = tf.assert_greater(self.npoint_grouped, 0,
+                               message="npoint_grouped==0")
+    check1 = tf.assert_less(ngb_invalid_rate, [0.2,0.9,0.9,0.9,0.9][self.scale],
+                            message="ngb_invalid_rate {}".format(ngb_invalid_rate))
+    with tf.control_dependencies([check0, check1]):
+      bid_pindex = tf.identity(bid_pindex)
 
     return bid_pindex
 
@@ -605,6 +617,10 @@ class BlockGroupSampling():
     self.nblock_invalid = self.nblock - self.nblock_valid
     tmp_invalid_b = tf.less(npoint_per_block, self._np_perb_min_includes[self.scale])
     self.invalid_bid_index = tf.cast(tf.where(tmp_invalid_b)[:,0], tf.int32)
+
+    check_nv = tf.assert_greater(self.nblock_valid, 0)
+    with tf.control_dependencies([check_nv]):
+      npoint_per_block = tf.identity(npoint_per_block)
 
     #(2.3) Get point index per block
     #      Based on: all points belong to same block is together
@@ -811,7 +827,10 @@ def main(DATASET_NAME, filenames, sg_settings, nframes):
                                         compression_type="",
                                         buffer_size=1024*100,
                                         num_parallel_reads=1)
-    batch_size = 1
+    batch_size = 10
+
+    dataset.shuffle(buffer_size = 10000)
+
     is_training = False
     bsg = BlockGroupSampling(sg_settings)
     bsg.show_settings()
@@ -927,6 +946,9 @@ def main_eager(DATASET_NAME, filenames, sg_settings, nframes):
     others.append({})
 
   for i in range(batch_size):
+    if i < 36:
+      continue
+    print('frame %d'%(i))
     points_i = points_next[i,:,:]
 
     grouped_pindex_i, vox_index_i, grouped_center_i, empty_mask_i, bot_cen_top_i, nblock_valid_i, others_i = \
@@ -1031,7 +1053,8 @@ def check_sg_setting_for_vox(sg_settings):
     vox_size_err = np.max(np.abs(vox_size0-vox_size))
     assert vox_size_err < 1e-5, "the sg_settings cannot do Voxelization"
     vox_sizes.append(vox_size)
-  vox_sizes.append(np.array([6,6,6]).astype(np.int32))
+  vox_sizes.append(np.array([7,7,7]).astype(np.int32))
+  print('\n\n\n\t\t global voxel size = 7,7,7 \n\n\n\n\n')
   sg_settings['vox_size'] = vox_sizes
   return sg_settings
 
@@ -1067,16 +1090,11 @@ def get_sg_settings():
 
 if __name__ == '__main__':
   DATASET_NAME = 'MODELNET40'
-  path = '/home/z/Research/dynamic_pointnet/data/MODELNET40H5F/Merged_tfrecord/4_mgs0.2048_gs2_2d2-rep_fmn1_mvp1-1-1024--pd3-1M'
-  #path = '/home/z/Research/SparseVoxelNet/data/MODELNET40__H5F/ORG_tfrecord/1024_mgs0.2048_gs2_2d2-rep_fmn1_mvp1-1-1024--pd3-1M'
-  tmp = 'chair_0056'
-  tmp = 'dresser_0282'
-  tmp= 'plant_0199'
-  tmp = 'car_0048'
-  tmp = 'bathtub_0007'
+  raw_tfrecord_path = '/home/z/Research/SparseVoxelNet/data/MODELNET40_H5TF/raw_tfrecord'
+  data_path = os.path.join(raw_tfrecord_path, 'data')
   tmp = 'airplane_0001' # ERR
   tmp = '*'
-  filenames = glob.glob(os.path.join(path, tmp+'.tfrecord'))
+  filenames = glob.glob(os.path.join(data_path, tmp+'.tfrecord'))
   assert len(filenames) >= 1
 
   sg_settings = get_sg_settings()
@@ -1089,7 +1107,7 @@ if __name__ == '__main__':
     #main_flag = 'e'
   print(main_flag)
 
-  nframes = 20
+  nframes = 10000
 
   if 'e' in main_flag:
     sg_settings['record'] = True
