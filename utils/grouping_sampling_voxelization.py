@@ -502,14 +502,22 @@ class BlockGroupSampling():
       up_b_index_fixed = tf.cast(tf.floor(up_b_index + MAX_FLOAT_DRIFT), tf.int32) + 1 # not include
 
       nblocks_per_points = up_b_index_fixed - low_b_index_fixed
-      nb_per_ps_err = nblocks_per_points - self._nblocks_per_point[self.scale]
-      nb_per_ps_err = tf.reduce_sum(nb_per_ps_err, 1)
-      nb_per_ps_err = tf.reduce_sum(tf.cast(tf.greater(nb_per_ps_err, 0),tf.int32))
-      nb_per_ps_err_rate = tf.cast(nb_per_ps_err, tf.float32) / tf.cast(self.num_point0, tf.float32)
-      check_nbpp = tf.assert_less(nb_per_ps_err_rate, 0.15,
-                    message="nb_per_ps_err {} is too large, at scale {}".format(
-                    nb_per_ps_err, self.scale))
-      with tf.control_dependencies([check_nbpp ]):
+      nb_per_ps_err0 = self._nblocks_per_point[self.scale] - nblocks_per_points
+      nb_per_ps_err_toofew = tf.reduce_any(tf.greater(nb_per_ps_err0, 0), 1)
+      nb_per_ps_err_toomany = tf.reduce_any(tf.less(nb_per_ps_err0, 0), 1)
+      nb_per_ps_err_toofew = tf.cast(nb_per_ps_err_toofew, tf.float32)
+      nb_per_ps_err_toomany = tf.cast(nb_per_ps_err_toomany, tf.float32)
+      n_toofew = tf.reduce_sum(nb_per_ps_err_toofew)
+      n_toomany = tf.reduce_sum(nb_per_ps_err_toomany)
+      rate_toofew = n_toofew / tf.cast(self.num_point0,tf.float32)
+      rate_toomany = n_toomany / tf.cast(self.num_point0,tf.float32)
+      #print("scale {}, too many:{}\ntoo few:{}".format(self.scale, rate_toomany, rate_toofew))
+
+      check_toofew = tf.assert_less_equal(rate_toofew, [0.01, 1.0, 1.0, 1.0][self.scale],
+                      message="nb_per_ps too few {}, at scale {}".format(n_toofew, self.scale))
+      check_toomany = tf.assert_less(rate_toomany, [0.3, 0.3, 0.3, 0.3][self.scale],
+                      message="nb_per_ps too many {}, at scale {}".format(n_toomany, self.scale))
+      with tf.control_dependencies([check_toomany, check_toofew]):
         low_b_index_fixed = tf.identity(low_b_index_fixed)
     # *****
     self.nblock_perp_3d = tf.reduce_prod(self._nblocks_per_point[self.scale])
@@ -827,9 +835,9 @@ def main(DATASET_NAME, filenames, sg_settings, nframes):
                                         compression_type="",
                                         buffer_size=1024*100,
                                         num_parallel_reads=1)
-    batch_size = 10
+    batch_size = 32
 
-    dataset.shuffle(buffer_size = 10000)
+    #dataset.shuffle(buffer_size = 10000)
 
     is_training = False
     bsg = BlockGroupSampling(sg_settings)
@@ -882,8 +890,11 @@ def main(DATASET_NAME, filenames, sg_settings, nframes):
         #bot_cen_tops = sess.run(bot_cen_top_next)
         others = sess.run(others_next)
 
+        t0 = time.time()
         points, grouped_pindex, vox_index, grouped_xyzs, empty_masks, bot_cen_tops, others = \
           sess.run([points_next, grouped_pindex_next, vox_index_next, grouped_xyz_next, empty_mask_next, bot_cen_top_next, others_next] )
+        t_batch = time.time()-t0
+        print("t_batch:{} t_frame:{}".format( t_batch, t_batch/batch_size ))
 
         #bsg.show_samplings_np(samplings)
         xyzs = points[:,:,0:3]
@@ -913,6 +924,7 @@ def main_eager(DATASET_NAME, filenames, sg_settings, nframes):
                                       compression_type="",
                                       buffer_size=1024*100,
                                       num_parallel_reads=1)
+  #dataset.shuffle(buffer_size = 10000)
 
   batch_size = nframes
   is_training = False
@@ -946,8 +958,8 @@ def main_eager(DATASET_NAME, filenames, sg_settings, nframes):
     others.append({})
 
   for i in range(batch_size):
-    if i < 36:
-      continue
+    #if i < 36:
+    #  continue
     print('frame %d'%(i))
     points_i = points_next[i,:,:]
 
@@ -1095,6 +1107,7 @@ if __name__ == '__main__':
   tmp = 'airplane_0001' # ERR
   tmp = '*'
   filenames = glob.glob(os.path.join(data_path, tmp+'.tfrecord'))
+  filenames = filenames[945:]
   assert len(filenames) >= 1
 
   sg_settings = get_sg_settings()

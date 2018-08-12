@@ -88,12 +88,13 @@ $$ s: stride $$
 $$ n: point\ number\ per\ block $$
 Note: do not need a parameter of padding. The containing relation should always be absolutely containing. The padding operation like CNN can be achieved just set lower limit of j.\par
 The scope of block j is: $[sj,sj+w]$ \par
-Let intersection point to be in both blocks.\par
-$$ sj \leq P_i \leq sj+w $$
-$$ \frac{P_i-w}{s} \leq j \leq \frac{P_i}{s} $$
+Let intersection point belong to right block\par
+$$ sj < P_i \leq sj+w $$
+$$ \frac{P_i-w}{s} \leq j < \frac{P_i}{s} $$
 
 $$ j_L = ceil(\frac{P_i-w}{s}) $$
-$$ j_U =  floor( \frac{P_i}{s}) $$
+$$ j_U =  floor( \frac{P_i}{s})\ ( if\ \frac{P_i}{s}\ is\ float )$$\\
+$$ j_U =  \frac{P_i}{s}-1\ ( if\ \frac{P_i}{s}\ is\ int )$$
 $$ j:range(j_L, j_U+1) $$
 To allow a bit drift of float:
 $$ j_L = ceil(\frac{P_i-w}{s} - 1^{-5}) $$
