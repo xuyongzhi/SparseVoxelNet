@@ -362,7 +362,7 @@ if __name__ == '__main__':
   rawh5_glob = os.path.join(dset_path, 'rawh5/*/*.rh5')
   tfrecord_path = os.path.join(dset_path, 'raw_tfrecord')
 
-  main_write(dataset_name, rawh5_glob, tfrecord_path)
+  #main_write(dataset_name, rawh5_glob, tfrecord_path)
 
-  #get_dataset_summary(dataset_name, tfrecord_path)
+  get_dataset_summary(dataset_name, tfrecord_path)
 

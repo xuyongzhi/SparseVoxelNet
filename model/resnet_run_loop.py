@@ -494,8 +494,6 @@ def check_net(classifier, input_fn_eval, dataset_name, data_net_configs):
 
     if j==N+N0-1:
       break
-  import pdb; pdb.set_trace()  # XXX BREAKPOINT
-  pass
 
 def resnet_main(
     flags_obj, model_function, input_function, dataset_name, data_net_configs):
@@ -553,7 +551,7 @@ def resnet_main(
       model_fn=model_function, model_dir=flags_obj.model_dir, config=run_config,
       params={
           'model_flag': flags_obj.model_flag,
-          'resnet_size': int(flags_obj.resnet_size),
+          'resnet_size': flags_obj.resnet_size,
           'data_format': flags_obj.data_format,
           'batch_size': flags_obj.batch_size,
           'resnet_version': int(flags_obj.resnet_version),

@@ -33,8 +33,9 @@ import resnet_run_loop
 import os, glob, sys
 import numpy as np
 from modelnet_configs import get_block_paras, DEFAULTS
-from dataset_utils import parse_pl_record, get_dataset_summary
+from datasets.rawh5_to_tfrecord import parse_pl_record, get_dataset_summary
 from utils.grouping_sampling_voxelization import get_sg_settings
+from datasets.all_datasets_meta.datasets_meta import DatasetsMeta
 
 _DATA_PARAS = None
 
@@ -56,12 +57,9 @@ DATASET_NAME = 'MODELNET40'
 ###############################################################################
 def get_filenames(is_training, data_dir):
   """Return filenames for dataset."""
-  assert os.path.exists(data_dir), ('not exsit: %s'%(data_dir))
-  if is_training:
-    return glob.glob(os.path.join(data_dir, 'train_*.tfrecord'))
-  else:
-    return glob.glob(os.path.join(data_dir, 'test_*.tfrecord'))
-
+  datasets_meta = DatasetsMeta(DATASET_NAME)
+  data_dir = os.path.join(data_dir, 'data')
+  return datasets_meta.get_train_test_file_list(data_dir, is_training)
 
 def input_fn(is_training, data_dir, batch_size, data_net_configs=None, num_epochs=1):
   """Input function which provides batches for train or eval.
@@ -123,7 +121,6 @@ def get_data_shapes_from_tfrecord(data_dir):
 
 def check_data():
   from ply_util import create_ply_dset
-  from datasets.all_datasets_meta.datasets_meta import DatasetsMeta
 
   datasets_meta = DatasetsMeta(DATASET_NAME)
 
@@ -481,7 +478,7 @@ def define_modelnet_flags():
   flags.DEFINE_float('batch_norm_decay0', DEFAULTS['batch_norm_decay0'],'')
   flags.DEFINE_float('weight_decay', DEFAULTS['weight_decay'],'')
   flags.DEFINE_string('model_flag', DEFAULTS['model_flag'], '')
-  flags.DEFINE_integer('resnet_size',DEFAULTS['resnet_size'],'resnet_size')
+  flags.DEFINE_string('resnet_size',DEFAULTS['resnet_size'],'resnet_size')
   flags.DEFINE_string('feed_data',DEFAULTS['feed_data'],'xyzrsg-nxnynz-color')
   flags.DEFINE_integer('use_xyz', DEFAULTS['use_xyz'], '1,0')
   flags.DEFINE_string('aug_types',DEFAULTS['aug_types'],'rsfj-360_0_0')

@@ -12,10 +12,7 @@ import numpy as np
 '''
 
 DEFAULTS = {}
-#DEFAULTS['data_path'] = 'MODELNET40H5F/Merged_tfrecord/6_mgs1_gs2_2-mbf-neg_fmn14_mvp1-1024_240_1-64_27_256-0d2_0d4-0d1_0d2-pd3-2M2pp'
-#DEFAULTS['data_path'] = 'MODELNET40H5F/Merged_tfrecord/6_mgs1_gs2_2-neg_fmn14_mvp1-1024_240_1-64_27_256-0d2_0d4-0d1_0d2-pd3-2M2pp'
-DEFAULTS['data_path'] = 'MODELNET40H5F/Merged_tfrecord/4_mgs0.2048_gs2_2d2-rep_fmn1_mvp1-1-1024--pd3-1M'
-#DEFAULTS['data_path'] = 'MODELNET40H5F/Merged_tfrecord/6_mgs1_gs2_2d2-neg_fmn1444_mvp1-3200_1024_48_1-18_24_56_56-0d1_0d2_0d6-0d0_0d1_0d4-pd3-3M1'
+DEFAULTS['data_path'] = '/home/z/Research/SparseVoxelNet/data/MODELNET40_H5TF/raw_tfrecord'
 
 
 DEFAULTS['only_eval'] = 0
@@ -38,7 +35,7 @@ DEFAULTS['lr_warmup'] = 0
 DEFAULTS['batch_norm_decay0'] = 0.7
 
 DEFAULTS['model_flag'] = 'm'
-DEFAULTS['resnet_size'] = 16
+DEFAULTS['resnet_size'] = '24A'
 DEFAULTS['feed_data'] = 'xyzs'
 DEFAULTS['use_xyz'] = 1
 DEFAULTS['aug_types'] = 'N' # 'rpsfj-360_0_0'
@@ -52,8 +49,10 @@ DEFAULTS['data_format'] = 'channels_last'
 DEFAULTS['weight_decay'] = 0.0  # res official is 1e-4, charles is 0.0
 
 def get_block_paras(resnet_size, model_flag, block_style):
-  if block_style == 'Bottleneck' or block_style == 'Regular':
-    return get_block_paras_bottle_regu(resnet_size, model_flag, block_style)
+  if block_style == 'Regular':
+    return get_block_paras_bottle_regu(resnet_size, model_flag)
+  elif block_style == 'Bottleneck':
+    return get_block_paras_bottle_botl(resnet_size, model_flag)
   elif block_style == 'Inception':
     return get_block_paras_inception(resnet_size, model_flag)
   elif block_style == 'PointNet':
@@ -143,7 +142,53 @@ def get_block_paras_inception(resnet_size, model_flag):
 
 
 
-def get_block_paras_bottle_regu(resnet_size, model_flag, block_style):
+def get_block_paras_bottle_regu(resnet_size, model_flag):
+  num_filters0s = {}
+  block_sizes = {}
+  block_kernels = {}
+  block_strides = {}
+  block_paddings = {}   # only used when strides == 1
+  block_filters = {}
+
+  rs = '24A'
+  num_filters0s[rs] = 32
+  block_sizes[rs]    = [[2,2], [1,2], [2,2,1]]
+  block_filters[rs] = [[32,64], [128,128], [128,256,512]]
+  block_kernels[rs]  = [[], [3,1], [3,3,3]]
+  block_strides[rs]  = [[], [1,1], [1,1,1]]
+  block_paddings[rs] = [[], ['v','s'], ['v','v','v']]
+
+  if 'V' not in model_flag:
+    for i in range(len(block_sizes[resnet_size])):
+      if i==0: continue
+      for j in range(len(block_sizes[resnet_size][i])):
+        block_kernels[resnet_size][i][j] = 1
+        block_strides[resnet_size][i][j] = 1
+        block_paddings[resnet_size][i][j] = 'v'
+
+  if resnet_size not in block_sizes:
+    err = ('Could not find layers for selected Resnet size.\n'
+           'Size received: {}; sizes allowed: {}.'.format(
+               resnet_size, block_sizes.keys()))
+    raise ValueError(err)
+
+  # check settings
+  for k in block_kernels:
+    # cascade_id 0 is pointnet
+    assert (np.array(block_kernels[k][0])==1).all()
+    assert (np.array(block_strides[k][0])==1).all()
+
+  block_params = {}
+  block_params['num_filters0'] = num_filters0s[resnet_size]
+  block_params['kernels'] = block_kernels[resnet_size]
+  block_params['strides'] = block_strides[resnet_size]
+  block_params['filters'] = block_filters[resnet_size]
+  block_params['padding_s1'] = block_paddings[resnet_size]
+  block_params['block_sizes'] = block_sizes[resnet_size]
+  return block_params
+
+
+def get_block_paras_bottle_regu_used(resnet_size, model_flag, block_style):
   num_filters0s = {}
   block_sizes = {}
   block_kernels = {}

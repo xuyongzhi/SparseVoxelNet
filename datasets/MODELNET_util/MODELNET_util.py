@@ -24,4 +24,10 @@ del MODELNET40_Meta['label2color'][40]
 del MODELNET40_Meta['label2color'][41]
 
 
+def train_names():
+  train_names = np.loadtxt( os.path.join(BASE_DIR,'modelnet40_train.txt'), dtype=str )
+  return train_names
 
+def test_names():
+  test_names = np.loadtxt( os.path.join(BASE_DIR,'modelnet40_test.txt'), dtype=str )
+  return test_names

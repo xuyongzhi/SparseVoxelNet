@@ -64,3 +64,30 @@ class DatasetsMeta():
         self.num_classes = len(self.label2class)
         #self.num_classes = len(self.g_label2class) - len(self.g_unlabelled_categories[self.datasource_name])
 
+    def get_train_test_file_list(self, data_dir, is_training):
+      if self.datasource_name == "MODELNET40":
+        return self.get_train_test_file_list_MODELNET(data_dir, is_training)
+
+    def get_train_test_file_list_MODELNET(self, data_dir, is_training):
+      from MODELNET_util import train_names, test_names
+      if is_training:
+        train_names = train_names()
+        train_fns = [os.path.join(data_dir, e+'.tfrecord') for e in train_names]
+        # Check exist
+        for e in train_fns[0:len(train_fns):100]:
+          assert( os.path.exists(e) )
+        assert len(train_fns) == 9843
+
+        return train_fns
+
+      else:
+        test_names = test_names()
+        test_fns = [os.path.join(data_dir, e+'.tfrecord') for e in test_names]
+        for e in test_fns[0:len(test_fns):10]:
+          assert( os.path.exists(e) )
+        assert len(test_fns) == 2468
+
+        return test_fns
+
+
+
