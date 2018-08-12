@@ -506,7 +506,7 @@ class BlockGroupSampling():
       nb_per_ps_err = tf.reduce_sum(nb_per_ps_err, 1)
       nb_per_ps_err = tf.reduce_sum(tf.cast(tf.greater(nb_per_ps_err, 0),tf.int32))
       nb_per_ps_err_rate = tf.cast(nb_per_ps_err, tf.float32) / tf.cast(self.num_point0, tf.float32)
-      check_nbpp = tf.assert_less(nb_per_ps_err_rate, 0.1,
+      check_nbpp = tf.assert_less(nb_per_ps_err_rate, 0.15,
                     message="nb_per_ps_err {} is too large, at scale {}".format(
                     nb_per_ps_err, self.scale))
       with tf.control_dependencies([check_nbpp ]):
