@@ -102,14 +102,14 @@ $$ j_U =  floor( \frac{P_i}{s} + 1^{-5}) $$
 
 
 \subsubsection{block in block}
-On scale 0, the scope of block $j_0$ is: $[s_0j_0,s_0j_0+w_0]$ \par
-On scale 1, the scope of block $j_1$ is: $[s_1j_1,s_1j_1+w_1]$ \par
+On scale 0, the scope of block $j_0$ is: $[s_0j_0   ,s_0j_0+w_0]$ \par
+On scale 1, the scope of block $j_1$ is: $[s_1j_1 ,s_1j_1+w_1]$ \par
 Block $j_0$ is inside of block $j_1$.
-$$ s_1j_1 \leq s_0j_0 = L_0$$
-$$ U_0=s_0j_0+w_0 \leq  s_1j_1+w_1 $$
-$$ \frac{U_0-w_1}{s_1}  \leq j_1 \leq \frac{L_0}{s_1}$$
-$$j_{1L}= ceil(\frac{U_0-w_1}{s_1}-1^{-5})$$
-$$j_{1U} = floor(\frac{L_0}{s_1}+1^{-5})$$
+$$ s_1j_1   <   L_0$$
+$$ U_0  \leq  s_1j_1+w_1 $$
+
+$$j_{1L}= ceil(\frac{U_0- w_1 }{s_1}-1^{-5})$$
+$$j_{1U} = floor(\frac{L_0 }{s_1}+1^{-5})$$
 
 \subsubsection{block index bound by whole raw points scope}
 The scope of all points are $[P_{min}, P_{max}]$. The scope of all block index is $[j_l, j_u]$.
