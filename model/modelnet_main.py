@@ -34,7 +34,7 @@ import os, glob, sys
 import numpy as np
 from modelnet_configs import get_block_paras, DEFAULTS
 from datasets.rawh5_to_tfrecord import parse_pl_record, get_dataset_summary
-from utils.grouping_sampling_voxelization import get_sg_settings
+from utils.sg_settings import get_sg_settings
 from datasets.all_datasets_meta.datasets_meta import DatasetsMeta
 
 _DATA_PARAS = None
