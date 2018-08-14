@@ -4,7 +4,7 @@ import glob, os, sys
 import numpy as np
 from datasets.rawh5_to_tfrecord import parse_pl_record
 from datasets.all_datasets_meta.datasets_meta import DatasetsMeta
-from utils.ply_util import create_ply_dset, draw_blocks_by_bottom_center
+from utils.ply_util import create_ply_dset, draw_blocks_by_bot_cen_top
 import time
 
 DEBUG = False
@@ -173,7 +173,7 @@ class BlockGroupSampling():
 
 
     # debug flags
-    self._shuffle = False
+    self._shuffle = True
     self._use_less_points_block_when_not_enough = True
     self._cut_bindex_by_global_scope = True
     # Theoretically, num_block_per_point should be same for all. This is 0.
@@ -322,7 +322,7 @@ class BlockGroupSampling():
 
   def grouping(self, scale, bot_cen_top, global_bot_cen_top_):
     '''
-    bottom_center: (num_point0, 6)
+    bot_cen_top: (num_point0, 6)
     grouped_xyz: (num_block,npoint_per_block,3)
 
     Search by point: for each point in xyz, find all the block d=ids
@@ -750,7 +750,7 @@ class BlockGroupSampling():
       self.samplings[self.scale]['ngb_valid_rate'] += ngb_valid_rate
     check0 = tf.assert_greater(self.npoint_grouped, 0,
                   message="npoint_grouped==0")
-    check1 = tf.assert_greater(ngb_valid_rate, [0.2, 0.2, 0.1, 0.0][self.scale],
+    check1 = tf.assert_greater(ngb_valid_rate, [0.1, 0.1, 0.1, 0.0][self.scale],
                   message="scale {} ngb_valid_rate {}".format(self.scale, ngb_valid_rate))
     with tf.control_dependencies([check0, check1]):
       bid_pindex = tf.identity(bid_pindex)
@@ -995,16 +995,16 @@ class BlockGroupSampling():
     #if self._block_pos == 'mean':
     #  block_xyz = self.grouped_mean(grouped_xyz, empty_mask)
     #  block_bottom = tf.reduce_min(grouped_xyz, 1)
-    #  block_bottom_center = tf.concat([block_bottom, block_xyz], -1)
+    #  block_bot_cen_top = tf.concat([block_bottom, block_xyz], -1)
     #elif self._block_pos == 'center':
-    #  block_bottom_center = block_bottom_center
+    #  block_bot_cen_top = block_bot_cen_top
     empty_mask = tf.cast(empty_mask, tf.bool)
-    valid_block_bottom_center = tf.cond(
+    valid_block_bot_cen_top = tf.cond(
                        tf.less(nblock_valid, tf.shape(bot_cen_top)[0]),
-                       lambda: block_bottom_center[0:nblock_valid],
-                       lambda: block_bottom_center)
-    valid_block_bottom = valid_block_bottom_center[:,0:3]
-    valid_block_center = valid_block_bottom_center[:,3:6]
+                       lambda: block_bot_cen_top[0:nblock_valid],
+                       lambda: block_bot_cen_top)
+    valid_block_bottom = valid_block_bot_cen_top[:,0:3]
+    valid_block_center = valid_block_bot_cen_top[:,3:6]
 
     return valid_block_center, valid_block_bottom
 
@@ -1120,7 +1120,6 @@ def main_eager(DATASET_NAME, filenames, sg_settings, nframes):
                                       compression_type="",
                                       buffer_size=1024*100,
                                       num_parallel_reads=1)
-  #dataset.shuffle(buffer_size = 10000)
 
   batch_size = nframes
   is_training = False
@@ -1154,7 +1153,7 @@ def main_eager(DATASET_NAME, filenames, sg_settings, nframes):
     others.append({})
 
   for i in range(batch_size):
-    #if i < 36:
+    #if i < 7:
     #  continue
     print('frame %d'%(i))
     points_i = points_next[i,:,:]
@@ -1231,9 +1230,17 @@ def test_sparse_to_dense(vox_index):
   pass
 
 
-def gen_plys(DATASET_NAME, frame, points, grouped_xyz, bottom_center, bids_sampling, valid_flag='', main_flag=''):
+def gen_plys(DATASET_NAME, frame, points, grouped_xyz, bot_cen_top, bids_sampling, valid_flag='', main_flag=''):
   print('bids_sampling: {}'.format(bids_sampling))
   path = '/tmp/%d_plys'%(frame) + main_flag
+
+  gs = grouped_xyz.shape
+  assert len(gs) == 4 and gs[0]==1
+  grouped_xyz = grouped_xyz[0,:,:,3:6]
+  assert bot_cen_top.shape[0] == 1
+  bot_cen_top = bot_cen_top[0]
+  assert bids_sampling.shape[0] == 1
+  bids_sampling = bids_sampling[0]
 
   if type(points)!=type(None):
     ply_fn = '%s/points.ply'%(path)
@@ -1243,15 +1250,20 @@ def gen_plys(DATASET_NAME, frame, points, grouped_xyz, bottom_center, bids_sampl
   ply_fn = '%s/grouped_points_%s.ply'%(path, valid_flag)
   create_ply_dset(DATASET_NAME, grouped_xyz, ply_fn,
                   extra='random_same_color')
+
+  ply_fn = '%s/block_center_%s.ply'%(path, valid_flag)
+  create_ply_dset(DATASET_NAME, bot_cen_top[...,3:6], ply_fn,
+                  extra='random_same_color')
+
   ply_fn = '%s/blocks%s.ply'%(path, valid_flag)
-  draw_blocks_by_bottom_center(ply_fn, bottom_center, random_crop=0)
+  draw_blocks_by_bot_cen_top(ply_fn, bot_cen_top, random_crop=0)
 
   tmp = np.random.randint(0, min(grouped_xyz.shape[0], 10))
   tmp = np.arange(0, min(grouped_xyz.shape[0],10))
   for j in tmp:
     block_id = bids_sampling[j]
     ply_fn = '%s/blocks%s/%d_blocks.ply'%(path, valid_flag, block_id)
-    draw_blocks_by_bottom_center(ply_fn, bottom_center[j:j+1], random_crop=0)
+    draw_blocks_by_bot_cen_top(ply_fn, bot_cen_top[j:j+1], random_crop=0)
     ply_fn = '%s/blocks%s/%d_points.ply'%(path, valid_flag, block_id)
     create_ply_dset(DATASET_NAME, grouped_xyz[j], ply_fn,
                   extra='random_same_color')
@@ -1283,23 +1295,22 @@ def check_sg_setting_for_vox(sg_settings):
 
 
 def get_sg_settings():
+  sg_settings0 = {}
+  sg_settings0['width'] =  [[1.0,1.0,1.0], [0.2,0.2,0.2], [0.6,0.6,0.6]]
+  sg_settings0['stride'] = [[1.0,1.0,1.0], [0.1,0.1,0.1], [0.4,0.4,0.4]]
+  sg_settings0['nblock'] =  [9, 512,           64]
+  sg_settings0['max_nblock'] =  [10, 6000,  500]
+  sg_settings0['npoint_per_block'] = [1024, 10,   12]
+  sg_settings0['np_perb_min_include'] = [128, 4, 2]
+
+
   sg_settings1 = {}
-  sg_settings1['width'] =  [[1.0,1.0,1.0], [0.2,0.2,0.2], [0.6,0.6,0.6]]
-  sg_settings1['stride'] = [[1.0,1.0,1.0], [0.1,0.1,0.1], [0.4,0.4,0.4]]
-  sg_settings1['nblock'] =  [9, 512,           64]
-  sg_settings1['max_nblock'] =  [10, 6000,  500]
-
-  #sg_settings1['width'] =  [[2.0,2.0,2.0], [0.2,0.2,0.2], [0.6,0.6,0.6]]
-  #sg_settings1['stride'] = [[2.0,2.0,2.0], [0.1,0.1,0.1], [0.4,0.4,0.4]]
-
   sg_settings1['width'] =  [[2.2,2.2,2.2], [0.2,0.2,0.2], [0.6,0.6,0.6]]
   sg_settings1['stride'] = [[2.2,2.2,2.2], [0.1,0.1,0.1], [0.4,0.4,0.4]]
-
-  sg_settings1['nblock'] =  [1, 512,           64]
-  sg_settings1['max_nblock'] =      [1, 6000,  500]
-
-  sg_settings1['npoint_per_block'] = [10000, 10,   12]
-  sg_settings1['np_perb_min_include'] = [1024, 4, 2]
+  sg_settings1['nblock'] =  [1, 1024,           48]
+  sg_settings1['max_nblock'] =      [1, 3000,  200]
+  sg_settings1['npoint_per_block'] = [4096, 32,  48]
+  sg_settings1['np_perb_min_include'] = [1024, 2, 1]
 
   sg_settings = sg_settings1
 
@@ -1312,8 +1323,7 @@ def get_sg_settings():
 
   sg_settings['num_sg_scale'] = len(sg_settings['width'])
   sg_settings['block_pos'] = 'center'
-  #sg_settings['block_pos'] = 'mean'
-  sg_settings['gen_ply'] = False
+  sg_settings['gen_ply'] = True
   sg_settings['record'] = False
 
 
@@ -1322,11 +1332,13 @@ def get_sg_settings():
   return sg_settings
 
 if __name__ == '__main__':
+  import random
   DATASET_NAME = 'MODELNET40'
   raw_tfrecord_path = '/home/z/Research/SparseVoxelNet/data/MODELNET40_H5TF/raw_tfrecord'
   data_path = os.path.join(raw_tfrecord_path, 'data')
   tmp = '*'
   filenames = glob.glob(os.path.join(data_path, tmp+'.tfrecord'))
+  random.shuffle(filenames)
   assert len(filenames) >= 1
 
   sg_settings = get_sg_settings()
@@ -1339,10 +1351,10 @@ if __name__ == '__main__':
     #main_flag = 'e'
   print(main_flag)
 
-  nframes = 100
+  nframes = 10
 
   if 'e' in main_flag:
-    sg_settings['record'] = False
+    sg_settings['record'] = True
     xyzs_E, grouped_xyzs_E, others_E, shuffle_E = \
       main_eager(DATASET_NAME, filenames, sg_settings, nframes)
   if 'g' in main_flag:

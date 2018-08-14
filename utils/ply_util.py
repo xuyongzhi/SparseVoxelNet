@@ -227,8 +227,6 @@ def create_ply( xyz0, ply_fn, label=None, label2color=None, force_color=None, bo
             vertex[i] = ( xyz[i,0],xyz[i,1],xyz[i,2],xyz[i,3],xyz[i,4],xyz[i,5] )
     else:
       raise NotImplementedError
-      import pdb; pdb.set_trace()  # XXX BREAKPOINT
-      pass
 
     el_vertex = PlyElement.describe(vertex,'vertex')
     PlyData([el_vertex],text=True).write(ply_fn)
@@ -290,7 +288,7 @@ def draw_points_and_voxel_indices(ply_fn, xyz, voxel_indices):
 
   draw_points_and_edges(ply_fn, xyz, edge_indices)
 
-def draw_blocks_by_bottom_center(ply_fn, block_bottom_center, random_crop=0):
+def draw_blocks_by_bot_cen_top(ply_fn, block_bottom_center, random_crop=0):
   '''
     block_bottom_center: (num_blocks, 6)
   '''
