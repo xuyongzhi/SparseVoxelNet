@@ -186,12 +186,12 @@ class BlockGroupSampling():
 
   def get_global_bot_cen_top(self):
     # align to 0.1
-    bot = 0.1 * (self.xyz_min // 0.1)
-    top = 0.1 * np.ceil(self.xyz_max / 0.1)
+    bot = 0.1 * tf.floor(self.xyz_min / 0.1)
+    top = 0.1 * tf.ceil(self.xyz_max / 0.1)
 
     # align to width and stride
     tmp = (top - self._widths[0]) / self._strides[0]
-    tmp = np.ceil(tmp).astype(np.int32)
+    tmp = tf.ceil(tmp)
     top = tmp * self._strides[0] + self._widths[0] + bot
     cen = (bot + top) / 2
     global_bot_cen_top = tf.concat([bot, cen, top], 0)
@@ -261,6 +261,7 @@ class BlockGroupSampling():
 
     global_vox_index = []
     global_empty_mask = []
+    self.scale += 1
     for i in range(global_block_num):
       global_vox_index_i, global_empty_mask_i = self.gen_global_voxelization(
         ds_ms['out_bot_cen_top'][-1][i], ds_ms['out_bot_cen_top'][0][0,i],\
@@ -279,7 +280,6 @@ class BlockGroupSampling():
   def gen_global_voxelization(self, last_scale_bot_cen_top, global_out_bot_cen_top, empty_mask, nblock_valid):
     assert len(last_scale_bot_cen_top.shape) == 2
     assert len(global_out_bot_cen_top.shape) == 1
-    self.scale += 1
 
     last_scale_top_max = tf.reduce_max(last_scale_bot_cen_top[:,6:9], 0)
     last_scale_bottom_min = tf.reduce_min(last_scale_bot_cen_top[:,0:3], 0)
@@ -591,10 +591,11 @@ class BlockGroupSampling():
       rate_toofew = n_toofew / tf.cast(self.num_point0,tf.float32)
       rate_toomany = n_toomany / tf.cast(self.num_point0,tf.float32)
       #print("scale {}, too many:{}\ntoo few:{}".format(self.scale, rate_toomany, rate_toofew))
+      max_rate_toomany = 0.8
 
       check_toofew = tf.assert_less_equal(rate_toofew, [0.01, 1.0, 1.0, 1.0][self.scale],
                       message="nb_per_ps too few {}, at scale {}".format(n_toofew, self.scale))
-      check_toomany = tf.assert_less(rate_toomany, [0.3, 0.3, 0.3, 0.3][self.scale],
+      check_toomany = tf.assert_less(rate_toomany, [max_rate_toomany, max_rate_toomany, max_rate_toomany][self.scale],
                       message="nb_per_ps too many {}, at scale {}".format(n_toomany, self.scale))
       with tf.control_dependencies([check_toomany, check_toofew]):
         low_b_index_fixed = tf.identity(low_b_index_fixed)
@@ -645,7 +646,7 @@ class BlockGroupSampling():
     def rm_poutb():
       pindex_inb = tf.cast(tf.where(gp_valid_mask)[:,0], tf.int32)
       return tf.gather(bindex_pindex, pindex_inb, 0)
-    num_grouped_point0 = bindex_pindex.shape[0]
+    num_grouped_point0 = tf.shape(bindex_pindex)[0]
     bindex_pindex = tf.cond( tf.greater(ngb_invalid, 0),
                          rm_poutb,
                          lambda: bindex_pindex )
@@ -683,7 +684,7 @@ class BlockGroupSampling():
 
     check0 = tf.assert_greater(self.npoint_grouped, 0,
                   message="npoint_grouped==0")
-    check1 = tf.assert_greater(ngb_valid_rate, [0.9, 0.6, 0.1, 0.0][self.scale],
+    check1 = tf.assert_greater(ngb_valid_rate, [0.2, 0.2, 0.1, 0.0][self.scale],
                   message="scale {} ngb_valid_rate {}".format(self.scale, ngb_valid_rate))
     with tf.control_dependencies([check0, check1]):
       bid_pindex = tf.identity(bid_pindex)
@@ -862,9 +863,6 @@ class BlockGroupSampling():
       tmp = tf.reshape(self.global_bot_cen_top_ - self.global_bot_bot_bot_, [1,1,-1])
       correct_mask, nerr_scope = self.check_block_inblock(
           tf.expand_dims(bot_cen_top,0), tmp)
-      if nerr_scope >0:
-        import pdb; pdb.set_trace()  # XXX BREAKPOINT
-        pass
       check = tf.assert_equal(nerr_scope, 0,
                 message="sub block is out of global block, scale {}".format(self.scale))
       with tf.control_dependencies([check]):
@@ -956,7 +954,7 @@ def main(DATASET_NAME, filenames, sg_settings, nframes):
                                         compression_type="",
                                         buffer_size=1024*100,
                                         num_parallel_reads=1)
-    batch_size = 32
+    batch_size = 20
 
     #dataset.shuffle(buffer_size = 10000)
 
@@ -1213,16 +1211,17 @@ def get_sg_settings():
   sg_settings1['nblock'] =  [9, 512,           64]
   sg_settings1['max_nblock'] =  [10, 6000,  500]
 
-  sg_settings1['width'] =  [[2.0,2.0,2.0], [0.2,0.2,0.2], [0.6,0.6,0.6]]
-  sg_settings1['stride'] = [[2.0,2.0,2.0], [0.1,0.1,0.1], [0.4,0.4,0.4]]
+  #sg_settings1['width'] =  [[2.0,2.0,2.0], [0.2,0.2,0.2], [0.6,0.6,0.6]]
+  #sg_settings1['stride'] = [[2.0,2.0,2.0], [0.1,0.1,0.1], [0.4,0.4,0.4]]
 
   sg_settings1['width'] =  [[2.2,2.2,2.2], [0.2,0.2,0.2], [0.6,0.6,0.6]]
   sg_settings1['stride'] = [[2.2,2.2,2.2], [0.1,0.1,0.1], [0.4,0.4,0.4]]
 
   sg_settings1['nblock'] =  [1, 512,           64]
+  sg_settings1['max_nblock'] =      [1, 6000,  500]
+
   sg_settings1['npoint_per_block'] = [10000, 10,   12]
   sg_settings1['np_perb_min_include'] = [1024, 4, 2]
-  sg_settings1['max_nblock'] =      [1, 6000,  500]
 
   sg_settings = sg_settings1
 
@@ -1264,7 +1263,7 @@ if __name__ == '__main__':
     #main_flag = 'e'
   print(main_flag)
 
-  nframes = 10
+  nframes = 100
 
   if 'e' in main_flag:
     sg_settings['record'] = True
