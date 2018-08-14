@@ -57,9 +57,9 @@ def block_index_to_block_id(block_index, block_size):
 
   block_id: (n0,n1,1)
   '''
-  assert tf.shape(block_index).shape[0].value == 3
-  block_id = block_index[:,:,2] * block_size[1] * block_size[0] + \
-              block_index[:,:,1] * block_size[0] + block_index[:,:,0]
+  assert tf.shape(block_index).shape[0].value == 2
+  block_id = block_index[:,2] * block_size[1] * block_size[0] + \
+              block_index[:,1] * block_size[0] + block_index[:,0]
 
   is_check = True
   if is_check:
@@ -67,6 +67,7 @@ def block_index_to_block_id(block_index, block_size):
     check_bi = tf.assert_equal(block_index, block_index_C)
     with tf.control_dependencies([check_bi]):
       block_id = tf.identity(block_id)
+  block_id = tf.expand_dims(block_id, 1)
   return block_id
 
 
@@ -162,7 +163,7 @@ class BlockGroupSampling():
         #self.samplings[i]['valid_grouped_npoint_'] = tf.constant(0, tf.int64)
         self.samplings[i]['nmissing_perb_'] = tf.constant(0, tf.int64)
         self.samplings[i]['nempty_perb_'] = tf.constant(0, tf.int64)
-        self.samplings[i]['ngp_edge_block_'] = tf.constant(0, tf.int64)
+        self.samplings[i]['n_out_global_'] = tf.constant(0, tf.int64)
         self.samplings[i]['ngp_out_block_'] = tf.constant(0, tf.int64)
         self.samplings[i]['npoint_grouped_'] = tf.constant(0, tf.int64)
 
@@ -170,38 +171,49 @@ class BlockGroupSampling():
     # debug flags
     self._shuffle = False
     self._use_less_points_block_when_not_enough = True
-    self._bound_bindex_by_rawxyzscope = False
+    self._cut_bindex_by_global_scope = True
     # Theoretically, num_block_per_point should be same for all. This is 0.
     self._check_nblock_per_points_same = True # (optional)
 
     self._check_binb = True
     self._check_voxelization = True
+    self._check_optional = True
 
     self._debug_only_blocks_few_points = False
     self.debugs = {}
     self._gen_ply = sg_settings['gen_ply']
 
 
+  def get_global_bot_cen_top(self):
+    # align to 0.1
+    bot = 0.1 * (self.xyz_min // 0.1)
+    top = 0.1 * np.ceil(self.xyz_max / 0.1)
+
+    # align to width and stride
+    tmp = (top - self._widths[0]) / self._strides[0]
+    tmp = np.ceil(tmp).astype(np.int32)
+    top = tmp * self._strides[0] + self._widths[0] + bot
+    cen = (bot + top) / 2
+    global_bot_cen_top = tf.concat([bot, cen, top], 0)
+    return tf.expand_dims(global_bot_cen_top, 0)
+
+    #tmp = np.array([-1.0,-1,-1, 0,0,0, 1,1,1])
+    #tmp[6:9] = tmp[0:3] + self._widths[0]
+    #global_bot_cen_top = tf.reshape(tf.constant(tmp, tf.float32), (1,9))
+
   def grouping_multi_scale(self, xyz):
     self.xyz_max = tf.reduce_max(xyz, 0)
     self.xyz_min = tf.reduce_min(xyz, 0)
+    self.xyz_mean = (self.xyz_max + self.xyz_min) / 2
+
+    global_bot_cen_top = self.get_global_bot_cen_top()
 
     num_scale = self._num_scale
-    #grouped_pindex_ms = []
-    #vox_index_ms = []
-    #grouped_bot_cen_top_ms = []
-    #out_bot_cen_top_ms = []
-    #empty_mask_ms = []
-    #bot_cen_top_ms = []
-    #nblock_valid_ms = []
     ds_ms = {}
     others_ms = []
 
     bot_cen_top = tf.tile(xyz, [1,3])
     in_bot_cen_top = tf.expand_dims(bot_cen_top, 0)
-    tmp = np.array([-1.0,-1,-1, 0,0,0, 1,1,1])
-    tmp[6:9] = tmp[0:3] + self._widths[0]
-    global_bot_cen_top = tf.reshape(tf.constant(tmp, tf.float32), (1,9))
 
     for s in range(num_scale):
       assert len(in_bot_cen_top.shape) == 3
@@ -307,6 +319,10 @@ class BlockGroupSampling():
     self.scale = scale
     self.global_bot_cen_top_ = global_bot_cen_top_
     self.global_bot_bot_bot_ = tf.tile(global_bot_cen_top_[0:3], [3])
+
+    # Align to the gloabl bottom: 1) all block index is positive, so that block
+    # index to block id is exclusive. 2) This alignment allows voxelization when
+    # width and stride is different.
     bot_cen_top -= self.global_bot_bot_bot_
 
     assert len(bot_cen_top.shape) == 2
@@ -391,8 +407,8 @@ class BlockGroupSampling():
     summary += summary_str('nblock_valid', samplings_np['nblock_valid_'], self._nblocks[scale])
     summary += 'nblock_invalid(few points):{}, np_perb_min_include:{}\n'.format(
                   samplings_np['nblock_invalid_'], self._np_perb_min_includes[scale])
-    summary += 'ngp_edge_block:{}  <- padding rate:{}\n'.format(
-      samplings_np['ngp_edge_block_'], self._padding_rate[scale])
+    summary += 'n_out_global:{}  <- padding rate:{}\n'.format(
+      samplings_np['n_out_global_'], self._padding_rate[scale])
     summary += 'ngp_out_block:{} npoint_grouped:{}\n'.format(
       samplings_np['ngp_out_block_'],  samplings_np['npoint_grouped_'])
     summary += summary_str('ave np per block', samplings_np['ave_np_perb_'], self._npoint_per_blocks[scale])
@@ -458,25 +474,31 @@ class BlockGroupSampling():
     return block_index_fixed
 
 
-  def block_index_bound(self, block_index):
+  def cut_bindex_by_global_scope(self, block_index):
     '''
     The blocks at the edge
     '''
-    raise NotImplementedError
-    padding = self._widths[self.scale] * self._padding_rate[self.scale]  # very important
-    bindex_min = (self.xyz_min - padding)/self._strides[self.scale]
-    bindex_max = (self.xyz_max + padding-self._widths[self.scale])/self._strides[self.scale]
-    bindex_min = tf.reshape(bindex_min, (1,1,-1))
-    bindex_max = tf.reshape(bindex_max, (1,1,-1))
+    assert len(block_index.shape) == 3
+    global_bot_cen_top =  self.global_bot_cen_top_ - self.global_bot_bot_bot_
+    bindex_min = global_bot_cen_top[0:3] / self._strides[self.scale]
+    bindex_max = (global_bot_cen_top[6:9] - self._widths[self.scale]) / self._strides[self.scale]
+    bindex_min = tf.cast(tf.ceil(bindex_min - MAX_FLOAT_DRIFT), tf.int32)
+    bindex_max = tf.cast(tf.floor(bindex_max + MAX_FLOAT_DRIFT), tf.int32)
 
-    low_bmask = tf.greater_equal(tf.cast(block_index, tf.float32), bindex_min)
+    #padding = self._widths[self.scale] * self._padding_rate[self.scale]  # very important
+    #bindex_min = (self.xyz_min - padding)/self._strides[self.scale]
+    #bindex_max = (self.xyz_max + padding-self._widths[self.scale])/self._strides[self.scale]
+    #bindex_min = tf.reshape(bindex_min, (1,1,-1))
+    #bindex_max = tf.reshape(bindex_max, (1,1,-1))
+
+    low_bmask = tf.greater_equal(block_index, bindex_min)
     low_bmask = tf.reduce_all(low_bmask, -1)
-    up_bmask = tf.less_equal(tf.cast(block_index,tf.float32), bindex_max)
+    up_bmask = tf.less_equal(block_index, bindex_max)
     up_bmask = tf.reduce_all(up_bmask, -1)
-    b_in_bound_mask = tf.logical_and(low_bmask, up_bmask)
-    ngp_edge_block = tf.reduce_sum(1-tf.cast(b_in_bound_mask, tf.int32))
-    self.ngp_edge_block = ngp_edge_block
-    return b_in_bound_mask, ngp_edge_block
+    in_global_mask = tf.logical_and(low_bmask, up_bmask)
+    n_out_global = tf.reduce_sum(1-tf.cast(in_global_mask, tf.int32))
+    self.n_out_global = n_out_global
+    return in_global_mask, n_out_global
 
 
   def check_bindex_inblock(self, block_index, bot_cen_top_small):
@@ -526,7 +548,9 @@ class BlockGroupSampling():
     block_id: (num_point0, nblock_perp_3d, 1)
     '''
     assert bot_cen_top.shape[-1] == 9
+    #***************************************************************************
     # (1.1) lower and upper block index bound
+    # align bot to zeor here
     self.num_point0 = num_point0 = tf.shape(bot_cen_top)[0]
     width = self._widths[self.scale]
     if self.scale==0:
@@ -543,6 +567,7 @@ class BlockGroupSampling():
     # only set the points to lower block index.
     low_b_index_fixed = tf.cast(tf.ceil(low_b_index - MAX_FLOAT_DRIFT), tf.int32)    # include
 
+    #***************************************************************************
     #(1.2) the block number for each point should be equal
     # If not, still make it equal to get point index per block.
     # Then rm the grouped points out of block scope.
@@ -586,59 +611,80 @@ class BlockGroupSampling():
 
     pinb_mask, ngp_out_block = self.check_bindex_inblock(block_index, bot_cen_top)
 
+    #***************************************************************************
     # (1.3) Remove the points belong to blocks out of edge bound
-    if self._bound_bindex_by_rawxyzscope:
-      b_in_bound_mask, ngp_edge_block = self.block_index_bound(block_index)
+    if self._cut_bindex_by_global_scope:
+      in_global_mask, n_out_global = self.cut_bindex_by_global_scope(block_index)
     else:
-      self.ngp_edge_block = 0
+      self.n_out_global = 0
 
-    # (1.4) block index -> block id
-    tmp_bindex = tf.reshape(block_index, (-1,3))
-    self.min_block_index = tf.reduce_min(tmp_bindex, 0)
-    max_block_index = tf.reduce_max(tmp_bindex, 0)
-    self.block_size = max_block_index - self.min_block_index + 1 # ADD ONE!!!
-    # Make all block index positive. So that the blockid for each block index is
-    # exclusive.
-    block_index -= self.min_block_index
-    # (num_point0, nblock_perp_3d, 1)
-    block_id = block_index_to_block_id(block_index, self.block_size)
-    block_id = tf.expand_dims(block_id, 2)
 
-    # (1.5) concat block id and point index
+    #***************************************************************************
+    # (1.4) concat block index and point index
     point_indices = tf.reshape( tf.range(0, num_point0, 1), (-1,1,1))
     point_indices = tf.tile(point_indices, [1, self.nblock_perp_3d, 1])
     # (num_point0, nblock_perp_3d, 2)
-    bid_pindex = tf.concat([block_id, point_indices], 2)
+    bindex_pindex = tf.concat([block_index, point_indices], 2)
     # (num_point0 * nblock_perp_3d, 2)
 
-    bid_pindex = tf.reshape(bid_pindex, (-1,2))
-    block_index = tf.reshape(block_index, (-1,3))
+    bindex_pindex = tf.reshape(bindex_pindex, (-1,4))
+    #block_index = tf.reshape(block_index, (-1,3))
     pinb_mask = tf.reshape(pinb_mask, (-1,))
-    if self._bound_bindex_by_rawxyzscope:
-      b_in_bound_mask = tf.reshape(b_in_bound_mask, (-1,))
-      ngb_invalid = ngp_out_block + ngp_edge_block
-      gp_valid_mask = tf.logical_and(pinb_mask, b_in_bound_mask)
-      #print('ngp_out_block:{}  ngp_edge_block:{}'.format(ngp_out_block, ngp_edge_block))
+    if self._cut_bindex_by_global_scope:
+      in_global_mask = tf.reshape(in_global_mask, (-1,))
+      ngb_invalid = ngp_out_block + n_out_global
+      gp_valid_mask = tf.logical_and(pinb_mask, in_global_mask)
+      #print('ngp_out_block:{}  n_out_global:{}'.format(ngp_out_block, n_out_global))
     else:
       ngb_invalid = ngp_out_block
       gp_valid_mask = pinb_mask
-      #print('ngp_out_block:{}  ngp_edge_block:{}'.format(ngp_out_block, 0))
+      #print('ngp_out_block:{}  n_out_global:{}'.format(ngp_out_block, 0))
 
-    # (1.6) rm grouped points out of block or points in block out of edge bound
+    #***************************************************************************
+    # (1.5) rm grouped points out of block or points in block out of edge bound
     def rm_poutb():
       pindex_inb = tf.cast(tf.where(gp_valid_mask)[:,0], tf.int32)
-      return tf.gather(bid_pindex, pindex_inb, 0)
-    ngb_invalid_rate = tf.cast(ngb_invalid,tf.float32) /\
-                        tf.cast(tf.shape(bid_pindex)[0],tf.float32)
-    bid_pindex = tf.cond( tf.greater(ngb_invalid, 0),
+      return tf.gather(bindex_pindex, pindex_inb, 0)
+    num_grouped_point0 = bindex_pindex.shape[0]
+    bindex_pindex = tf.cond( tf.greater(ngb_invalid, 0),
                          rm_poutb,
-                         lambda: bid_pindex )
-    self.npoint_grouped = tf.shape(bid_pindex)[0]
+                         lambda: bindex_pindex )
+
+    self.npoint_grouped = tf.shape(bindex_pindex)[0]
+    ngb_valid_rate = tf.cast(self.npoint_grouped, tf.float32) /\
+                        tf.cast(num_grouped_point0, tf.float32)
+
+    #***************************************************************************
+    # (1.6) block index -> block id
+    block_index = bindex_pindex[:,0:3]
+    if self._check_optional:
+      # Make sure all block index positive. So that the blockid for each block index is
+      # exclusive.
+      min_bindex = tf.reduce_min(block_index)
+      check_bindex_pos = tf.assert_greater_equal( 0, min_bindex,
+                                  message="neg block index, scale {}".format(self.scale))
+      with tf.control_dependencies([check_bindex_pos]):
+        block_index = tf.identity(block_index)
+
+    max_block_index = tf.reduce_max(block_index, 0)
+    self.block_size = max_block_index  + 1 # ADD ONE!!!
+
+    # (num_point0, nblock_perp_3d, 1)
+    block_id = block_index_to_block_id(block_index, self.block_size)
+
+    bid_pindex = tf.concat([block_id, bindex_pindex[:,3:4]], 1)
+
+
+    #***************************************************************************
+    # (1.7) check not too less valid grouped points
+    #if ngb_valid_rate < 1.0:
+    #  print('scale {} ngb_valid_rate {} valid npoint_grouped {} ngp_out_block {}  n_out_global {}'.format(
+    #      self.scale, ngb_valid_rate, self.npoint_grouped, ngp_out_block, n_out_global))
 
     check0 = tf.assert_greater(self.npoint_grouped, 0,
-                               message="npoint_grouped==0")
-    check1 = tf.assert_less(ngb_invalid_rate, [1.0, 0.2,0.9,0.9,0.9,0.9][self.scale],
-                            message="ngb_invalid_rate {}".format(ngb_invalid_rate))
+                  message="npoint_grouped==0")
+    check1 = tf.assert_greater(ngb_valid_rate, [0.9, 0.6, 0.1, 0.0][self.scale],
+                  message="scale {} ngb_valid_rate {}".format(self.scale, ngb_valid_rate))
     with tf.control_dependencies([check0, check1]):
       bid_pindex = tf.identity(bid_pindex)
 
@@ -709,7 +755,7 @@ class BlockGroupSampling():
 
 
   def record_samplings(self, npoint_per_block):
-    self.samplings[self.scale]['ngp_edge_block_'] += tf.cast(self.ngp_edge_block,tf.int64)
+    self.samplings[self.scale]['n_out_global_'] += tf.cast(self.n_out_global,tf.int64)
     self.samplings[self.scale]['ngp_out_block_'] += tf.cast(self.ngp_out_block,tf.int64)
     self.samplings[self.scale]['npoint_grouped_'] += tf.cast(self.npoint_grouped,tf.int64)
 
@@ -809,7 +855,7 @@ class BlockGroupSampling():
     '''
     bids_sampling = tf.gather(block_id_unique, bid_index_sampling)
     bindex_sampling = block_id_to_block_index(bids_sampling, self.block_size)
-    bindex_sampling += self.min_block_index
+    #bindex_sampling += self.min_block_index
     bot_cen_top = self.block_index_to_scope(bindex_sampling)
 
     if self.scale>=0:
