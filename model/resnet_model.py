@@ -333,6 +333,7 @@ bnd optimizer block_config\n'
 
     inputs, padding = self.padding2d3d(inputs, kernels, strides, padding_s1)
 
+    assert self.data_format == 'channels_last'
     outputs = conv_fn(
         inputs=inputs, filters=filters, kernel_size=kernels, strides=strides,
         padding=padding, use_bias=self.use_bias,
@@ -1014,14 +1015,15 @@ class Model(ResConvOps):
 
     return inputs_dic
 
-  def pre_pro_inputs(self, inputs_dic):
+  def pre_pro_inputs(self, inputs_dic, sg_num_scale):
+    # scale 0 is global scale!
     inputs_dic1 = {}
-    inputs_dic1['points'] = inputs_dic['points']
+    inputs_dic1['points'] = tf.squeeze(inputs_dic['grouped_xyz_0'], 1)
     items = ['grouped_pindex','grouped_xyz', 'empty_mask', 'bot_cen_top',
              'vox_index']
     for item in items:
       inputs_dic1[item] = []
-      for s in range(self.sg_num_scale+1):
+      for s in range(1, sg_num_scale+1):
         if item+'_%d'%(s) in inputs_dic:
           inputs_dic1[item].append(inputs_dic[item+'_%d'%(s)])
         else:
@@ -1040,7 +1042,7 @@ class Model(ResConvOps):
       A logits Tensor with shape [<batch_size>, self.num_classes].
     """
 
-    inputs_dic = self.pre_pro_inputs(inputs_dic)
+    inputs_dic = self.pre_pro_inputs(inputs_dic, self.sg_num_scale)
     IsMultiView = len(inputs_dic['points'].shape) == 4
     if not IsMultiView:
       assert len(inputs_dic['points'].shape) == 3
@@ -1096,6 +1098,7 @@ class Model(ResConvOps):
   def _call(self, inputs, grouped_xyz_ms, grouped_pindex_ms, empty_mask_ms,
             bot_cen_top_ms, vox_index_ms, is_training, eval_views=-1):
 
+    import pdb; pdb.set_trace()  # XXX BREAKPOINT
     tf.add_to_collection('raw_inputs', inputs)
     if self.IsShowModel: self.log('')
     self.is_training = is_training

@@ -175,7 +175,7 @@ class BlockGroupSampling():
     self._shuffle = True  # compulsory
     self._cut_bindex_by_global_scope = True # compulsory
 
-    self._check_optional = False
+    self._check_optional = True
     self._use_less_points_block_when_not_enough_optial = True and self._check_optional
     # Theoretically, num_block_per_point should be same for all. This is 0.
     self._check_nblock_per_points_same_optial = True and self._check_optional

@@ -172,6 +172,10 @@ def check_data():
             print('shifts', augs['shifts'][0:2])
           if 'jitter' in augs:
             print('jitter', augs['jitter'][0][0:5])
+
+        #
+        print('labels: {}'.format(labels))
+        print('items: {}'.format(features.keys()))
         import pdb; pdb.set_trace()  # XXX BREAKPOINT
         pass
 

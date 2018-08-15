@@ -246,7 +246,9 @@ def parse_pl_record(tfrecord_serialized, is_training, data_shapes=None, bsg=None
         points, b_bottom_centers_mm, augs = aug_views(points, b_bottom_centers_mm,
                     data_shapes['eval_views'],
                     data_shapes['data_metas']['data_idxs'])
-    features['points'] = points
+
+    if bsg==None:
+      features['points'] = points
     # ------------------------------------------------
     #             grouping and sampling on line
     if bsg!=None:

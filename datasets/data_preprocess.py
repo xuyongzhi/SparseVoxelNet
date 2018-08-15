@@ -18,6 +18,8 @@ import pickle
 import json
 from  datasets_meta import DatasetsMeta
 import geometric_util as geo_util
+import random
+
 
 TMPDEBUG = True
 ROOT_DIR = os.path.dirname(BASE_DIR)
@@ -502,16 +504,10 @@ class H5Prepare():
             if not os.path.exists(merged_dir):
               os.makedirs(merged_dir)
 
-        #fn_glob = tfrecord_path + '/data/*.tfrecord'
-        #fn_ls = glob.glob(fn_glob)
-        #fn_ls.sort()
-
-        #if len(fn_ls) == 0:
-        #    print('no file mathces %s'%(fn_glob ))
-        #print('%d files found for %s'%(len(fn_ls), fn_glob ))
-
         train_fn_ls = DS_Meta.get_train_test_file_list(rawdata_dir, True)
+        random.shuffle(train_fn_ls)
         test_fn_ls = DS_Meta.get_train_test_file_list(rawdata_dir, False)
+        random.shuffle(test_fn_ls)
 
         grouped_train_fnls, train_groupe_names = split_fn_ls(train_fn_ls, 10)
         train_groupe_names = ['train_'+e for e in train_groupe_names]
