@@ -44,7 +44,7 @@ def get_sg_settings():
   sg_settings1['width'] =  [[2.2,2.2,2.2], [0.2,0.2,0.2], [0.6,0.6,0.6]]
   sg_settings1['stride'] = [[2.2,2.2,2.2], [0.1,0.1,0.1], [0.4,0.4,0.4]]
   sg_settings1['nblock'] =  [1, 1024,           48]
-  sg_settings1['max_nblock'] =      [1, 3000,  200]
+  sg_settings1['max_nblock'] =      [1, 4000,  200]
   sg_settings1['npoint_per_block'] = [4096, 32,  48]
   sg_settings1['np_perb_min_include'] = [1024, 2, 1]
 

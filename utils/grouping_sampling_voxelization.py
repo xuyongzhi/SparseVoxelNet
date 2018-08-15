@@ -172,15 +172,15 @@ class BlockGroupSampling():
 
 
     # debug flags
-    self._shuffle = True
-    self._use_less_points_block_when_not_enough = True
-    self._cut_bindex_by_global_scope = True
-    # Theoretically, num_block_per_point should be same for all. This is 0.
-    self._check_nblock_per_points_same = True # (optional)
+    self._shuffle = True  # compulsory
+    self._cut_bindex_by_global_scope = True # compulsory
 
-    self._check_binb = True
-    self._check_voxelization = True
-    self._check_optional = True
+    self._check_optional = False
+    self._use_less_points_block_when_not_enough_optial = True and self._check_optional
+    # Theoretically, num_block_per_point should be same for all. This is 0.
+    self._check_nblock_per_points_same_optial = True and self._check_optional
+    self._check_gbinb_optial = True and self._check_optional
+    self._check_voxelization_optial = True and self._check_optional
 
     self._debug_only_blocks_few_points = False
     self.debugs = {}
@@ -348,7 +348,7 @@ class BlockGroupSampling():
 
     bids_sampling, out_bot_cen_top = self.all_bot_cen_tops(block_id_unique, bid_index_sampling)
 
-    if self._check_binb:
+    if self._check_gbinb_optial:
       gb_valid_mask, nerr_gb_in_ob = self.check_block_inblock(grouped_bot_cen_top, out_bot_cen_top, empty_mask)
       with tf.control_dependencies([tf.assert_equal(nerr_gb_in_ob, 0)]):
         grouped_bot_cen_top = tf.identity(grouped_bot_cen_top)
@@ -635,7 +635,7 @@ class BlockGroupSampling():
     # all the points. This is based on: num block per point is the same for all!
     # Check: No points will belong to greater nblocks. But few may belong to
     # smaller blocks: err_npoints
-    if self._check_nblock_per_points_same:
+    if self._check_nblock_per_points_same_optial:
       up_b_index_fixed = tf.cast(tf.floor(up_b_index + MAX_FLOAT_DRIFT), tf.int32) + 1 # not include
 
       nblocks_per_points = up_b_index_fixed - low_b_index_fixed
@@ -872,13 +872,15 @@ class BlockGroupSampling():
     tmp_nb = self._nblocks[self.scale] - nblock_valid
 
     def block_not_enough():
-      if self._use_less_points_block_when_not_enough:
+      if self._use_less_points_block_when_not_enough_optial:
         bid_index_valid_1 = tf.concat([bid_index_valid,
                                 self.invalid_bid_index[0:tmp_nb]],0)
-        tmp_nb1 = self._nblocks[self.scale] - tf.shape(bid_index_valid_1)[0]
-        bid_index_sampled = tf.concat([bid_index_valid_1, tf.ones(tmp_nb1,tf.int32)\
-                                     * bid_index_valid_1[0]],0)
-        return bid_index_sampled
+      else:
+        bid_index_valid_1 = bid_index_valid
+      tmp_nb1 = self._nblocks[self.scale] - tf.shape(bid_index_valid_1)[0]
+      bid_index_sampled = tf.concat([bid_index_valid_1, tf.ones(tmp_nb1,tf.int32)\
+                                    * bid_index_valid_1[0]],0)
+      return bid_index_sampled
 
     def block_too_many():
       if self._shuffle:
@@ -962,7 +964,7 @@ class BlockGroupSampling():
     vox_index1 = tf.round(vox_index0)
     vox_index = tf.cast(vox_index1, tf.int32)
 
-    if self._check_voxelization:
+    if self._check_voxelization_optial:
       vox_size = self._vox_sizes[self.scale]
       vox_index_align_err = tf.abs(vox_index0 - vox_index1)
       max_vox_index_align_err = tf.reduce_max(vox_index_align_err)
@@ -1021,7 +1023,7 @@ def main(DATASET_NAME, filenames, sg_settings, nframes):
                                         compression_type="",
                                         buffer_size=1024*100,
                                         num_parallel_reads=1)
-    batch_size = min(nframes,50)
+    batch_size = min(nframes,100)
 
     #dataset.shuffle(buffer_size = 10000)
 
@@ -1067,7 +1069,7 @@ def main(DATASET_NAME, filenames, sg_settings, nframes):
     config = tf.ConfigProto(allow_soft_placement=True)
     with tf.Session(config=config) as sess:
       n_run = nframes // batch_size
-      for i in range(n_run):
+      for i in xrange(n_run):
         #points_i = sess.run(points_next)
         #grouped_pindex = sess.run(grouped_pindex_next)
         #empty_masks = sess.run(empty_mask_next)
@@ -1294,7 +1296,7 @@ if __name__ == '__main__':
     #main_flag = 'e'
   print(main_flag)
 
-  nframes = 13000
+  nframes = 12311
   #nframes = 10
 
   if 'e' in main_flag:
@@ -1307,12 +1309,12 @@ if __name__ == '__main__':
   if main_flag=='eg' and shuffle==False and shuffle_E==False:
     assert xyzs.shape[0] == xyzs_E.shape[0], "Make batch_size=nframes in main "
     batch_size = xyzs.shape[0]
-    for b in range(batch_size):
+    for b in xrange(batch_size):
       assert (xyzs_E[b] == xyzs[b]).all(), 'time %d xyz different'%(b)
       print('time %d xyzs of g and e is same'%(b))
 
       num_scale = len(grouped_xyzs)
-      for s in range(num_scale):
+      for s in xrange(num_scale):
         for name in others_E[s]:
           check = (others_E[s][name][b] == others[s][name][b]).all()
           if not check:
