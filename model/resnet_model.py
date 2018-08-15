@@ -923,7 +923,7 @@ class Model(ResConvOps):
     self.global_numpoint = self.data_net_configs['points'][0]
     self.net_num_scale = len(self.data_net_configs['block_params']['filters'])
     self.sg_num_scale = len(self.data_net_configs['sg_settings']['width'])
-    assert self.sg_num_scale + 1 == self.net_num_scale
+    assert self.sg_num_scale == self.net_num_scale
     for key in ['feed_data', 'sg_settings', 'data_metas',
                 'xyz_elements']:
       setattr(self, key, self.data_net_configs[key])

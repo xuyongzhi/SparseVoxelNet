@@ -253,20 +253,24 @@ def parse_pl_record(tfrecord_serialized, is_training, data_shapes=None, bsg=None
       grouped_pindex, vox_index, grouped_xyz, empty_mask, bot_cen_top, nblock_valid, others = \
                         bsg.grouping_multi_scale(points[:,0:3])
       num_scale = len(grouped_xyz)
-      for s in range(num_scale+1):
-        features['empty_mask_%d'%(s)] = tf.cast(empty_mask[s], tf.int8)
-        features['vox_index_%d'%(s)] = vox_index[s]
-        if s==num_scale:
-          continue
+      global_block_num = grouped_pindex[0].shape[0]
+      check_g = tf.assert_equal(global_block_num, 1)
+      with tf.control_dependencies([check_g]):
+        gbi = 0
+        for s in range(num_scale+1):
+          features['empty_mask_%d'%(s)] = tf.cast(empty_mask[s][gbi], tf.int8)
+          features['vox_index_%d'%(s)] = vox_index[s][gbi]
+          if s==num_scale:
+            continue
 
-        features['grouped_pindex_%d'%(s)] = grouped_pindex[s]
-        features['grouped_xyz_%d'%(s)] = grouped_xyz[s]
-        features['bot_cen_top_%d'%(s)] = bot_cen_top[s]
-        for k in range(len(others[s]['name'])):
-          name = others[s]['name'][k]+'_%d'%(s)
-          if name not in features:
-            features[name] = []
-          features[name].append( others[s]['value'][k] )
+          features['grouped_pindex_%d'%(s)] = grouped_pindex[s][gbi]
+          features['grouped_xyz_%d'%(s)] = grouped_xyz[s][gbi]
+          features['bot_cen_top_%d'%(s)] = bot_cen_top[s][gbi]
+          for k in range(len(others[s]['name'])):
+            name = others[s]['name'][k]+'_%d'%(s)
+            if name not in features:
+              features[name] = []
+            features[name].append( others[s]['value'][k][gbi] )
 
     return features, object_label
 

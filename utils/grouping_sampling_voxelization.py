@@ -123,7 +123,7 @@ def permutation_combination_3D(up_bound_3d, low_bound_3d=[0,0,0]):
 
 
 class BlockGroupSampling():
-  def __init__(self, sg_settings, log_path):
+  def __init__(self, sg_settings, log_path=None):
     '''
     sg_settings:
       width = [1,1,1]
@@ -132,7 +132,8 @@ class BlockGroupSampling():
       npoint_per_block = 32
       max_nblock = 1000
     '''
-    self.log_path = log_path + '/'
+    if log_path!=None:
+      self.log_path = log_path + '/'
     self._num_scale = len(sg_settings['width'])
     self._widths =  sg_settings['width']
     self._strides = sg_settings['stride']
@@ -145,9 +146,7 @@ class BlockGroupSampling():
     assert self._widths.shape[1] == self._strides.shape[1] == 3
     self._nblock_buf_maxs = sg_settings['max_nblock']
     self._empty_point_index = 'first' # -1(GPU only) or 'first'
-    self._block_pos = sg_settings['block_pos']
     self._vox_sizes = sg_settings['vox_size']
-    assert self._block_pos=='mean' or self._block_pos=='center'
 
     # record grouping parameters
     self._record_samplings = sg_settings['record']
@@ -383,7 +382,8 @@ class BlockGroupSampling():
     if DEBUG:
       for name in self.debugs:
         others['value'] += [self.debugs[name]]
-        others['name'] += [ots + name]
+        others['name'] += [name]
+    others['name'] = [ots+e for e in others['name']]
 
     out_bot_cen_top += self.global_bot_bot_bot_
     grouped_bot_cen_top += self.global_bot_bot_bot_
@@ -727,6 +727,9 @@ class BlockGroupSampling():
       # Make sure all block index positive. So that the blockid for each block index is
       # exclusive.
       min_bindex = tf.reduce_min(block_index)
+      #if min_bindex < 0:
+      #  import pdb; pdb.set_trace()  # XXX BREAKPOINT
+      #  pass
       check_bindex_pos = tf.assert_greater_equal( 0, min_bindex,
                                   message="neg block index, scale {}".format(self.scale))
       with tf.control_dependencies([check_bindex_pos]):
@@ -992,12 +995,6 @@ class BlockGroupSampling():
 
 
   def valid_block_pos(self, empty_mask, bot_cen_top, nblock_valid):
-    #if self._block_pos == 'mean':
-    #  block_xyz = self.grouped_mean(grouped_xyz, empty_mask)
-    #  block_bottom = tf.reduce_min(grouped_xyz, 1)
-    #  block_bot_cen_top = tf.concat([block_bottom, block_xyz], -1)
-    #elif self._block_pos == 'center':
-    #  block_bot_cen_top = block_bot_cen_top
     empty_mask = tf.cast(empty_mask, tf.bool)
     valid_block_bot_cen_top = tf.cond(
                        tf.less(nblock_valid, tf.shape(bot_cen_top)[0]),
@@ -1091,10 +1088,9 @@ def main(DATASET_NAME, filenames, sg_settings, nframes):
         xyzs = points[:,:,0:3]
         print('group OK %d'%(i))
 
-        for s in range(num_scale):
-          others[s]['empty_mask'] = empty_masks[s]
-
-          for frame in range(batch_size):
+        for frame in range(batch_size):
+          for s in range(num_scale):
+            others[s]['empty_mask'] = empty_masks[s]
             if bsg._gen_ply:
               valid_flag = '' if not bsg._debug_only_blocks_few_points else '_invalid'
               if not bsg._shuffle:
@@ -1235,12 +1231,19 @@ def gen_plys(DATASET_NAME, frame, points, grouped_xyz, bot_cen_top, bids_samplin
   path = '/tmp/%d_plys'%(frame) + main_flag
 
   gs = grouped_xyz.shape
-  assert len(gs) == 4 and gs[0]==1
-  grouped_xyz = grouped_xyz[0,:,:,3:6]
-  assert bot_cen_top.shape[0] == 1
-  bot_cen_top = bot_cen_top[0]
-  assert bids_sampling.shape[0] == 1
-  bids_sampling = bids_sampling[0]
+
+  if len(gs) == 4:
+    # include global block
+    assert len(gs) == 4 and gs[0]==1
+    grouped_xyz = grouped_xyz[0,:,:,3:6]
+    assert bot_cen_top.shape[0] == 1
+    bot_cen_top = bot_cen_top[0]
+    assert bids_sampling.shape[0] == 1
+    bids_sampling = bids_sampling[0]
+
+  if len(gs) == 3:
+    # not include global block
+    grouped_xyz = grouped_xyz[:,:,3:6]
 
   if type(points)!=type(None):
     ply_fn = '%s/points.ply'%(path)
@@ -1279,6 +1282,7 @@ if __name__ == '__main__':
   DATASET_NAME = 'MODELNET40'
   raw_tfrecord_path = '/home/z/Research/SparseVoxelNet/data/MODELNET40_H5TF/raw_tfrecord'
   data_path = os.path.join(raw_tfrecord_path, 'data')
+  data_path = os.path.join(raw_tfrecord_path, 'merged_data')
   tmp = '*'
   filenames = glob.glob(os.path.join(data_path, tmp+'.tfrecord'))
   random.shuffle(filenames)
@@ -1297,11 +1301,9 @@ if __name__ == '__main__':
   nframes = 10
 
   if 'e' in main_flag:
-    sg_settings['record'] = True
     xyzs_E, grouped_xyzs_E, others_E, shuffle_E = \
       main_eager(DATASET_NAME, filenames, sg_settings, nframes)
   if 'g' in main_flag:
-    sg_settings['record'] = False
     xyzs, grouped_xyzs, others, shuffle = \
       main(DATASET_NAME, filenames, sg_settings, nframes)
 

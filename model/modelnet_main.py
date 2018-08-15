@@ -46,7 +46,7 @@ _NUM_IMAGES = {
     'validation': 2468,
 }
 
-_NUM_TRAIN_FILES = 5
+_NUM_TRAIN_FILES = 10
 _SHUFFLE_BUFFER = 1000
 
 DATASET_NAME = 'MODELNET40'
@@ -55,11 +55,20 @@ DATASET_NAME = 'MODELNET40'
 ###############################################################################
 # Data processing
 ###############################################################################
-def get_filenames(is_training, data_dir):
+def get_filenames_1(is_training, data_dir):
   """Return filenames for dataset."""
   datasets_meta = DatasetsMeta(DATASET_NAME)
   data_dir = os.path.join(data_dir, 'data')
   return datasets_meta.get_train_test_file_list(data_dir, is_training)
+
+def get_filenames(is_training, data_dir):
+  """Return filenames for dataset."""
+  data_dir = os.path.join(data_dir, 'merged_data')
+  if is_training:
+    pre = 'train_'
+  else:
+    pre = 'test_'
+  return glob.glob(os.path.join(data_dir, pre+'*.tfrecord'))
 
 def input_fn(is_training, data_dir, batch_size, data_net_configs=None, num_epochs=1):
   """Input function which provides batches for train or eval.

@@ -58,8 +58,7 @@ def get_sg_settings():
       sg_settings[item] = sg_settings[item].astype(np.int32)
 
   sg_settings['num_sg_scale'] = len(sg_settings['width'])
-  sg_settings['block_pos'] = 'center'
-  sg_settings['gen_ply'] = False
+  sg_settings['gen_ply'] = True
   sg_settings['record'] = False
 
 
