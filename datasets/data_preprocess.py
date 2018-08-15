@@ -9,7 +9,7 @@ sys.path.append(BASE_DIR+'/all_datasets_meta')
 from block_data_prep_util import Raw_H5f, Sort_RawH5f,Sorted_H5f,Normed_H5f,show_h5f_summary_info,MergeNormed_H5f,get_stride_step_name
 from block_data_prep_util import GlobalSubBaseBLOCK,get_mean_sg_sample_rate,get_mean_flatten_sample_rate,check_h5fs_intact
 import numpy as np
-import h5py
+import h5py, math
 import glob
 import time
 import multiprocessing as mp
@@ -70,21 +70,19 @@ def GenPyramidSortedFlie(file_id, fn, data_aug_configs):
           no_bidxmap =  no_bidxmap )
     return fn
 
-def split_fn_ls( nonvoid_plfn_ls, bxmh5_fn_ls, tfrecordfn_ls, merged_n=2 ):
-    nf = len(nonvoid_plfn_ls)
-    merged_n = min( merged_n, nf )
-    group_n = int( nf/merged_n )
-    allfn_ls = [ [], [], [] ]
-    all_group_name_ls = []
+def split_fn_ls( tfrecordfn_ls, merged_n):
+    nf = len(tfrecordfn_ls)
+    assert merged_n < nf
+    group_n = int(math.ceil( 1.0*nf/merged_n ))
+    merged_fnls = []
+    group_name_ls = []
     for i in range( 0, nf, group_n ):
         end = min( nf, i+group_n )
-        allfn_ls[0].append( nonvoid_plfn_ls[i:end] )
-        allfn_ls[1].append( bxmh5_fn_ls[i:end] )
-        allfn_ls[2].append( tfrecordfn_ls[i:end] )
-        all_group_name_ls.append( '%d_%d'%(i, end) )
-    return allfn_ls, all_group_name_ls
+        merged_fnls.append( tfrecordfn_ls[i:end] )
+        group_name_ls.append( '%d_%d'%(i, end) )
+    return merged_fnls, group_name_ls
 
-def split_fn_ls_benchmark( plsph5_folder, bxmh5_folder, nonvoid_plfn_ls, bxmh5_fn_ls, tfrecordfn_ls, void_f_n ):
+def split_fn_ls_benchmark_UNUSED( plsph5_folder, bxmh5_folder, nonvoid_plfn_ls, bxmh5_fn_ls, tfrecordfn_ls, void_f_n ):
     folder_names = {}
     folder_names['sph5'] = plsph5_folder
     folder_names['bxmh5'] = folder_names['tfrecord'] = bxmh5_folder
@@ -494,102 +492,38 @@ class H5Prepare():
             print("\n\n GenPyramid: all %d files successed\n******************************\n"%(len(success_fns)))
 
 
-    def MergeNormed(self, data_aug_configs):
-        #split_method = 'benchmark'
-        split_method = 'order'
-
-        if DATASET == 'SCANNET':
-            plsph5_folder = 'ORG_sph5/240000_mgs3_gs2d4_4d6'
-            bxmh5_folder = 'ORG_bxmh5/240000_mgs3_gs2d4_4d6_fmn14_mvp2-4800_480_1-48_56_480-0d1_0d6-0d1_0d4-pd3-mbf-neg-2S1'
+    def MergeTfrecord(self):
+        from dataset_utils import merge_tfrecord
 
         if DATASET == 'MODELNET40':
-            plsph5_folder = '1024_mgs0.2048_gs2_2d2-rep'
-            bxmh5_folder = '1024_mgs0.2048_gs2_2d2-rep_fmn1_mvp1-1-1024--pd3-1M'
+            tfrecord_path = '/home/z/Research/SparseVoxelNet/data/MODELNET40_H5TF/raw_tfrecord'
+            rawdata_dir = tfrecord_path+'/data'
+            merged_dir = tfrecord_path+'/merged_data'
+            if not os.path.exists(merged_dir):
+              os.makedirs(merged_dir)
 
-        if DATASET == 'KITTI':
-            plsph5_folder = 'BasicData/ORG_sph5/4000_mgs10_gs5_10-mbf-neg'
-            bxmh5_folder = 'BasicData/ORG_bxmh5/4000_mgs10_gs5_10-mbf-neg_fmn-10-10-10_mvp2-1600_1800_800_1-16_16_24_32-0d4_1d2_2d4-0d2_0d3_0d4-pd3-3D1_benz'
+        #fn_glob = tfrecord_path + '/data/*.tfrecord'
+        #fn_ls = glob.glob(fn_glob)
+        #fn_ls.sort()
 
-        folder_names = [ plsph5_folder, bxmh5_folder, bxmh5_folder]
-        formats = ['sph5','bxmh5','tfrecord']
-        pl_base_fn_ls = []
-        pl_region_h5f_path = ORG_DATA_DIR + '/ORG_sph5/' + folder_names[0]
-        plfn_ls = glob.glob( pl_region_h5f_path + '/*.' +  formats[0] )
-        plfn_ls.sort()
-        if len(plfn_ls) == 0:
-            print('no file mathces %s'%(pl_region_h5f_path + '/*.' +  formats[0] ))
-        print('%d files found for %s'%(len(plfn_ls), pl_region_h5f_path + '/*.' +  formats[0] ))
+        #if len(fn_ls) == 0:
+        #    print('no file mathces %s'%(fn_glob ))
+        #print('%d files found for %s'%(len(fn_ls), fn_glob ))
 
-        nonvoid_plfn_ls = []
-        bxmh5_fn_ls = []
-        tfrecordfn_ls = []
-        void_f_n = 0
-        for pl_fn in plfn_ls:
-            is_intact, ck_str = Normed_H5f.check_sph5_intact( pl_fn )
-            region_name = os.path.splitext(os.path.basename( pl_fn ))[0]
-            if not is_intact:
-                print(' ! ! ! Abort merging %s not intact: %s'%(formats[0], pl_fn))
-                if split_method=='benchmark':
-                  assert False
-                else:
-                  continue
-            if ck_str == 'void file':
-                print('void file: %s'%(pl_fn))
-                void_f_n += 1
-                continue
-            bxmh5_fn = ORG_DATA_DIR + '/ORG_bxmh5/' + folder_names[1] + '/' + region_name + '.' + formats[1]
-            tfrecord_fn = ORG_DATA_DIR + '/ORG_tfrecord/' + folder_names[1] + '/' + region_name + '.tfrecord'
-            if not (os.path.exists( bxmh5_fn ) and os.path.exists(tfrecord_fn)):
-                print(' ! ! ! Abort merging %s not exist: %s'%(formats[0], bxmh5_fn))
-                if split_method=='benchmark':
-                  assert False
-                else:
-                  continue
-            if not DATASET == 'KITTI':    ## benz_m, in my case, there is no bidxmaps_flat
-                with h5py.File( pl_fn, 'r' ) as plh5f, h5py.File( bxmh5_fn, 'r' ) as bxmh5f:
-                    if not plh5f['data'].shape[0] == bxmh5f['bidxmaps_flat'].shape[0]:
-                        print('Abort merging %s \n  data shape (%d) != bidxmaps_flat shape (%d): %s'%( pl_region_h5f_path, plh5f['data'].shape[0], bxmh5f['bidxmaps_flat'].shape[0], pl_fn) )
-                        assert False
-                    else:
-                        #print('shape match check ok: %s'%(region_name))
-                        pass
-            nonvoid_plfn_ls.append( pl_fn )
-            bxmh5_fn_ls.append( bxmh5_fn )
-            tfrecordfn_ls.append(tfrecord_fn)
-        if len( nonvoid_plfn_ls )  == 0:
-            print(  "no file, skip merging" )
-            return
+        train_fn_ls = DS_Meta.get_train_test_file_list(rawdata_dir, True)
+        test_fn_ls = DS_Meta.get_train_test_file_list(rawdata_dir, False)
 
-        if split_method == 'benchmark':
-          allfn_ls, all_group_name_ls = split_fn_ls_benchmark( plsph5_folder, bxmh5_folder, nonvoid_plfn_ls, bxmh5_fn_ls, tfrecordfn_ls, void_f_n )
-        else:
-          allfn_ls, all_group_name_ls = split_fn_ls( nonvoid_plfn_ls, bxmh5_fn_ls, tfrecordfn_ls, merged_n=3 )
+        grouped_train_fnls, train_groupe_names = split_fn_ls(train_fn_ls, 10)
+        train_groupe_names = ['train_'+e for e in train_groupe_names]
+        grouped_test_fnls, test_groupe_names = split_fn_ls(test_fn_ls, 5)
+        test_groupe_names = ['test_'+e for e in test_groupe_names]
 
-        for k in range( len(allfn_ls[0]) ):
-            merged_file_names = ['','','']
+        grouped_fnls = grouped_train_fnls + grouped_test_fnls
+        group_names = train_groupe_names + test_groupe_names
+        merged_fnls = [os.path.join(merged_dir, e+'.tfrecord') for e in group_names]
 
-            for j in range(3):
-                merged_path = MERGED_DATA_DIR + '/Merged_' + formats[j] + '/' + folder_names[j][3:len(folder_names[j])] + '/'
-                merged_file_names[j] = merged_path + all_group_name_ls[k] + '.' + formats[j]
-                if not os.path.exists(merged_path):
-                    os.makedirs(merged_path)
-                if j<2:
-                  status = MergeNormed_H5f(allfn_ls[j][k], merged_file_names[j], IsShowSummaryFinished=True)
-                else:
-                  if status != 'already_intact':
-                    from dataset_utils import merge_tfrecord
-                    merge_tfrecord(allfn_ls[j][k], merged_file_names[j])
-                  else:
-                    print('bxmh5 already intact, skip tfrecord as well')
-
-            # check after merged
-            if not DATASET == 'KITTI':    ## benz_m, in my case, there is no bidxmaps_flat
-                with h5py.File( merged_file_names[0], 'r' ) as plh5f, h5py.File( merged_file_names[1], 'r' ) as bxmh5f:
-                    if not plh5f['data'].shape[0] == bxmh5f['bidxmaps_flat'].shape[0]:
-                        print('! ! ! shape check failed:  data shape (%d) != bidxmaps_flat shape (%d): \n\t%s \n\t%s'%( plh5f['data'].shape[0], bxmh5f['bidxmaps_flat'].shape[0], merged_file_names[0],merged_file_names[1]) )
-                    else:
-                        print( 'After merging, shape match check ok: %s'%(os.path.basename( merged_file_names[0] )) )
-                        pass
+        for k in range(len(grouped_fnls)):
+          merge_tfrecord(grouped_fnls[k], merged_fnls[k])
 
 
 def GenObj_rh5():
@@ -640,27 +574,8 @@ def main( ):
     h5prep = H5Prepare()
 
     ##h5prep.ParseRaw( MultiProcess )
-    h5prep.RawToTfrecord(MultiProcess)
-
-    #if DATASET == 'SCANNET':
-    #    base_step_stride = [0.1,0.1,0.1]
-    #elif DATASET == 'ETH':
-    #    base_step_stride = [0.2,0.2,0.2]
-    #elif DATASET == 'MODELNET40':
-    #    base_step_stride = [0.05,0.05,0.05]
-    #elif DATASET  == 'KITTI':
-    #    base_step_stride = [0.2, 0.2, 0.4]
-    ##RxyzBeforeSort = np.array([0,0,45])*np.pi/180
-    #RxyzBeforeSort = None
-    ## h5prep.SortRaw( base_step_stride, MultiProcess, RxyzBeforeSort )
-
-    #data_aug_configs = {}
-    ## data_aug_configs['delete_unlabelled'] = True
-    ## data_aug_configs['delete_easy_categories_num'] = 3
-
-    ##h5prep.GenPyramid(base_step_stride, base_step_stride, data_aug_configs,  MultiProcess)
-
-    #h5prep.MergeNormed( data_aug_configs )
+    #h5prep.RawToTfrecord(MultiProcess)
+    h5prep.MergeTfrecord()
     print('T = %f sec'%(time.time()-t0))
 
 if __name__ == '__main__':
