@@ -194,15 +194,11 @@ class BlockGroupSampling():
 
     # align to width and stride
     tmp = (top - self._widths[0]) / self._strides[0]
-    tmp = tf.ceil(tmp)
+    tmp = tf.maximum(tf.ceil(tmp),0)
     top = tmp * self._strides[0] + self._widths[0] + bot
     cen = (bot + top) / 2
     global_bot_cen_top = tf.concat([bot, cen, top], 0)
     return tf.expand_dims(global_bot_cen_top, 0)
-
-    #tmp = np.array([-1.0,-1,-1, 0,0,0, 1,1,1])
-    #tmp[6:9] = tmp[0:3] + self._widths[0]
-    #global_bot_cen_top = tf.reshape(tf.constant(tmp, tf.float32), (1,9))
 
 
   def grouping_multi_scale(self, xyz):
@@ -1025,7 +1021,7 @@ def main(DATASET_NAME, filenames, sg_settings, nframes):
                                         compression_type="",
                                         buffer_size=1024*100,
                                         num_parallel_reads=1)
-    batch_size = nframes
+    batch_size = min(nframes,50)
 
     #dataset.shuffle(buffer_size = 10000)
 
@@ -1149,8 +1145,8 @@ def main_eager(DATASET_NAME, filenames, sg_settings, nframes):
     others.append({})
 
   for i in range(batch_size):
-    #if i < 7:
-    #  continue
+    if i < 138:
+      continue
     print('frame %d'%(i))
     points_i = points_next[i,:,:]
 
@@ -1285,7 +1281,7 @@ if __name__ == '__main__':
   data_path = os.path.join(raw_tfrecord_path, 'merged_data')
   tmp = '*'
   filenames = glob.glob(os.path.join(data_path, tmp+'.tfrecord'))
-  random.shuffle(filenames)
+  #random.shuffle(filenames)
   assert len(filenames) >= 1
 
   sg_settings = get_sg_settings()
@@ -1298,7 +1294,8 @@ if __name__ == '__main__':
     #main_flag = 'e'
   print(main_flag)
 
-  nframes = 10
+  nframes = 13000
+  #nframes = 10
 
   if 'e' in main_flag:
     xyzs_E, grouped_xyzs_E, others_E, shuffle_E = \
