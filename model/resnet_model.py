@@ -1098,7 +1098,6 @@ class Model(ResConvOps):
   def _call(self, inputs, grouped_xyz_ms, grouped_pindex_ms, empty_mask_ms,
             bot_cen_top_ms, vox_index_ms, is_training, eval_views=-1):
 
-    import pdb; pdb.set_trace()  # XXX BREAKPOINT
     tf.add_to_collection('raw_inputs', inputs)
     if self.IsShowModel: self.log('')
     self.is_training = is_training
