@@ -155,7 +155,7 @@ class BlockGroupSampling():
       for i in range(self._num_scale):
         self.samplings.append({})
         self.samplings[i]['nframes'] = tf.constant(0, tf.int64)
-        #self.samplings[i]['t_per_frame_'] = tf.constant(0, tf.float64)
+        self.samplings[i]['t_per_frame_'] = tf.constant(0, tf.float64)
         self.samplings[i]['nblock_valid_'] = tf.constant(0, tf.int64)
         self.samplings[i]['nblock_lessp_'] = tf.constant(0, tf.int64)
         self.samplings[i]['ave_np_perb_'] = tf.constant(0, tf.int64)
@@ -216,48 +216,51 @@ class BlockGroupSampling():
     in_bot_cen_top = tf.expand_dims(bot_cen_top, 0)
 
     for s in range(num_scale):
-      assert len(in_bot_cen_top.shape) == 3
-      global_block_num = in_bot_cen_top.shape[0].value
+        t0 = tf.timestamp()
+        assert len(in_bot_cen_top.shape) == 3
+        global_block_num = in_bot_cen_top.shape[0].value
 
-      others = {}
-      ds = {}
+        others = {}
+        ds = {}
 
-      for i in range(global_block_num):
-        # grouping for each global block
-        ds_i = {}
-        ds_i['grouped_pindex'], ds_i['vox_index'], ds_i['grouped_bot_cen_top'], \
-        ds_i['empty_mask'], ds_i['out_bot_cen_top'], ds_i['nblock_valid'], others_i = \
-          self.grouping(s, in_bot_cen_top[i], global_bot_cen_top[i])
+        for i in range(global_block_num):
+          # grouping for each global block
+          ds_i = {}
+          ds_i['grouped_pindex'], ds_i['vox_index'], ds_i['grouped_bot_cen_top'], \
+          ds_i['empty_mask'], ds_i['out_bot_cen_top'], ds_i['nblock_valid'], others_i = \
+            self.grouping(s, in_bot_cen_top[i], global_bot_cen_top[i])
+
+          if s == 0:
+            global_bot_cen_top = ds_i['out_bot_cen_top']
+          for item in ds_i:
+            if item not in ds:
+              ds[item] = []
+            ds[item].append(tf.expand_dims(ds_i[item], 0))
+
+          others['name'] = others_i['name']
+          others['value'] = []
+          for i in range(len(others_i['value'])):
+            others['value'].append([])
+            others['value'][i].append(tf.expand_dims(others_i['value'][i],0))
+
+        for item in ds:
+          ds[item] = tf.concat(ds[item], 0)
 
         if s == 0:
-          global_bot_cen_top = ds_i['out_bot_cen_top']
-        for item in ds_i:
-          if item not in ds:
-            ds[item] = []
-          ds[item].append(tf.expand_dims(ds_i[item], 0))
+          in_bot_cen_top = ds['grouped_bot_cen_top'][0]
+        else:
+          in_bot_cen_top = ds['out_bot_cen_top']
 
-        others['name'] = others_i['name']
-        others['value'] = []
-        for i in range(len(others_i['value'])):
-          others['value'].append([])
-          others['value'][i].append(tf.expand_dims(others_i['value'][i],0))
+        for i in range(len(others['value'])):
+          others['value'][i] = tf.concat(others['value'][i], 0)
 
-      for item in ds:
-        ds[item] = tf.concat(ds[item], 0)
+        for item in ds:
+          if item not in ds_ms:
+            ds_ms[item] = []
+          ds_ms[item].append(ds[item])
+        others_ms.append(others)
 
-      if s == 0:
-        in_bot_cen_top = ds['grouped_bot_cen_top'][0]
-      else:
-        in_bot_cen_top = ds['out_bot_cen_top']
-
-      for i in range(len(others['value'])):
-        others['value'][i] = tf.concat(others['value'][i], 0)
-
-      for item in ds:
-        if item not in ds_ms:
-          ds_ms[item] = []
-        ds_ms[item].append(ds[item])
-      others_ms.append(others)
+        self.samplings[s]['t_per_frame_'] += tf.timestamp() - t0
 
     global_vox_index = []
     global_empty_mask = []
@@ -335,7 +338,6 @@ class BlockGroupSampling():
     if not bot_cen_top.shape[-1].value == 9:
       import pdb; pdb.set_trace()  # XXX BREAKPOINT
       pass
-    t0 = tf.timestamp()
 
     bid_pindex = self.get_block_id(bot_cen_top)
 
@@ -355,8 +357,6 @@ class BlockGroupSampling():
 
     vox_index = self.voxelization(grouped_bot_cen_top, out_bot_cen_top, empty_mask)
 
-    #if self._record_samplings:
-    #  self.samplings[self.scale]['t_per_frame_'] += tf.timestamp() - t0
     # **************************************************************************
     #       Add middle tensors to check between graph model and eager model
     ots = 'OTS_'

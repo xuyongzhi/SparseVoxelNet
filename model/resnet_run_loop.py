@@ -81,7 +81,7 @@ def process_record_dataset(dataset, is_training, batch_size, shuffle_buffer,
     total_batches = total_examples // batch_size // num_gpus * num_gpus
     dataset.take(total_batches * batch_size)
 
-  if data_net_configs!=None:
+  if data_net_configs!=None and data_net_configs['precpu_sg']:
     from utils.grouping_sampling_voxelization import BlockGroupSampling
     bsg = BlockGroupSampling(data_net_configs['sg_settings'])
   else:

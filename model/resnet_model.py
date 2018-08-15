@@ -1019,6 +1019,10 @@ class Model(ResConvOps):
     # scale 0 is global scale!
     inputs_dic1 = {}
     inputs_dic1['points'] = tf.squeeze(inputs_dic['grouped_xyz_0'], 1)
+
+    if self.feed_data_idxs!='ALL':
+      inputs_dic1['points']  = tf.gather(inputs_dic1['points'] , self.feed_data_idxs, axis=-1)
+
     items = ['grouped_pindex','grouped_xyz', 'empty_mask', 'bot_cen_top',
              'vox_index']
     for item in items:
@@ -1029,6 +1033,62 @@ class Model(ResConvOps):
         else:
           inputs_dic1[item].append([])
     return inputs_dic1
+
+  def pre_sampling_grouping(self, inputs_dic):
+    # get the indices for grouping and sampling on line
+    from utils.grouping_sampling_voxelization import BlockGroupSampling
+    points = inputs_dic['points']
+
+    log_path = self.data_net_configs['data_dir']+'/sg_log'
+    bsg = BlockGroupSampling(self.sg_settings, log_path)
+    dsb = {}
+    for bi in range(self.batch_size):
+      ds = {}
+      ds['grouped_pindex'], ds['vox_index'], ds['grouped_xyz'], ds['empty_mask'],\
+        ds['bot_cen_top'], nblock_valid, others =\
+        bsg.grouping_multi_scale(points[bi,:,0:3])
+
+      global_block_num = ds['grouped_pindex'][0].shape[1]
+      check_g = tf.assert_equal( global_block_num, 1)
+      gi = 0
+      with tf.control_dependencies([check_g]):
+        for e in ds:
+          if e not in dsb:
+              dsb[e] = []
+          num_scale = len(ds[e])
+          for s in range(num_scale):
+              if len(dsb[e]) < s+1:
+                dsb[e].append([])
+              dsb[e][s].append(tf.expand_dims(ds[e][s][gi,...], 0))
+
+    #*************************************************************
+    grouped_pindex_global = tf.concat(dsb['grouped_pindex'][0], 0)
+    for e in dsb:
+      # Remove global block scale and get input for each global block
+      del dsb[e][0]
+      num_scale = len(dsb[e])
+      for s in range(num_scale):
+        dsb[e][s] = tf.concat(dsb[e][s], 0)
+        #print('{} {} {}'.format(e, s, dsb[e][s].shape ))
+    #print(dsb.keys())
+
+    # From last scale to global scale, only need "vox_index" and "empty_mask",
+    # set others as []
+    for e in dsb:
+      if len(dsb[e]) < self.sg_num_scale:
+        dsb[e].append([])
+
+    #*************************************************************
+    # get inputs for each global block
+    grouped_pindex_global = tf.expand_dims(tf.squeeze(grouped_pindex_global, 1), -1)
+    if self.feed_data_idxs!='ALL':
+      points = tf.gather(points, self.feed_data_idxs, axis=-1)
+    tmp0 = tf.reshape(tf.range(0, self.batch_size, 1), [-1, 1, 1])
+    tmp0 = tf.tile(tmp0, [1, tf.shape(grouped_pindex_global)[1], 1])
+    tmp1 = tf.concat([tmp0, grouped_pindex_global], -1)
+    dsb['points'] = tf.gather_nd(points, tmp1)
+
+    return dsb
 
   def __call__(self, inputs_dic, is_training):
     """Add operations to classify a batch of input images.
@@ -1042,7 +1102,11 @@ class Model(ResConvOps):
       A logits Tensor with shape [<batch_size>, self.num_classes].
     """
 
-    inputs_dic = self.pre_pro_inputs(inputs_dic, self.sg_num_scale)
+    if not self.data_net_configs['precpu_sg']:
+      inputs_dic = self.pre_sampling_grouping(inputs_dic)
+    else:
+      inputs_dic = self.pre_pro_inputs(inputs_dic, self.sg_num_scale)
+
     IsMultiView = len(inputs_dic['points'].shape) == 4
     if not IsMultiView:
       assert len(inputs_dic['points'].shape) == 3
@@ -1102,9 +1166,6 @@ class Model(ResConvOps):
     if self.IsShowModel: self.log('')
     self.is_training = is_training
 
-    if self.feed_data_idxs!='ALL':
-      inputs = tf.gather(inputs, self.feed_data_idxs, axis=-1)
-
     with self._model_variable_scope():
       l_points = []                       # size = l_points+1
       l_points.append( inputs )
@@ -1124,9 +1185,6 @@ class Model(ResConvOps):
         new_points = tf.transpose(new_points, [0, 2, 1])
 
       for k in range(self.net_num_scale):
-          #bot_cen_top_mm = b_bottom_centers_mm[k]
-          #bot_cen_top_mm = tf.cast(bot_cen_top_mm, tf.float32)
-
           if self.block_style == 'PointNet':
             l_xyz, new_points, root_point_features = self.pointnet2_module(k, l_xyz,
                           new_points, sg_bidxmap_k, bot_cen_top_mm )
