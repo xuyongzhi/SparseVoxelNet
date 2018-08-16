@@ -59,7 +59,7 @@ def get_sg_settings():
 
   sg_settings['num_sg_scale'] = len(sg_settings['width'])
   sg_settings['gen_ply'] = False
-  sg_settings['record'] = True
+  sg_settings['record'] = False
 
 
   sg_settings['nblocks_per_point'] = np.ceil(sg_settings['width']/sg_settings['stride']-MAX_FLOAT_DRIFT).astype(np.int32)

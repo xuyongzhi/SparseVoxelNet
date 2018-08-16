@@ -1037,6 +1037,7 @@ class Model(ResConvOps):
   def pre_sampling_grouping(self, inputs_dic):
     # get the indices for grouping and sampling on line
     from utils.grouping_sampling_voxelization import BlockGroupSampling
+    #t0 = tf.timestamp()
     points = inputs_dic['points']
 
     log_path = self.data_net_configs['data_dir']+'/sg_log'
@@ -1063,14 +1064,20 @@ class Model(ResConvOps):
 
     #*************************************************************
     grouped_pindex_global = tf.concat(dsb['grouped_pindex'][0], 0)
+    is_show_inputs = True
+    if is_show_inputs:
+      print('\n\n\n')
     for e in dsb:
       # Remove global block scale and get input for each global block
       del dsb[e][0]
       num_scale = len(dsb[e])
       for s in range(num_scale):
         dsb[e][s] = tf.concat(dsb[e][s], 0)
-        #print('{} {} {}'.format(e, s, dsb[e][s].shape ))
-    #print(dsb.keys())
+        if is_show_inputs:
+          print('{} {} {}'.format(e, s, dsb[e][s].shape ))
+    if is_show_inputs:
+      print(dsb.keys())
+      print('\n\n\n')
 
     # From last scale to global scale, only need "vox_index" and "empty_mask",
     # set others as []
@@ -1088,6 +1095,11 @@ class Model(ResConvOps):
     tmp1 = tf.concat([tmp0, grouped_pindex_global], -1)
     dsb['points'] = tf.gather_nd(points, tmp1)
 
+    #sg_t_batch = (tf.timestamp() - t0)*1000
+    #tf.summary.scalar('sg_t_batch', sg_t_batch)
+    #sg_t_frame = sg_t_batch / tf.cast(self.batch_size,tf.float64)
+    #tf.summary.scalar('sg_t_frame', sg_t_frame)
+
     return dsb
 
   def __call__(self, inputs_dic, is_training):
@@ -1102,6 +1114,7 @@ class Model(ResConvOps):
       A logits Tensor with shape [<batch_size>, self.num_classes].
     """
 
+    #t00 = tf.timestamp()
     if not self.data_net_configs['precpu_sg']:
       inputs_dic = self.pre_sampling_grouping(inputs_dic)
     else:
@@ -1157,6 +1170,7 @@ class Model(ResConvOps):
 
     if self.IsShowModel:
       self.model_log_f.close()
+    #tf.summary.scalar('t_batch', (tf.timestamp() - t00)*1000 )
     return outputs
 
   def _call(self, inputs, grouped_xyz_ms, grouped_pindex_ms, empty_mask_ms,
