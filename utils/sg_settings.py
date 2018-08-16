@@ -48,7 +48,7 @@ def get_sg_settings():
   sg_settings1['npoint_per_block'] = [4096, 32,  48]
   sg_settings1['np_perb_min_include'] = [1024, 2, 1]
 
-  sg_settings = sg_settings1
+  sg_settings = sg_settings0
 
   for item in sg_settings:
     sg_settings[item] = np.array(sg_settings[item])
@@ -59,7 +59,7 @@ def get_sg_settings():
 
   sg_settings['num_sg_scale'] = len(sg_settings['width'])
   sg_settings['gen_ply'] = False
-  sg_settings['record'] = False
+  sg_settings['record'] = True
 
 
   sg_settings['nblocks_per_point'] = np.ceil(sg_settings['width']/sg_settings['stride']-MAX_FLOAT_DRIFT).astype(np.int32)
