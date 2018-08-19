@@ -123,8 +123,8 @@ class BlockGroupSampling():
         self.samplings.append({})
         self.samplings[i]['nframes'] = tf.constant(0, tf.int64)
         self.samplings[i]['t_per_frame_'] = tf.constant(0, tf.float64)
-        self.samplings[i]['nblock_valid_'] = tf.constant(0, tf.int64)
-        self.samplings[i]['nblock_lessp_'] = tf.constant(0, tf.int64)
+        self.samplings[i]['nb_enoughp_ave_'] = tf.constant(0, tf.int64)
+        self.samplings[i]['nb_lessp_ave_'] = tf.constant(0, tf.int64)
         self.samplings[i]['ave_np_perb_'] = tf.constant(0, tf.int64)
         self.samplings[i]['std_np_perb_'] = tf.constant(0, tf.int64)
         self.samplings[i]['nmissing_perb_'] = tf.constant(0, tf.int64)
@@ -149,7 +149,6 @@ class BlockGroupSampling():
     self._check_gbinb_optial = True and self._check_optional
     self._check_voxelization_optial = True and self._check_optional
 
-    self._debug_only_blocks_few_points = False
     self.debugs = {}
     self._gen_ply = sg_settings['gen_ply']
 
@@ -217,57 +216,26 @@ class BlockGroupSampling():
         else:
           in_bot_cen_top = ds['out_bot_cen_top']
 
-        #for i in range(global_block_num):
-        #  # grouping for each global block
-        #  ds_i = {}
-        #  ds_i['grouped_pindex'], ds_i['vox_index'], ds_i['grouped_bot_cen_top'], \
-        #  ds_i['empty_mask'], ds_i['out_bot_cen_top'], ds_i['nblock_valid'], others_i = \
-        #    self.grouping(s, in_bot_cen_top[i], global_bot_cen_top[i])
-
-        #  if s == 0:
-        #    global_bot_cen_top = ds_i['out_bot_cen_top']
-        #  for item in ds_i:
-        #    if item not in ds:
-        #      ds[item] = []
-        #    ds[item].append(tf.expand_dims(ds_i[item], 0))
-
-        #  others['name'] = others_i['name']
-        #  others['value'] = []
-        #  for i in range(len(others_i['value'])):
-        #    others['value'].append([])
-        #    others['value'][i].append(tf.expand_dims(others_i['value'][i],0))
-
-        #for item in ds:
-        #  ds[item] = tf.concat(ds[item], 0)
-
-        #if s == 0:
-        #  in_bot_cen_top = ds['grouped_bot_cen_top'][0]
-        #else:
-        #  in_bot_cen_top = ds['out_bot_cen_top']
-
-        #for i in range(len(others['value'])):
-        #  others['value'][i] = tf.concat(others['value'][i], 0)
-
-        #for item in ds:
-        #  if item not in ds_ms:
-        #    ds_ms[item] = []
-        #  ds_ms[item].append(ds[item])
-        #others_ms.append(others)
+        for item in ds:
+          if item not in ds_ms:
+            ds_ms[item] = []
+          ds_ms[item].append(ds[item])
+        others_ms.append(others)
 
         #if self._record_samplings:
         #  self.samplings[s]['t_per_frame_'] += tf.timestamp() - t0
 
-    global_vox_index = []
-    global_empty_mask = []
     self.scale += 1
-    for i in range(global_block_num):
-      global_vox_index_i, global_empty_mask_i = self.gen_global_voxelization(
-        ds_ms['out_bot_cen_top'][-1][i], ds_ms['out_bot_cen_top'][0][0,i],\
-        ds_ms['empty_mask'][-1][i], ds_ms['nblock_valid'][-1][i])
-      global_vox_index.append(tf.expand_dims(global_vox_index_i, 0))
-      global_empty_mask.append(tf.expand_dims(global_empty_mask_i, 0))
-    global_vox_index = tf.concat(global_vox_index, 0)
-    global_empty_mask = tf.concat(global_empty_mask, 0)
+    import pdb; pdb.set_trace()  # XXX BREAKPOINT
+    global_vox_index_i, global_empty_mask_i = self.gen_global_voxelization(
+      ds_ms['out_bot_cen_top'][-1], \
+      ds_ms['empty_mask'][-1], ds_ms['nblock_valid'][-1])
+    import pdb; pdb.set_trace()  # XXX BREAKPOINT
+    self.global_bot_cen_top
+    #  global_vox_index.append(tf.expand_dims(global_vox_index_i, 0))
+    #  global_empty_mask.append(tf.expand_dims(global_empty_mask_i, 0))
+    #global_vox_index = tf.concat(global_vox_index, 0)
+    #global_empty_mask = tf.concat(global_empty_mask, 0)
 
     ds_ms['vox_index'].append(global_vox_index)
     ds_ms['empty_mask'].append(global_empty_mask)
@@ -337,18 +305,17 @@ class BlockGroupSampling():
 
     bid_index__pindex_inb, point_index, block_id_unique = self.get_bid_point_index(bid_pindex)
 
-    grouped_pindex, empty_mask, bid_index_sampling_inall = self.get_grouped_pindex(
+    grouped_pindex, empty_mask = self.get_grouped_pindex(
                                       bid_index__pindex_inb, point_index)
 
-    #grouped_bot_cen_top = tf.gather(bot_cen_top, grouped_pindex)
     grouped_bot_cen_top = self.gather_grouped(grouped_pindex, bot_cen_top)
 
-    bids_sampling, out_bot_cen_top = self.all_bot_cen_tops(block_id_unique, bid_index_sampling_inall)
+    bids_sampling, out_bot_cen_top = self.all_bot_cen_tops(block_id_unique)
 
     if self._check_gbinb_optial:
       gb_valid_mask, nerr_gb_in_ob = self.check_block_inblock(grouped_bot_cen_top,
                                         tf.expand_dims(out_bot_cen_top, -2),
-                                        tf.expand_dims(empty_mask,-2))
+                                        empty_mask)
       with tf.control_dependencies([tf.assert_equal(nerr_gb_in_ob, 0)]):
         grouped_bot_cen_top = tf.identity(grouped_bot_cen_top)
 
@@ -379,8 +346,9 @@ class BlockGroupSampling():
     others['name'] = [ots+e for e in others['name']]
 
     out_bot_cen_top += self.global_bot_bot_bot
-    grouped_bot_cen_top += self.global_bot_bot_bot
-    return grouped_pindex, vox_index, grouped_bot_cen_top, empty_mask, out_bot_cen_top, self.nblock_valid, others
+    grouped_bot_cen_top += tf.expand_dims(self.global_bot_bot_bot, -2)
+    nb_enoughp_per_gb = tf.reshape(self.nb_enoughp_per_gb, [self.batch_size, self.global_block_num])
+    return grouped_pindex, vox_index, grouped_bot_cen_top, empty_mask, out_bot_cen_top, nb_enoughp_per_gb, others
 
   def gather_grouped(self, grouped_pindex, bot_cen_top):
     '''
@@ -427,9 +395,9 @@ class BlockGroupSampling():
                       1.0*tf.cast(real,tf.float32)/tf.cast(config,tf.float32))
     summary = '\n'
     summary += 'scale={} t={}  Real / Config\n\n'.format(scale, t)
-    summary += summary_str('nblock_valid', samplings_np['nblock_valid_'], self._nblocks[scale])
+    summary += summary_str('nblock_valid', samplings_np['nb_enoughp_ave_'], self._nblocks[scale])
     summary += 'nblock_lessp(few points):{}, np_perb_min_include:{}\n'.format(
-                  samplings_np['nblock_lessp_'], self._np_perb_min_includes[scale])
+                  samplings_np['nb_lessp_ave_'], self._np_perb_min_includes[scale])
     summary += 'n_out_global:{}  <- padding rate:{}\n'.format(
       samplings_np['n_out_global_'], self._padding_rate[scale])
     summary += 'ngp_out_block:{} npoint_grouped:{}\n'.format(
@@ -438,7 +406,7 @@ class BlockGroupSampling():
     summary += summary_str('nmissing per block', samplings_np['nmissing_perb_'], self._npoint_per_blocks[scale])
     summary += summary_str('nempty per block', samplings_np['nempty_perb_'], self._npoint_per_blocks[scale])
     for name in samplings_np:
-      if name not in ['nframes','nblock_valid_', 'ave_np_perb_', 'nempty_perb_', 'nmissing_perb_', 'nblock_lessp_']:
+      if name not in ['nframes','nb_enoughp_ave_', 'ave_np_perb_', 'nempty_perb_', 'nmissing_perb_', 'nb_lessp_ave_']:
         summary += '{}: {}\n'.format(name, samplings_np[name]/t)
     summary += '\n'
     print(summary)
@@ -446,10 +414,10 @@ class BlockGroupSampling():
 
 
   def write_sg_log(self):
-    the_items = ['scale','nframes','','_nblocks', 'nblock_valid_', '',
+    the_items = ['scale','nframes','','_nblocks', 'nb_enoughp_ave_', '',
              'ngb_valid_rate', 'ngp_out_block_','n_out_global_','',
-             '_np_perb_min_includes','nblock_lessp_', '',
-              '_npoint_per_blocks','ave_np_perb_', 'std_np_perb_', 'nempty_perb_','',
+             '_np_perb_min_includes','nb_lessp_ave_', '',
+              '_npoint_per_blocks','ave_np_prb_', 'std_np_perb_', 'nempty_perb_','',
               'b_perp_toomany_r','b_perp_toofew_r', '']
 
     def sum_str(scale, item):
@@ -605,7 +573,7 @@ class BlockGroupSampling():
     #  bot_cen_top_large = tf.expand_dims(bot_cen_top_large, 1)
 
     if empty_mask!=None:
-      assert len(empty_mask.shape) == len(shape_small)
+      assert len(empty_mask.shape) == len(shape_small)-1
 
     check_top = tf.reduce_all(tf.less_equal(bot_cen_top_small[...,6:9] - MAX_FLOAT_DRIFT,
                                       bot_cen_top_large[...,6:9]),-1)
@@ -808,6 +776,10 @@ class BlockGroupSampling():
 
     # Differeniate block ids between different global blocks and frames in a batch
     start_bids = self.get_start_bids(self.npoints_grouped)
+    if self._check_gbinb_optial:
+      check_start_bid = tf.assert_less(block_id, self.start_bid_step)
+      with tf.control_dependencies([check_start_bid]):
+        start_bids = tf.identity(start_bids)
     block_id = block_id + start_bids
 
     if check:
@@ -825,14 +797,16 @@ class BlockGroupSampling():
     np_all: self.npoints_grouped or
     '''
     #assert np_all.shape[0].value == self.bsgbn
-    ngp_max = tf.reduce_max(np_all)
-    self.start_bid_step = tf.cast(tf.ceil(tf.cast(ngp_max,tf.float32)/100.0)*100, tf.int32)
+    self.start_bid_step = tf.reduce_prod( self.block_size )+1
     self.start_bids_unique = tf.range(0,self.bsgbn,1) * self.start_bid_step
     start_bids = []
     for i in range(self.bsgbn):
       start_bids.append( tf.ones([np_all[i]], tf.int32) * \
                         self.start_bids_unique[i])
     cur_start_bids = tf.concat(start_bids, 0)
+    #if self.scale==1:
+    #  import pdb; pdb.set_trace()  # XXX BREAKPOINT
+    #  pass
     return cur_start_bids
 
 
@@ -853,18 +827,58 @@ class BlockGroupSampling():
 
 
 
-  def split_bids_and_get_nblocks(self, block_id_unique, npoint_per_block):
+  def split_bids_and_get_nblocks(self, block_id_unique, valid_bid_mask):
+    #***************************************************************************
+    # get self.nblocks_per_gb for each global block
     tmp0 = tf.cast(block_id_unique,tf.float32) / tf.cast(self.start_bid_step, tf.float32)
+    # get the indices of global block for each item in block_id_unique
     gb_indices = tf.cast(tf.floor(tmp0), tf.int32)
     gb_indices_unique, gbi_index, nblocks_per_gb =\
                                                 tf.unique_with_counts(gb_indices)
-    check_gbn0 = tf.assert_equal(tf.shape(nblocks_per_gb)[0], self.bsgbn)
+    check_gbn0 = tf.assert_equal(tf.shape(nblocks_per_gb)[0], self.bsgbn,
+                                 message="at least one global block has bot valid block")
     nblock_max = tf.reduce_max(nblocks_per_gb)
     check_gbn1 = tf.assert_greater_equal(self._nblock_buf_maxs[self.scale], nblock_max)
     with tf.control_dependencies([check_gbn0, check_gbn1]):
       self.nblocks_per_gb = nblocks_per_gb
       self.nblock_max = nblock_max
       self.nblock_min = tf.reduce_min(nblocks_per_gb)
+
+    #***************************************************************************
+    # get self.nblock_valid for each global block
+    # invalid means the block contains too less points
+    valid_gb_indices = (gb_indices + 1) * tf.cast(valid_bid_mask, tf.int32)-1
+    valid_gb_indices = tf.concat([tf.constant([-1],tf.int32), valid_gb_indices], 0)
+    valid_gb_indices_unique, valid_gbi_index, valid_nblocks_per_gb =\
+                                        tf.unique_with_counts(valid_gb_indices)
+    self.nb_enoughp_per_gb = valid_nblocks_per_gb[1:]
+    valid_gb_num = tf.shape(self.nb_enoughp_per_gb)[0]
+    check_valid_gbn = tf.assert_equal(valid_gb_num, self.bsgbn,
+            message="not all global block has at least one valid block with enough points")
+    with tf.control_dependencies([check_valid_gbn]):
+      self.nb_enoughp_per_gb = tf.identity(self.nb_enoughp_per_gb)
+      self.nb_enoughp_ave = tf.reduce_mean(self.nb_enoughp_per_gb)
+      self.nb_enoughp_all = tf.reduce_sum(self.nb_enoughp_per_gb)
+      self.nb_lessp_all = valid_nblocks_per_gb[0]-1
+      self.nb_lessp_ave = tf.reduce_mean(self.nb_lessp_all)
+
+    #***************************************************************************
+    # sampling valid bid index
+    bid_inds = []
+    last_num = 0
+    for i in range(self.bsgbn):
+      # shuffle before cut the first _nblock points
+      bid_ind = tf.random_shuffle(tf.range(self.nb_enoughp_per_gb[i]))
+      bid_ind = bid_ind[0:self._nblocks[self.scale]] + last_num
+      last_num += self.nb_enoughp_per_gb[i]
+      # if the valid nblock is not enough, append the first one
+      apd_num = self._nblocks[self.scale]-self.nb_enoughp_per_gb[i]
+      f_apd = lambda: tf.concat([bid_ind, tf.tile(bid_ind[0:1], [apd_num]) ],0)
+      f_same = lambda: bid_ind
+      bid_ind_fixed = tf.case([(tf.greater(apd_num,0), f_apd)], default=f_same)
+      bid_inds.append(bid_ind_fixed)
+    self.valid_bid_index_all_sampled = tf.concat(bid_inds, 0)
+
 
   def get_bid_point_index(self, bid_pindex):
     '''
@@ -888,18 +902,9 @@ class BlockGroupSampling():
     # get valid block num
     block_id_unique, blockid_index, npoint_per_block =\
                                                 tf.unique_with_counts(block_id)
-    self.split_bids_and_get_nblocks(block_id_unique, npoint_per_block)
     # get blockid_index for blocks with fewer points than self._np_perb_min_include
-    tmp_valid_b = tf.greater_equal(npoint_per_block, self._np_perb_min_includes[self.scale])
-    self.valid_bid_index = tf.cast(tf.where(tmp_valid_b)[:,0], tf.int32)
-    self.nblock_valid = tf.shape(self.valid_bid_index)[0]
-    self.nblock_lessp = tf.reduce_sum(self.nblocks_per_gb) - self.nblock_valid
-    tmp_invalid_b = tf.less(npoint_per_block, self._np_perb_min_includes[self.scale])
-    self.invalid_bid_index = tf.cast(tf.where(tmp_invalid_b)[:,0], tf.int32)
-
-    check_nv = tf.assert_greater(self.nblock_valid, 0)
-    with tf.control_dependencies([check_nv]):
-      npoint_per_block = tf.identity(npoint_per_block)
+    valid_bid_mask = tf.greater_equal(npoint_per_block, self._np_perb_min_includes[self.scale])
+    self.split_bids_and_get_nblocks(block_id_unique, valid_bid_mask)
 
     #(2.3) Get point index per block
     #      Based on: all points belong to same block is together
@@ -924,100 +929,10 @@ class BlockGroupSampling():
       self.record_samplings(npoint_per_block)
 
     check_gpn = tf.assert_less_equal(grouped_point_index.shape[0],
-                    self._npoint_per_blocks[self.scale] * self.nblock_valid)
+                          tf.reduce_sum( self._npoint_per_blocks[self.scale] *\
+                                        self.nb_enoughp_per_gb) )
     with tf.control_dependencies([check_gpn]):
       return bid_index__pindex_inb, grouped_point_index, block_id_unique
-
-
-  def get_bid_point_index_1(self, bid_pindex):
-    '''
-    Get "block id index: and "point index within block".
-    bid_pindex: (batch_size, global_block_num, npoints_grouped_max,2)
-    bid_index__pindex_inb:
-    '''
-    #(2.1) sort by block id, to put all the points belong to same block together
-    # Shuffle before sort for randomly sampling later. So the points with same
-    # block id will be randomly sorted
-    # only need to shuffle along dim "npoints_grouped_max", but the code is more
-    # complicated. Just shuffle along all and then sort.
-    ds_all = {}
-    items = ['bid_pindex', 'nblock', 'block_id_unique', 'blockid_index', 'npoint_per_block']
-    for item in items:
-      ds_all[item] = []
-
-    for bi in range(self.batch_size):
-      for gi in range(self.global_block_num):
-        if self._shuffle:
-          bid_pindex_ii = tf.random_shuffle(bid_pindex[bi,gi])
-
-        sort_indices = tf.contrib.framework.argsort(bid_pindex_ii[...,0],
-                                                  axis = 0)
-        bid_pindex_ii = tf.gather(bid_pindex_ii, sort_indices, axis=0)
-        ds_all['bid_pindex'].append(bid_pindex_ii)
-
-        #(2.2) block id -> block id index
-        # get valid block num
-        ds = {}
-        ds['block_id_unique'], ds['blockid_index'], ds['npoint_per_block'] =\
-                                          tf.unique_with_counts(bid_pindex_ii[:,0])
-        ds['nblock'] = tf.expand_dims(tf.shape(ds['block_id_unique'])[0],0)
-        for item in ds:
-          ds_all[item].append(ds[item])
-    for item in ds_all:
-      ds_all[item] = tf.concat(ds_all[item], 0)
-      print('{} {}'.format(item, ds_all[item].shape))
-
-    npoint_per_block = ds_all['npoint_per_block']
-    blockid_index = ds_all['blockid_index']
-    self.nblock = tf.reduce_max(ds_all['nblock'])
-
-    #(2.2) block id -> block id index
-    # get valid block num
-    #block_id_unique, blockid_index, npoint_per_block =\
-    #                                            tf.unique_with_counts(block_id)
-    #self.nblock = tf.shape(block_id_unique)[0]
-    check_nb = tf.assert_greater_equal(self._nblock_buf_maxs[self.scale], self.nblock)
-    with tf.control_dependencies([check_nb]):
-      self.nblock = tf.identity(self.nblock)
-
-    # get blockid_index for blocks with fewer points than self._np_perb_min_include
-    tmp_valid_b = tf.greater_equal(npoint_per_block, self._np_perb_min_includes[self.scale])
-    self.valid_bid_index = tf.cast(tf.where(tmp_valid_b)[:,0], tf.int32)
-    self.nblock_valid = tf.shape(self.valid_bid_index)[0]
-    self.nblock_lessp = self.nblock - self.nblock_valid
-    tmp_invalid_b = tf.less(npoint_per_block, self._np_perb_min_includes[self.scale])
-    self.invalid_bid_index = tf.cast(tf.where(tmp_invalid_b)[:,0], tf.int32)
-
-    check_nv = tf.assert_greater(self.nblock_valid, 0)
-    with tf.control_dependencies([check_nv]):
-      npoint_per_block = tf.identity(npoint_per_block)
-
-    #(2.3) Get point index per block
-    #      Based on: all points belong to same block is together
-    tmp0 = tf.cumsum(npoint_per_block)[0:-1]
-    tmp0 = tf.concat([tf.constant([0],tf.int32), tmp0],0)
-    tmp1 = tf.gather(tmp0, blockid_index)
-    tmp2 = tf.range(self.npoints_grouped_max)
-    import pdb; pdb.set_trace()  # XXX BREAKPOINT
-    point_index_per_block = tf.expand_dims( tmp2 - tmp1,  1)
-    blockid_index = tf.expand_dims(blockid_index, 1)
-
-    bid_index__pindex_inb = tf.concat(
-                                    [blockid_index, point_index_per_block], -1)
-    import pdb; pdb.set_trace()  # XXX BREAKPOINT
-    # (2.4) sampling fixed number of points for each block
-    remain_mask = tf.less(tf.squeeze(point_index_per_block,1), self._npoint_per_blocks[self.scale])
-    remain_index = tf.squeeze(tf.where(remain_mask),1)
-    bid_index__pindex_inb = tf.gather(bid_index__pindex_inb, remain_index)
-    grouped_point_index = tf.gather(grouped_point_index, remain_index)
-
-    # (2.5) record sampling parameters
-    if self._record_samplings:
-      self.record_samplings(npoint_per_block)
-
-    import pdb; pdb.set_trace()  # XXX BREAKPOINT
-    return bid_index__pindex_inb, grouped_point_index, block_id_unique
-
 
   def record_samplings(self, npoint_per_block):
     self.samplings[self.scale]['n_out_global_'] += tf.cast(self.n_out_global,tf.int64)
@@ -1025,8 +940,8 @@ class BlockGroupSampling():
     self.samplings[self.scale]['npoint_grouped_'] += tf.cast(self.npoint_grouped_ave,tf.int64)
 
     self.samplings[self.scale]['nframes'] += tf.constant(1, tf.int64)
-    self.samplings[self.scale]['nblock_valid_'] += tf.cast(self.nblock_valid, tf.int64)
-    self.samplings[self.scale]['nblock_lessp_'] += tf.cast(self.nblock_lessp, tf.int64)
+    self.samplings[self.scale]['nb_enoughp_ave_'] += tf.cast(self.nb_enoughp_ave, tf.int64)
+    self.samplings[self.scale]['nb_lessp_ave_'] += tf.cast(self.nb_lessp_ave, tf.int64)
 
     tmp = npoint_per_block - self._npoint_per_blocks[self.scale]
     missing_mask = tf.cast(tf.greater(tmp,0), tf.int32)
@@ -1059,41 +974,8 @@ class BlockGroupSampling():
                            self._npoint_per_blocks[self.scale]),
                               point_index, default_value=-1)
 
-    #(3.2) remove the blocks with too less points
-    if self._debug_only_blocks_few_points:
-      bid_index_valid = self.invalid_bid_index
-      nblock_valid = self.nblock_lessp
-    else:
-      bid_index_valid = self.valid_bid_index
-      nblock_valid = self.nblock_valid
-
-    _nblocks_all = self._nblocks[self.scale] * self.bsgbn
-    tmp_nb = _nblocks_all - nblock_valid
-
-    def block_not_enough():
-      if self._use_less_points_block_when_not_enough_optial:
-        bid_index_valid_1 = tf.concat([bid_index_valid,
-                                self.invalid_bid_index[0:tmp_nb]],0)
-      else:
-        bid_index_valid_1 = bid_index_valid
-      tmp_nb1 = _nblocks_all - tf.shape(bid_index_valid_1)[0]
-      bid_index_sampled = tf.concat([bid_index_valid_1, tf.ones(tmp_nb1,tf.int32)\
-                                    * bid_index_valid_1[0]],0)
-      return bid_index_sampled
-
-    def block_too_many():
-      if self._shuffle:
-        return tf.contrib.framework.sort( tf.random_shuffle(bid_index_valid)[0:_nblocks_all] )
-      else:
-        return tf.contrib.framework.sort( bid_index_valid[0:_nblocks_all] )
-
-    bid_index_sampling_inall = tf.cond( tf.greater(tmp_nb, 0),
-                                 block_not_enough,
-                                 block_too_many )
-    bid_index_sampling_inall.set_shape([_nblocks_all])
-
     #(3.3) sampling fixed number of blocks when too many blocks are provided
-    grouped_pindex = tf.gather(grouped_pindex0, bid_index_sampling_inall)
+    grouped_pindex = tf.gather(grouped_pindex0, self.valid_bid_index_all_sampled)
 
     #(3.4) replace -1 by the first pindex of each block
     empty_mask = tf.less(grouped_pindex,0)
@@ -1109,39 +991,38 @@ class BlockGroupSampling():
                  self._nblocks[self.scale], self._npoint_per_blocks[self.scale]]
     grouped_pindex = tf.reshape(grouped_pindex, aim_shape)
     empty_mask = tf.reshape(empty_mask, aim_shape)
-    #bid_index_sampling_inall = tf.reshape(bid_index_sampling_inall,[self.batch_size,
-    #                      self.global_block_num, self._nblocks[self.scale]] )
-    return grouped_pindex, empty_mask, bid_index_sampling_inall
+    return grouped_pindex, empty_mask
 
+  def rm_start_bids(self, bids_with_start):
+    tmp = tf.cast(bids_with_start, tf.float32) / tf.cast(self.start_bid_step,tf.float32)
+    tmp = tf.cast(tf.floor(tmp), tf.int32) * self.start_bid_step
+    bids_without_start = bids_with_start - tmp
+    return bids_without_start
 
-  def all_bot_cen_tops(self, block_id_unique, bid_index_sampling_inall):
+  def all_bot_cen_tops(self, block_id_unique):
     '''
     block_id_unique: (self.nblock,)
-    bid_index_sampling_inall: (batch_size, global_block_num, self._nblock,)
     '''
-    bids_sampling = tf.gather(block_id_unique, bid_index_sampling_inall)
-    start_bids = self.get_start_bids([self._nblocks[self.scale]]*self.bsgbn)
-    bids_sampling -= start_bids
+    bids_sampling = tf.gather(block_id_unique, self.valid_bid_index_all_sampled)
+    bids_sampling = self.rm_start_bids(bids_sampling)
     bindex_sampling = self.block_id_to_block_index(bids_sampling, self.block_size)
     bot_cen_top = self.block_index_to_scope(bindex_sampling)
-
-    if self.scale>=0 and self._check_optional:
-      tmp = tf.reshape(self.global_bot_cen_top - self.global_bot_bot_bot, [1,1,-1])
-      correct_mask, nerr_scope = self.check_block_inblock(
-          tf.expand_dims(bot_cen_top,0), tmp)
-      check = tf.assert_equal(nerr_scope, 0,
-                message="sub block is out of global block, scale {}".format(self.scale))
-      with tf.control_dependencies([check]):
-        bids_sampling = tf.identity(bids_sampling)
-    #if DEBUG:
-      #self.debugs['bid_index_sampling_inall_%d'%(self.scale)] = bid_index_sampling_inall
-      #self.debugs['block_id_unique_%d'%(self.scale)] = block_id_unique
-      #self.debugs['bids_sampling_%d'%(self.scale)] = bids_sampling
-      #self.debugs['bindex_sampling_%d'%(self.scale)] = bindex_sampling
 
     aim_shape = [self.batch_size, self.global_block_num,
                  self._nblocks[self.scale], 9]
     bot_cen_top = tf.reshape(bot_cen_top, aim_shape)
+
+    if self._check_optional:
+      global_scope = self.global_bot_cen_top - self.global_bot_bot_bot
+      correct_mask, nerr_scope = self.check_block_inblock( bot_cen_top, global_scope)
+      if nerr_scope > 0:
+        import pdb; pdb.set_trace()  # XXX BREAKPOINT
+        pass
+      check = tf.assert_equal(nerr_scope, 0,
+                message="sub block is out of global block, scale {}".format(self.scale))
+      with tf.control_dependencies([check]):
+        bids_sampling = tf.identity(bids_sampling)
+
     return bids_sampling, bot_cen_top
 
 
@@ -1178,7 +1059,6 @@ class BlockGroupSampling():
                                                 message="vox index > size-1")
       with tf.control_dependencies([check_align, check_low_bound, check_up_bound]):
         vox_index = tf.identity(vox_index)
-    import pdb; pdb.set_trace()  # XXX BREAKPOINT
     return vox_index
 
 
@@ -1287,7 +1167,7 @@ def main_input_pipeline(DATASET_NAME, filenames, sg_settings, nframes):
           for s in range(num_scale):
             others[s]['empty_mask'] = empty_masks[s]
             if bsg._gen_ply:
-              valid_flag = '' if not bsg._debug_only_blocks_few_points else '_invalid'
+              valid_flag = ''
               if not bsg._shuffle:
                 valid_flag += '_NoShuffle'
               bids_sampling = others[s]['bids_sampling_%d'%(s)][frame,0]
@@ -1464,7 +1344,7 @@ def main_eager(DATASET_NAME, filenames, sg_settings, nframes):
     empty_masks.append([])
     others.append({})
 
-  grouped_pindex_i, vox_index_i, grouped_center_i, empty_mask_i, bot_cen_top_i, nblock_valid_i, others_i = \
+  grouped_pindex_i, vox_index_i, grouped_center_i, empty_mask_i, bot_cen_top_i, nb_enoughp_ave_i, others_i = \
     bsg.grouping_multi_scale(points_next[:,:,0:3])
 
   import pdb; pdb.set_trace()  # XXX BREAKPOINT
@@ -1474,7 +1354,7 @@ def main_eager(DATASET_NAME, filenames, sg_settings, nframes):
     print('frame %d'%(i))
     points_i = points_next[i,:,:]
 
-    grouped_pindex_i, vox_index_i, grouped_center_i, empty_mask_i, bot_cen_top_i, nblock_valid_i, others_i = \
+    grouped_pindex_i, vox_index_i, grouped_center_i, empty_mask_i, bot_cen_top_i, nb_enoughp_ave_i, others_i = \
           bsg.grouping_multi_scale(points_i)
 
     #test_sparse_to_dense(vox_index_i)
@@ -1512,7 +1392,7 @@ def main_eager(DATASET_NAME, filenames, sg_settings, nframes):
         others[s][name_k].append( np.expand_dims( others_i[s]['value'][k],0 ) )
 
       if bsg._gen_ply:
-        valid_flag = '' if not bsg._debug_only_blocks_few_points else '_invalid'
+        valid_flag = ''
         if not bsg._shuffle:
           valid_flag += '_NoShuffle'
         bids_sampling_i = others[s]['bids_sampling'][k][0]
@@ -1620,7 +1500,7 @@ if __name__ == '__main__':
   print(main_flag)
 
   nframes = 12311
-  nframes = 1
+  nframes = 5
 
   if 'e' in main_flag:
     xyzs_E, grouped_xyzs_E, others_E, shuffle_E = \
