@@ -48,7 +48,7 @@ def get_sg_settings():
   sg_settings1['npoint_per_block'] = [4096, 32,  48]
   sg_settings1['np_perb_min_include'] = [1024, 2, 1]
 
-  sg_settings = sg_settings0
+  sg_settings = sg_settings1
 
   for item in sg_settings:
     sg_settings[item] = np.array(sg_settings[item])

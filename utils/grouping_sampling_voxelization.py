@@ -319,9 +319,6 @@ class BlockGroupSampling():
       gb_valid_mask, nerr_gb_in_ob = self.check_block_inblock(grouped_bot_cen_top,
                                         tf.expand_dims(out_bot_cen_top, -2),
                                         grouped_empty_mask)
-      if nerr_gb_in_ob>0:
-        import pdb; pdb.set_trace()  # XXX BREAKPOINT
-        pass
       with tf.control_dependencies([tf.assert_equal(nerr_gb_in_ob, 0)]):
         grouped_bot_cen_top = tf.identity(grouped_bot_cen_top)
 
@@ -651,11 +648,11 @@ class BlockGroupSampling():
       with tf.control_dependencies([check_toomany, check_toofew]):
         low_b_index_fixed = tf.identity(low_b_index_fixed)
     # *****
-    self.nblock_perp_3d = tf.reduce_prod(self._nblocks_per_point[self.scale])
+    self.nblock_perp_3d = np.prod(self._nblocks_per_point[self.scale])
     self.npoint_grouped_buf = self.nblock_perp_3d * self.num_point0
 
     pairs_3d0 = permutation_combination_3D(self._nblocks_per_point[self.scale])
-    tf.assert_equal( self.nblock_perp_3d, pairs_3d0.shape[0].value)
+    assert self.nblock_perp_3d == pairs_3d0.shape[0].value
     pairs_3d = tf.tile( tf.reshape(pairs_3d0, [1,1,1,self.nblock_perp_3d,3]),
                 [self.batch_size, self.global_block_num, self.num_point0, 1, 1])
 
@@ -682,7 +679,7 @@ class BlockGroupSampling():
 
     # combine two dims to one: "num_point0" and "nblock_perp_3d"
     bindex_pindex = tf.reshape(bindex_pindex, (self.batch_size, \
-                            self.global_block_num, self.npoint_grouped_buf,4))
+                            self.global_block_num, self.npoint_grouped_buf, 4))
     pinb_mask = tf.reshape(pinb_mask, (self.batch_size, self.global_block_num, \
                                        self.npoint_grouped_buf,))
     if self._cut_bindex_by_global_scope:
@@ -744,7 +741,8 @@ class BlockGroupSampling():
     bindex_pindex: [batch_size, global_block_num, npoint_grouped_buf, 4]
     bindex_pindex_valid: [npoint_grouped_all, 4]
     '''
-    num_grouped_point0 = tf.shape(bindex_pindex)[0] * tf.shape(bindex_pindex)[1]
+    shape0 = [e.value for e in  bindex_pindex.shape]
+    num_grouped_point0 = shape0[0] * shape0[1]
 
     bindex_pindex_ls = []
     for bi in range(self.batch_size):
@@ -753,9 +751,9 @@ class BlockGroupSampling():
         pindex_inb = tf.cast(pindex_inb, tf.int32)
         bindex_pindex_ls.append(tf.gather(bindex_pindex[bi,gi], pindex_inb, 0))
 
-    self.npoints_grouped = tf.concat([tf.expand_dims(e.shape[0],0) for e in bindex_pindex_ls],0)
+    self.npoints_grouped = tf.concat([tf.expand_dims(tf.shape(e)[0],0) for e in bindex_pindex_ls],0)
     bindex_pindex_valid = tf.concat(bindex_pindex_ls, 0)
-    self.npoint_grouped_all = bindex_pindex_valid.shape[0]
+    self.npoint_grouped_all = tf.shape(bindex_pindex_valid)[0]
     self.npoint_grouped_ave = self.npoint_grouped_all / (self.bsgbn)
     self.ngb_valid_rate = tf.cast( self.npoint_grouped_all, tf.float32) / \
                       tf.cast( tf.reduce_prod(gp_valid_mask.shape), tf.float32)
@@ -941,7 +939,7 @@ class BlockGroupSampling():
     if self._record_samplings:
       self.record_samplings(npoint_per_block)
 
-    check_gpn = tf.assert_less_equal(grouped_point_index.shape[0],
+    check_gpn = tf.assert_less_equal(tf.shape(grouped_point_index)[0],
                           tf.reduce_sum( self._npoint_per_blocks[self.scale] *\
                                         self.nb_enoughp_per_gb) )
     with tf.control_dependencies([check_gpn]):
@@ -1030,9 +1028,6 @@ class BlockGroupSampling():
     if self._check_optional:
       global_scope = self.global_bot_cen_top - self.global_bot_bot_bot
       correct_mask, nerr_scope = self.check_block_inblock( bot_cen_top, global_scope)
-      if nerr_scope > 0:
-        import pdb; pdb.set_trace()  # XXX BREAKPOINT
-        pass
       check = tf.assert_equal(nerr_scope, 0,
                 message="sub block is out of global block, scale {}".format(self.scale))
       with tf.control_dependencies([check]):
@@ -1254,6 +1249,15 @@ def pre_sampling_grouping(points, sg_settings, log_path):
   t1 = time.time()
   print('create class bsg:{}'.format(t1-t0))
   dsb = {}
+
+  ds = {}
+  ds['grouped_pindex'], ds['vox_index'], ds['grouped_xyz'], ds['empty_mask'],\
+    ds['bot_cen_top'], nblock_valid, others =\
+    bsg.grouping_multi_scale(points[...,0:3])
+
+
+  import pdb; pdb.set_trace()  # XXX BREAKPOINT
+
   batch_size = points.shape[0].value
   for bi in range(batch_size):
     ds = {}
@@ -1383,6 +1387,7 @@ def main_eager(DATASET_NAME, filenames, sg_settings, batch_size, cycles=1):
 
   return points, grouped_bot_cen_top, others, bsg._shuffle
 
+
 def test_sparse_to_dense(vox_index):
   vox_index = vox_index[1][0]
   s0 = vox_index.shape[0]
@@ -1451,7 +1456,7 @@ if __name__ == '__main__':
 
   sg_settings = get_sg_settings()
 
-  batch_size = 2
+  batch_size = 5
   if len(sys.argv) > 1:
     main_flag = sys.argv[1]
     if len(sys.argv) > 2:
