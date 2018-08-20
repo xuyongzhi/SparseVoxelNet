@@ -288,16 +288,19 @@ def draw_points_and_voxel_indices(ply_fn, xyz, voxel_indices):
 
   draw_points_and_edges(ply_fn, xyz, edge_indices)
 
-def draw_blocks_by_bot_cen_top(ply_fn, block_bottom_center, random_crop=0):
+def draw_blocks_by_bot_cen_top(ply_fn, bot_cen_top, random_crop=0):
   '''
-    block_bottom_center: (num_blocks, 6)
+    bot_cen_top: (num_blocks, 9)
   '''
+  shape0 = bot_cen_top.shape
+  assert shape0[-1] == 9
+  bot_cen_top = np.reshape(bot_cen_top, [-1,9])
   if random_crop>0:
-    N = block_bottom_center.shape[0]
+    N = bot_cen_top.shape[0]
     choices = np.random.choice(N, N-int(N*random_crop))
-    block_bottom_center = np.take(block_bottom_center, choices, axis=0)
-  block_bottom = block_bottom_center[:,0:3]
-  block_center = block_bottom_center[:,3:6]
+    bot_cen_top = np.take(bot_cen_top, choices, axis=0)
+  block_bottom = bot_cen_top[:,0:3]
+  block_center = bot_cen_top[:,3:6]
   block_top = 2*(block_center - block_bottom) + block_bottom
   box_vertexes = gen_box_8vertexs(block_bottom, block_top)
   gen_box_and_pl(ply_fn, box_vertexes, extra='random_color_between_boxes')
