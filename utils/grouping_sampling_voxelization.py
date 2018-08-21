@@ -1159,8 +1159,8 @@ def main_input_pipeline(DATASET_NAME, filenames, sg_settings, batch_size):
 
     config = tf.ConfigProto(allow_soft_placement=True)
     with tf.Session(config=config) as sess:
-      n_run = batch_size // batch_size
-      for i in xrange(n_run):
+      cycles = batch_size // batch_size
+      for i in xrange(cycles):
         #points_i = sess.run(points_next)
         #grouped_pindex = sess.run(grouped_pindex_next)
         #empty_masks = sess.run(empty_mask_next)
@@ -1191,7 +1191,7 @@ def main_input_pipeline(DATASET_NAME, filenames, sg_settings, batch_size):
     return xyzs, grouped_xyzs, others, bsg._shuffle
 
 
-def main_gpu(DATASET_NAME, filenames, sg_settings, batch_size):
+def main_gpu(DATASET_NAME, filenames, sg_settings, batch_size, cycles=1):
   tg0 = time.time()
   _DATA_PARAS = get_data_shapes_from_tfrecord(filenames)
   dataset_meta = DatasetsMeta(DATASET_NAME)
@@ -1202,7 +1202,7 @@ def main_gpu(DATASET_NAME, filenames, sg_settings, batch_size):
     os.makedirs(log_path)
 
   with tf.Graph().as_default():
-   with tf.device('/device:GPU:1'):
+   with tf.device('/device:GPU:0'):
     dataset = tf.data.TFRecordDataset(filenames)
 
     #dataset.shuffle(buffer_size = 10000)
@@ -1231,12 +1231,11 @@ def main_gpu(DATASET_NAME, filenames, sg_settings, batch_size):
 
     config = tf.ConfigProto(allow_soft_placement=True)
     with tf.Session(config=config) as sess:
-      n_run = batch_size // batch_size
-      for i in xrange(n_run):
+      for i in xrange(cycles):
         t0 = time.time()
         dsb = sess.run(dsb_next)
         t_batch = time.time()-t0
-        print("t_batch:{} t_frame:{}".format( t_batch, t_batch/batch_size ))
+        print("t_batch:{} t_frame:{}".format( t_batch * 1000, t_batch/batch_size*1000 ))
 
         print('group OK %d'%(i))
 
@@ -1248,67 +1247,67 @@ def pre_sampling_grouping(points, sg_settings, log_path):
   bsg = BlockGroupSampling(sg_settings, log_path)
   t1 = time.time()
   print('create class bsg:{}'.format(t1-t0))
-  dsb = {}
+  dsbb = {}
 
-  ds = {}
-  ds['grouped_pindex'], ds['vox_index'], ds['grouped_xyz'], ds['empty_mask'],\
-    ds['bot_cen_top'], nblock_valid, others =\
+  dsb = {}
+  dsb['grouped_pindex'], dsb['vox_index'], dsb['grouped_xyz'], dsb['empty_mask'],\
+    dsb['bot_cen_top'], nblock_valid, others =\
     bsg.grouping_multi_scale(points[...,0:3])
 
 
-  import pdb; pdb.set_trace()  # XXX BREAKPOINT
 
-  batch_size = points.shape[0].value
-  for bi in range(batch_size):
-    ds = {}
-    t2 = time.time()
-    ds['grouped_pindex'], ds['vox_index'], ds['grouped_xyz'], ds['empty_mask'],\
-      ds['bot_cen_top'], nblock_valid, others =\
-      bsg.grouping_multi_scale(points[bi,:,0:3])
-    t3 = time.time()
-    print('add grouping graph for one frame:{}'.format(t3-t2))
+  #batch_size = points.shape[0].value
+  #for bi in range(batch_size):
+  #  ds = {}
+  #  t2 = time.time()
+  #  ds['grouped_pindex'], ds['vox_index'], ds['grouped_xyz'], ds['empty_mask'],\
+  #    ds['bot_cen_top'], nblock_valid, others =\
+  #    bsg.grouping_multi_scale(points[bi,:,0:3])
+  #  t3 = time.time()
+  #  print('add grouping graph for one frame:{}'.format(t3-t2))
 
-    global_block_num = ds['grouped_pindex'][0].shape[1]
-    check_g = tf.assert_equal( global_block_num, 1)
-    gi = 0
-    with tf.control_dependencies([check_g]):
-      for e in ds:
-        if e not in dsb:
-            dsb[e] = []
-        num_scale = len(ds[e])
-        for s in range(num_scale):
-            if len(dsb[e]) < s+1:
-              dsb[e].append([])
-            dsb[e][s].append(tf.expand_dims(ds[e][s][gi,...], 0))
+  #  global_block_num = ds['grouped_pindex'][0].shape[1]
+  #  check_g = tf.assert_equal( global_block_num, 1)
+  #  gi = 0
+  #  with tf.control_dependencies([check_g]):
+  #    for e in ds:
+  #      if e not in dsb:
+  #          dsb[e] = []
+  #      num_scale = len(ds[e])
+  #      for s in range(num_scale):
+  #          if len(dsb[e]) < s+1:
+  #            dsb[e].append([])
+  #          dsb[e][s].append(tf.expand_dims(ds[e][s][gi,...], 0))
 
   #*************************************************************
-  grouped_pindex_global = tf.concat(dsb['grouped_pindex'][0], 0)
   is_show_inputs = True
   if is_show_inputs:
     print('\n\n\n')
-  for e in dsb:
-    # Remove global block scale and get input for each global block
-    del dsb[e][0]
-    num_scale = len(dsb[e])
-    for s in range(num_scale):
-      dsb[e][s] = tf.concat(dsb[e][s], 0)
-      if is_show_inputs:
-        print('{} {} {}'.format(e, s, dsb[e][s].shape ))
-  if is_show_inputs:
-    print(dsb.keys())
-    print('\n\n\n')
+  #for e in dsb:
+  #  # Remove global block scale and get input for each global block
+  #  del dsb[e][0]
+  #  num_scale = len(dsb[e])
+  #  for s in range(num_scale):
+  #    dsb[e][s] = tf.concat(dsb[e][s], 0)
+  #    if is_show_inputs:
+  #      print('{} {} {}'.format(e, s, dsb[e][s].shape ))
+  #if is_show_inputs:
+  #  print(dsb.keys())
+  #  print('\n\n\n')
 
-  # From last scale to global scale, only need "vox_index" and "empty_mask",
-  # set others as []
-  for e in dsb:
-    if len(dsb[e]) < bsg._num_scale:
-      dsb[e].append([])
+  ## From last scale to global scale, only need "vox_index" and "empty_mask",
+  ## set others as []
+  #for e in dsb:
+  #  if len(dsb[e]) < bsg._num_scale:
+  #    dsb[e].append([])
 
   #*************************************************************
   # get inputs for each global block
-  grouped_pindex_global = tf.expand_dims(tf.squeeze(grouped_pindex_global, 1), -1)
-  tmp0 = tf.reshape(tf.range(0, batch_size, 1), [-1, 1, 1])
-  tmp0 = tf.tile(tmp0, [1, tf.shape(grouped_pindex_global)[1], 1])
+  grouped_pindex_global = tf.squeeze(dsb['grouped_pindex'][0], 2)
+  shape0 = [e.value for e in grouped_pindex_global.shape]
+  grouped_pindex_global = tf.expand_dims(grouped_pindex_global, -1)
+  tmp0 = tf.reshape(tf.range(0, batch_size, 1), [-1, 1, 1, 1])
+  tmp0 = tf.tile(tmp0, [1]+shape0[1:]+[1])
   tmp1 = tf.concat([tmp0, grouped_pindex_global], -1)
   dsb['points'] = tf.gather_nd(points, tmp1)
 
@@ -1446,7 +1445,7 @@ if __name__ == '__main__':
   from utils.sg_settings import get_sg_settings
 
   DATASET_NAME = 'MODELNET40'
-  raw_tfrecord_path = '/home/z/Research/SparseVoxelNet/data/MODELNET40_H5TF/raw_tfrecord'
+  raw_tfrecord_path = '/home/z/Research/SparseVoxelNet/data/MODELNET40_H5TF_/raw_tfrecord'
   data_path = os.path.join(raw_tfrecord_path, 'data')
   data_path = os.path.join(raw_tfrecord_path, 'merged_data')
   tmp = '*'
@@ -1456,7 +1455,7 @@ if __name__ == '__main__':
 
   sg_settings = get_sg_settings()
 
-  batch_size = 5
+  batch_size = 32
   if len(sys.argv) > 1:
     main_flag = sys.argv[1]
     if len(sys.argv) > 2:
@@ -1471,7 +1470,7 @@ if __name__ == '__main__':
 
   file_num = 12311
   cycles = file_num // batch_size
-  cycles = 1
+  #cycles = 10
 
   if 'e' in main_flag:
     xyzs_E, grouped_xyzs_E, others_E, shuffle_E = \
@@ -1480,7 +1479,7 @@ if __name__ == '__main__':
     xyzs, grouped_xyzs, others, shuffle = \
       main_input_pipeline(DATASET_NAME, filenames, sg_settings, batch_size)
   if 'G' in main_flag:
-    main_gpu(DATASET_NAME, filenames, sg_settings, batch_size)
+    main_gpu(DATASET_NAME, filenames, sg_settings, batch_size, cycles)
 
   if main_flag=='eg' and shuffle==False and shuffle_E==False:
     assert xyzs.shape[0] == xyzs_E.shape[0], "Make batch_size=batch_size in main "
