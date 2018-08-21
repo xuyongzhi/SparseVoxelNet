@@ -12,7 +12,7 @@ import numpy as np
 '''
 
 DEFAULTS = {}
-DEFAULTS['data_path'] = '/home/z/Research/SparseVoxelNet/data/MODELNET40_H5TF/raw_tfrecord'
+DEFAULTS['data_path'] = '/home/z/Research/SparseVoxelNet/data/MODELNET40_H5TF_/raw_tfrecord'
 DEFAULTS['precpu_sg'] = False
 
 DEFAULTS['only_eval'] = 0
@@ -34,13 +34,13 @@ DEFAULTS['lr_decay_epochs'] = 20
 DEFAULTS['lr_warmup'] = 0
 DEFAULTS['batch_norm_decay0'] = 0.7
 
-DEFAULTS['model_flag'] = 'm'
+DEFAULTS['model_flag'] = 'V'
 DEFAULTS['resnet_size'] = '24A'
 DEFAULTS['feed_data'] = 'xyzs'
 DEFAULTS['use_xyz'] = 1
 DEFAULTS['aug_types'] = 'N' # 'rpsfj-360_0_0'
 DEFAULTS['drop_imo'] = '0_0_5'
-DEFAULTS['batch_size'] = 12
+DEFAULTS['batch_size'] = 20
 DEFAULTS['num_gpus'] = 1
 DEFAULTS['gpu_id'] = 0
 DEFAULTS['train_epochs'] = 31
@@ -152,11 +152,11 @@ def get_block_paras_bottle_regu(resnet_size, model_flag):
 
   rs = '24A'
   num_filters0s[rs] = 32
-  block_sizes[rs]    = [[2,2], [1,2], [2,2,1]]
-  block_filters[rs] = [[32,64], [128,128], [128,256,512]]
-  block_kernels[rs]  = [[], [3,1], [3,3,3]]
-  block_strides[rs]  = [[], [1,1], [1,1,1]]
-  block_paddings[rs] = [[], ['v','s'], ['v','v','v']]
+  block_sizes[rs]    = [[2,1, 1],     [1,1],      [1,1,1]]
+  block_filters[rs]  = [[32,64,125],  [128,128],  [128,256,512]]
+  block_kernels[rs]  = [[],           [3,3],      [3,3,1]]
+  block_strides[rs]  = [[],           [1,1],      [1,1,1]]
+  block_paddings[rs] = [[],           ['v','v'],  ['v','v','s']]
 
   if 'V' not in model_flag:
     for i in range(len(block_sizes[resnet_size])):

@@ -448,6 +448,7 @@ def define_model_dir():
   logname += '-D'+str(data_flag)
   logname += '-BLOCK-'+block_config_str
   logname += '-NoPreNorm'
+  logname += '-SG' + _DATA_PARAS['sg_settings']['flag']
 
   model_dir = os.path.join(ROOT_DIR, 'results/object_detection_result', logname)
   if not os.path.exists(model_dir):

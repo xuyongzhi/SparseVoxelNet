@@ -177,6 +177,9 @@ class ResConvOps(object):
 
   def log_model_summary(self):
       dnc = self.data_net_configs
+
+      #*************************************************************************
+      # key training parameters
       res = 'R' if self.residual else 'P'
       use_xyz_str = '' if dnc['use_xyz'] else 'Np'
       key_para_names = 'model bs aug feed drop_imo loss_weight lr0_drate_depoch \
@@ -212,7 +215,8 @@ bnd optimizer block_config\n'
         if self.IsShowModel:
           print(str_i)
 
-      # write block params
+      #*************************************************************************
+      # write network block params
       self.model_log_f.write('\nBlock parameters:\n')
       block_params = dnc['block_params']
       for ele in block_params:
@@ -221,6 +225,12 @@ bnd optimizer block_config\n'
         self.model_log_f.write(str_i)
         if self.IsShowModel:
           print(str_i)
+      self.model_log_f.write('\n--------------------------------------------\n')
+
+      #*************************************************************************
+      # sampling grouping settings
+      self.model_log_f.write(dnc['sg_settings']['sg_str'])
+      self.model_log_f.write('\n--------------------------------------------\n')
 
       self.model_log_f.write('\n--------------------------------------------\n')
       self.model_log_f.write(self.key_paras_str)
@@ -806,6 +816,7 @@ def mytile(tensor, axis, eval_views):
   tensor = tf.reshape(tensor, org_shape)
   return tensor
 
+
 def my_reduce_mean(grouped_xyz):
   '''
   reduce mean exclusive of 0.
@@ -836,6 +847,7 @@ def pc_normalize(points):
   else:
     points_normed = points_xyz
   return points_normed
+
 
 class Model(ResConvOps):
   """Base class for building the Resnet Model."""
@@ -1043,57 +1055,55 @@ class Model(ResConvOps):
     log_path = self.data_net_configs['data_dir']+'/sg_log'
     bsg = BlockGroupSampling(self.sg_settings, log_path)
     dsb = {}
-    for bi in range(self.batch_size):
-      ds = {}
-      ds['grouped_pindex'], ds['vox_index'], ds['grouped_xyz'], ds['empty_mask'],\
-        ds['bot_cen_top'], nblock_valid, others =\
-        bsg.grouping_multi_scale(points[bi,:,0:3])
+    dsb['grouped_pindex'], dsb['vox_index'], dsb['grouped_xyz'], \
+      dsb['empty_mask'], dsb['bot_cen_top'], nblock_valid, others =\
+      bsg.grouping_multi_scale(points[..., 0:3])
 
-      global_block_num = ds['grouped_pindex'][0].shape[1]
-      check_g = tf.assert_equal( global_block_num, 1)
-      gi = 0
-      with tf.control_dependencies([check_g]):
-        for e in ds:
-          if e not in dsb:
-              dsb[e] = []
-          num_scale = len(ds[e])
-          for s in range(num_scale):
-              if len(dsb[e]) < s+1:
-                dsb[e].append([])
-              dsb[e][s].append(tf.expand_dims(ds[e][s][gi,...], 0))
+    for s in range(len(dsb['grouped_xyz'])):
+      dsb['grouped_xyz'][s] = dsb['grouped_xyz'][s][...,3:6]
 
-    #*************************************************************
-    grouped_pindex_global = tf.concat(dsb['grouped_pindex'][0], 0)
-    is_show_inputs = True
-    if is_show_inputs:
-      print('\n\n\n')
-    for e in dsb:
-      # Remove global block scale and get input for each global block
-      del dsb[e][0]
-      num_scale = len(dsb[e])
-      for s in range(num_scale):
-        dsb[e][s] = tf.concat(dsb[e][s], 0)
-        if is_show_inputs:
-          print('{} {} {}'.format(e, s, dsb[e][s].shape ))
-    if is_show_inputs:
-      print(dsb.keys())
-      print('\n\n\n')
-
-    # From last scale to global scale, only need "vox_index" and "empty_mask",
-    # set others as []
-    for e in dsb:
-      if len(dsb[e]) < self.sg_num_scale:
-        dsb[e].append([])
+    shape0 = [e.value for e in dsb['grouped_pindex'][0].shape]
+    batch_size = shape0[0]
+    global_block_num = shape0[1]
+    bsgbn = batch_size * global_block_num
 
     #*************************************************************
     # get inputs for each global block
-    grouped_pindex_global = tf.expand_dims(tf.squeeze(grouped_pindex_global, 1), -1)
+    grouped_pindex_global = tf.expand_dims(
+                                  tf.squeeze(dsb['grouped_pindex'][0], 2), -1)
+    shape0 = [e.value for e in grouped_pindex_global.shape]
     if self.feed_data_idxs!='ALL':
       points = tf.gather(points, self.feed_data_idxs, axis=-1)
-    tmp0 = tf.reshape(tf.range(0, self.batch_size, 1), [-1, 1, 1])
-    tmp0 = tf.tile(tmp0, [1, tf.shape(grouped_pindex_global)[1], 1])
+    tmp0 = tf.reshape(tf.range(0, self.batch_size, 1), [-1, 1, 1, 1])
+    tmp0 = tf.tile(tmp0, [1] + shape0[1:])
     tmp1 = tf.concat([tmp0, grouped_pindex_global], -1)
-    dsb['points'] = tf.gather_nd(points, tmp1)
+    points = tf.gather_nd(points, tmp1)
+    points = tf.reshape(points, [bsgbn, points.shape[2].value,
+                                 points.shape[3].value])
+
+    #*************************************************************
+    # rm global scale
+    for item in dsb:
+      del dsb[item][0]
+      if len(dsb[item]) < self.net_num_scale:
+        dsb[item].append([])
+
+    #*************************************************************
+    is_show_inputs = False
+    # merge batch size dim and global block dim
+    for item in dsb:
+      num_scale = len(dsb[item])
+      for s in range(num_scale):
+        if dsb[item][s] == []:
+          shape_i = '[]'
+        else:
+          shape_i = [e.value for e in dsb[item][s].shape]
+          dsb[item][s] = tf.reshape(dsb[item][s], [bsgbn] + shape_i[2:])
+          shape_i1 = [e.value for e in dsb[item][s].shape]
+        if is_show_inputs:
+          print('{}:{}'.format(item, shape_i1))
+
+    dsb['points'] = points
 
     #sg_t_batch = (tf.timestamp() - t0)*1000
     #tf.summary.scalar('sg_t_batch', sg_t_batch)
@@ -1132,6 +1142,7 @@ class Model(ResConvOps):
             inputs_dic['vox_index'],
             is_training)
     else:
+      raise NotImplementedError
       eval_views = inputs_dic['points'].shape[1].value
       batch_size = inputs_dic['points'].shape[0].value
       if batch_size==None:
@@ -1175,7 +1186,14 @@ class Model(ResConvOps):
 
   def _call(self, inputs, grouped_xyz_ms, grouped_pindex_ms, empty_mask_ms,
             bot_cen_top_ms, vox_index_ms, is_training, eval_views=-1):
-
+    '''
+    inputs: (12, 4096, 3)
+    grouped_xyz_ms: [(12, 1, 4096, 3), (12, 1024, 32, 3), (12, 48, 48, 3)]
+    grouped_pindex_ms: [(12, 1, 4096), (12, 1024, 32), (12, 48, 48)]
+    empty_mask_ms: [(12, 1, 4096), (12, 1024, 32), (12, 48, 48), (12, 1, 48)]
+    bot_cen_top_ms: [(12, 1, 9), (12, 1024, 9), (12, 48, 9)]
+    vox_index_ms: [[], [], (12, 48, 48, 3), (12, 1, 48, 3)]
+    '''
     tf.add_to_collection('raw_inputs', inputs)
     if self.IsShowModel: self.log('')
     self.is_training = is_training
@@ -1681,31 +1699,37 @@ class Model(ResConvOps):
     return voxel_points
 
   def voxelization(self, scale, grouped_points, vox_index, empty_mask):
-    gp_size = grouped_points.shape
-    batch_size = gp_size[0]
-    block_num = gp_size[1]
-    point_num = gp_size[2]
+    '''
+    '''
+    gp_shape = [e.value for e in grouped_points.shape]
+    voxind_shape = [e.value for e in vox_index.shape]
+    assert len(gp_shape) == len(voxind_shape) == 4
+    for i in range(3):
+      assert gp_shape[i] ==  voxind_shape[i]
+    batch_size = gp_shape[0]
+    block_num = gp_shape[1]
+    point_num = gp_shape[2]
 
-    #if scale == self.net_num_scale-1:
-    #  grouped_voxels = tf.reshape(grouped_points, [batch_size*block_num, 1,1,1, gp_size[3]])
-    #  import pdb; pdb.set_trace()  # XXX BREAKPOINT
-    #  return grouped_voxels
-
-    vox_size = self.sg_settings['vox_size'][scale]
+    vox_size = self.sg_settings['vox_size'][scale+1]
     grouped_vox_size = [batch_size, block_num, vox_size[0], vox_size[1],
-                        vox_size[2], gp_size[3]]
+                        vox_size[2], gp_shape[3]]
 
     batch_idx = tf.reshape( tf.range(batch_size),[batch_size,1,1,1] )
     batch_idx = tf.tile( batch_idx, [1,block_num,point_num,1] )
     bn_idx = tf.reshape( tf.range(block_num),[1,block_num,1,1] )
     bn_idx = tf.tile( bn_idx, [batch_size,1,point_num,1] )
     vox_index = tf.concat( [batch_idx, bn_idx, vox_index], -1 )
+    voxind_shape = [e.value for e in vox_index.shape]
+
+    vox_index = tf.reshape(vox_index, [-1, voxind_shape[-1]])
+    grouped_points = tf.reshape(grouped_points, [-1, gp_shape[-1]])
     grouped_voxels = tf.sparse_to_dense( vox_index, grouped_vox_size,
                       grouped_points, default_value=0, validate_indices=False )
 
     grouped_vox_size = [batch_size * block_num, vox_size[0], vox_size[1],
-                        vox_size[2], gp_size[3]]
-    grouped_voxels = tf.reshape(grouped_voxels, grouped_vox_size)
+                        vox_size[2], gp_shape[3]]
     self.log_tensor_p(grouped_voxels, 'voxel', 'cas%d'%(scale))
+    grouped_voxels = tf.reshape(grouped_voxels, grouped_vox_size)
+    self.log_tensor_p(grouped_voxels, 'reshape', 'cas%d'%(scale))
     return grouped_voxels
 
