@@ -330,6 +330,7 @@ def define_net_configs(flags_obj):
   _DATA_PARAS['model_flag'] = flags_obj.model_flag
   _get_block_paras()
   _DATA_PARAS['sg_settings'] = get_sg_settings()
+
   _DATA_PARAS['precpu_sg'] = DEFAULTS['precpu_sg']
 
   feed_data_eles = flags_obj.feed_data

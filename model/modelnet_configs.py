@@ -13,7 +13,7 @@ import numpy as np
 
 DEFAULTS = {}
 DEFAULTS['data_path'] = '/home/z/Research/SparseVoxelNet/data/MODELNET40_H5TF_/raw_tfrecord'
-DEFAULTS['precpu_sg'] = False
+DEFAULTS['precpu_sg'] = True
 
 DEFAULTS['only_eval'] = 0
 DEFAULTS['eval_views'] = 1

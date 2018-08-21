@@ -953,6 +953,10 @@ class Model(ResConvOps):
     self.use_xyz = self.data_net_configs['use_xyz']
     self.mean_grouping_position = True
 
+    from utils.grouping_sampling_voxelization import BlockGroupSampling
+    log_path = self.data_net_configs['data_dir']+'/sg_log'
+    self.bsg = BlockGroupSampling(self.sg_settings, log_path)
+
 
   def _custom_dtype_getter(self, getter, name, shape=None, dtype=DEFAULT_DTYPE,
                            *args, **kwargs):
@@ -1009,27 +1013,10 @@ class Model(ResConvOps):
                              custom_getter=self._custom_dtype_getter)
 
 
-  def pre_pro_inputs_unused(self, inputs_dic):
-    if type(inputs_dic) !=dict:
-      points = inputs_dic
-      inputs_dic = {}
-      inputs_dic['points'] = points
-
-    if 'sg_bidxmaps' not in inputs_dic:
-      inputs_dic['sg_bidxmaps'] = [[]]
-      inputs_dic['b_bottom_centers_mm'] = [[]]
-      inputs_dic['bidxmaps_flat'] = [[]]
-      inputs_dic['fmap_neighbor_idis'] = [[]]
-    else:
-      self.globalb_bottom_center_mm = inputs_dic['b_bottom_centers_mm'][self.net_num_scale-1]
-      globalb_bottom_center = tf.multiply( tf.cast( self.globalb_bottom_center_mm, tf.float32), 0.001, name='globalb_bottom_center' ) # gpu_0/globalb_bottom_center
-      self.max_step_stride = tf.multiply( globalb_bottom_center[:,:,3:6] - globalb_bottom_center[:,:,0:3], 2.0, name='max_step_stride') # gpu_0/max_step_stride
-
-    return inputs_dic
-
   def pre_pro_inputs(self, inputs_dic, sg_num_scale):
     # scale 0 is global scale!
     inputs_dic1 = {}
+    import pdb; pdb.set_trace()  # XXX BREAKPOINT
     inputs_dic1['points'] = tf.squeeze(inputs_dic['grouped_xyz_0'], 1)
 
     if self.feed_data_idxs!='ALL':
@@ -1048,16 +1035,14 @@ class Model(ResConvOps):
 
   def pre_sampling_grouping(self, inputs_dic):
     # get the indices for grouping and sampling on line
-    from utils.grouping_sampling_voxelization import BlockGroupSampling
+
     #t0 = tf.timestamp()
     points = inputs_dic['points']
 
-    log_path = self.data_net_configs['data_dir']+'/sg_log'
-    bsg = BlockGroupSampling(self.sg_settings, log_path)
     dsb = {}
     dsb['grouped_pindex'], dsb['vox_index'], dsb['grouped_xyz'], \
       dsb['empty_mask'], dsb['bot_cen_top'], nblock_valid, others =\
-      bsg.grouping_multi_scale(points[..., 0:3])
+      self.bsg.grouping_multi_scale(points[..., 0:3])
 
     for s in range(len(dsb['grouped_xyz'])):
       dsb['grouped_xyz'][s] = dsb['grouped_xyz'][s][...,3:6]
