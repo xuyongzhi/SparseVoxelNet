@@ -35,12 +35,12 @@ DEFAULTS['lr_warmup'] = 0
 DEFAULTS['batch_norm_decay0'] = 0.7
 
 DEFAULTS['model_flag'] = 'V'
-DEFAULTS['resnet_size'] = '24A'
+DEFAULTS['resnet_size'] = '20A'
 DEFAULTS['feed_data'] = 'xyzs'
 DEFAULTS['use_xyz'] = 1
 DEFAULTS['aug_types'] = 'N' # 'rpsfj-360_0_0'
 DEFAULTS['drop_imo'] = '0_0_5'
-DEFAULTS['batch_size'] = 20
+DEFAULTS['batch_size'] = 32
 DEFAULTS['num_gpus'] = 1
 DEFAULTS['gpu_id'] = 0
 DEFAULTS['train_epochs'] = 31
@@ -150,10 +150,10 @@ def get_block_paras_bottle_regu(resnet_size, model_flag):
   block_paddings = {}   # only used when strides == 1
   block_filters = {}
 
-  rs = '24A'
+  rs = '20A'
   num_filters0s[rs] = 32
   block_sizes[rs]    = [[2,1, 1],     [1,1],      [1,1,1]]
-  block_filters[rs]  = [[32,64,125],  [128,128],  [128,256,512]]
+  block_filters[rs]  = [[32,64,125],  [128,256],  [256,512,512]]
   block_kernels[rs]  = [[],           [3,3],      [3,3,1]]
   block_strides[rs]  = [[],           [1,1],      [1,1,1]]
   block_paddings[rs] = [[],           ['v','v'],  ['v','v','s']]

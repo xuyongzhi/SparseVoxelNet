@@ -1381,6 +1381,7 @@ class Model(ResConvOps):
             outputs = tf.reshape(outputs, [self.batch_size,-1,outputs.shape[-1].value])
           else:
             outputs = tf.reshape(outputs, [self.batch_size,outputs.shape[1].value,-1])
+          self.log_tensor_p(outputs, 'reshape', 'cas%d'%(scale))
 
       return outputs, root_point_features
 
@@ -1721,15 +1722,12 @@ class Model(ResConvOps):
     vox_index = tf.concat( [batch_idx, bn_idx, vox_index], -1 )
     voxind_shape = [e.value for e in vox_index.shape]
 
-    vox_index = tf.reshape(vox_index, [-1, voxind_shape[-1]])
-    grouped_points = tf.reshape(grouped_points, [-1, gp_shape[-1]])
-    grouped_voxels = tf.sparse_to_dense( vox_index, grouped_vox_size,
-                      grouped_points, default_value=0, validate_indices=False )
+    grouped_voxels = tf.scatter_nd(vox_index, grouped_points, grouped_vox_size)
 
-    grouped_vox_size = [batch_size * block_num, vox_size[0], vox_size[1],
-                        vox_size[2], gp_shape[3]]
     self.log_tensor_p(grouped_voxels, 'voxel', 'cas%d'%(scale))
-    grouped_voxels = tf.reshape(grouped_voxels, grouped_vox_size)
+    grouped_vox_size1 = [batch_size * block_num, vox_size[0], vox_size[1],
+                        vox_size[2], gp_shape[3]]
+    grouped_voxels = tf.reshape(grouped_voxels, grouped_vox_size1)
     self.log_tensor_p(grouped_voxels, 'reshape', 'cas%d'%(scale))
     return grouped_voxels
 

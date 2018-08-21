@@ -1457,7 +1457,6 @@ def test_voxelization(vox_size, grouped_points, vox_index, empty_mask=None):
     grouped_points = tf.reshape(grouped_points, [bsgbn]+gp_size[2:])
     vox_index = tf.reshape(vox_index, [bsgbn]+voxind_size[2:])
 
-    #test_sparse_to_dense(vox_index)
     #---------------------------------------------------------------------------
     gp_size = [e.value for e in grouped_points.shape]
     voxind_size = [e.value for e in vox_index.shape]
@@ -1475,10 +1474,12 @@ def test_voxelization(vox_size, grouped_points, vox_index, empty_mask=None):
     bn_idx = tf.tile( bn_idx, [batch_size,1,point_num,1] )
     vox_index = tf.concat( [batch_idx, bn_idx, vox_index], -1 )
 
-    vox_index = tf.reshape(vox_index, [-1, vox_index.shape[-1].value])
-    grouped_points = tf.reshape(grouped_points, [-1, gp_size[-1]])
-    import pdb; pdb.set_trace()  # XXX BREAKPOINT
-    grouped_voxels = tf.sparse_to_dense( vox_index, grouped_vox_size, grouped_points, default_value=0, validate_indices=False )
+    grouped_voxels = tf.scatter_nd(vox_index, grouped_points, grouped_vox_size)
+
+    #vox_index = tf.reshape(vox_index, [-1, vox_index.shape[-1].value])
+    #grouped_points = tf.reshape(grouped_points, [-1, gp_size[-1]])
+    #import pdb; pdb.set_trace()  # XXX BREAKPOINT
+    #grouped_voxels = tf.sparse_to_dense( vox_index, grouped_vox_size, grouped_points, default_value=0, validate_indices=False )
     import pdb; pdb.set_trace()  # XXX BREAKPOINT
 
     grouped_vox_size = [batch_size * block_num, vox_size[0], vox_size[1],
