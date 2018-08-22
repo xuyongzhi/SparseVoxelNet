@@ -33,7 +33,7 @@ import resnet_run_loop
 import os, glob, sys
 import numpy as np
 from modelnet_configs import get_block_paras, DEFAULTS
-from datasets.rawh5_to_tfrecord import parse_pl_record, get_dataset_summary
+from datasets.rawh5_to_tfrecord import parse_pl_record, get_dataset_summary, get_dset_metas
 from utils.sg_settings import get_sg_settings
 from datasets.all_datasets_meta.datasets_meta import DatasetsMeta
 
@@ -117,11 +117,14 @@ def get_data_shapes_from_tfrecord(data_dir):
     dataset = input_fn(False, data_dir, batch_size)
     iterator = dataset.make_one_shot_iterator().get_next()
     with tf.Session() as sess:
-      features, label = sess.run(iterator)
+      features, labels = sess.run(iterator)
 
+      dset_metas = _DATA_PARAS['dset_metas']
       for key in features:
-        _DATA_PARAS[key] = features[key][0].shape
-        print('{}:{}'.format(key, _DATA_PARAS[key]))
+        dset_metas[key] = features[key][0].shape
+        print('{}:{}'.format(key, dset_metas[key]))
+      dset_metas['labels'] = labels.shape
+      _DATA_PARAS['dset_metas'] = dset_metas
       points_raw = features['points'][0]
       print('\n\nget shape from tfrecord OK:\n %s\n\n'%(_DATA_PARAS))
       #print('points', features['points'][0,0:5,:])
@@ -183,15 +186,8 @@ def check_data():
 
 def get_data_meta(data_dir):
   global _DATA_PARAS
-  data_idxs = {}
-  data_idxs['xyz'] = np.array([0,1,2]).astype(np.int32)
-  data_idxs['nxnynz'] = np.array([3,4,5]).astype(np.int32)
-
-  data_metas = {}
-  data_metas['data_idxs'] = data_idxs
-  data_metas['dataset_name'] = DATASET_NAME
-
-  _DATA_PARAS['data_metas'] = data_metas
+  dset_metas = get_dset_metas(data_dir)
+  _DATA_PARAS['dset_metas'] = dset_metas
 
 
 def get_data_meta_from_hdf5(data_dir):
@@ -515,7 +511,7 @@ def define_modelnet_flags():
                      _NUM_IMAGES['train']/DEFAULTS['batch_size'],'')
   #get_data_meta_from_hdf5(data_dir)
   get_data_meta(data_dir)
-  get_data_shapes_from_tfrecord(data_dir)
+  #get_data_shapes_from_tfrecord(data_dir)
 
 
 def run_modelnet(flags_obj):

@@ -204,7 +204,7 @@ bnd optimizer block_config\n'
       self.key_paras_str = key_para_names + key_paras_str
 
       items_to_write = ['model_flag', 'block_config_str',  'aug_types', 'drop_imo', \
-        'feed_data', 'xyz_elements', 'points', \
+        'feed_data', 'xyz_elements', \
         'optimizer',\
         'learning_rate0', 'lr_decay_rate', 'batch_norm_decay0', 'lr_vals', \
         'bndecay_vals', 'use_bias', 'shortcut',\
@@ -933,22 +933,22 @@ class Model(ResConvOps):
         self.num_neighbors = np.array( [ int(n) for n in num_neighbors ] )
     else:
         self.num_neighbors= None
-    self.global_numpoint = self.data_net_configs['points'][0]
+    for key in ['feed_data', 'sg_settings', 'dset_metas',
+                'xyz_elements']:
+      setattr(self, key, self.data_net_configs[key])
+    self.global_numpoint = self.dset_metas['shape']['points'][0]
     self.net_num_scale = len(self.data_net_configs['block_params']['filters'])
     self.sg_num_scale = len(self.data_net_configs['sg_settings']['width'])
     assert self.sg_num_scale == self.net_num_scale
-    for key in ['feed_data', 'sg_settings', 'data_metas',
-                'xyz_elements']:
-      setattr(self, key, self.data_net_configs[key])
 
-    self.data_idxs = self.data_metas['data_idxs']
+    self.data_idxs = self.dset_metas['indices']
     for e in self.feed_data:
-      assert e in self.data_idxs
-    IsAllInputs = len(self.data_idxs) == len(self.feed_data)
+      assert e in self.data_idxs['points']
+    IsAllInputs = len(self.data_idxs['points']) == len(self.feed_data)
     if IsAllInputs:
       self.feed_data_idxs = 'ALL'
     else:
-      self.feed_data_idxs = np.sort([i for e in self.feed_data for i in self.data_idxs[e] ])
+      self.feed_data_idxs = np.sort([i for e in self.feed_data for i in self.data_idxs['points'][e] ])
 
     self.use_xyz = self.data_net_configs['use_xyz']
     self.mean_grouping_position = True

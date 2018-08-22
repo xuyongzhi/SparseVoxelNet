@@ -90,9 +90,10 @@ def process_record_dataset(dataset, is_training, batch_size, shuffle_buffer,
   # Parse the raw records into images and labels. Testing has shown that setting
   # num_parallel_batches > 1 produces no improvement in throughput, since
   # batch_size is almost always much greater than the number of CPU cores.
+  dset_shapes = data_net_configs['dset_metas']
   dataset = dataset.apply(
       tf.contrib.data.map_and_batch(
-          lambda value: parse_record_fn(value, is_training, data_net_configs, bsg),
+          lambda value: parse_record_fn(value, is_training, dset_shapes, bsg),
           batch_size=batch_size,
           num_parallel_batches=1,
           drop_remainder=True if num_gpus>1 else True))
@@ -264,7 +265,9 @@ def resnet_model_fn(model_flag, features, labels, mode, model_class,
         })
 
   # Calculate loss, which includes softmax cross entropy and L2 regularization.
-  labels = tf.squeeze(labels, 1)
+  dset_metas = data_net_configs['dset_metas']
+  labels = labels[:, dset_metas['indices']['labels']['label_category'][0]]
+  #labels = tf.squeeze(labels, 1)
   if data_net_configs['loss_lw_gama'] < 0:
     weights = 1
   else:

@@ -22,7 +22,7 @@ use_bias=1
 block_style='Regular'
 shortcut='MC'
 loss_lw_gama=-1
-train_epochs=61
+train_epochs=121
 residual=0
 resnet_size='20A'
 

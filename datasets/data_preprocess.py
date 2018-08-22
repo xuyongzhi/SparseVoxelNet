@@ -33,16 +33,17 @@ for ds in DATASETS:
 #DATASET = 'ETH'
 DATASET = 'MODELNET40'
 #DATASET = 'KITTI'
+DATASET = 'MATTERPORT'
+
 DS_Meta = DatasetsMeta( DATASET )
 
-ORG_DATA_DIR = os.path.join(DATA_DIR, DATASET+'__H5F' )
-MERGED_DATA_DIR = os.path.join(DATA_DIR, DATASET+'H5F' )
+H5TF_DATA_DIR = os.path.join(DATA_DIR, DATASET+'_H5TF' )
 
 #CLASS_NAMES = DS_Meta.label_names
 
 def WriteRawh5_to_Tfrecord(rawh5_file_ls, rawtfrecord_path, IsShowInfoFinished):
     from datasets.rawh5_to_tfrecord import RawH5_To_Tfrecord
-    raw_to_tf = RawH5_To_Tfrecord(rawtfrecord_path)
+    raw_to_tf = RawH5_To_Tfrecord(DATASET, rawtfrecord_path)
     raw_to_tf(rawh5_file_ls)
 
 def WriteSortH5f_FromRawH5f(rawh5_file_ls,block_step_xyz,sorted_path, RotateBeforeSort, IsShowInfoFinished):
@@ -97,7 +98,7 @@ def split_fn_ls_benchmark_UNUSED( plsph5_folder, bxmh5_folder, nonvoid_plfn_ls, 
     eles = ['sph5', 'bxmh5', 'tfrecord']
     dirs = {}
     for e in eles:
-      dirs[e] = '%s/ORG_%s/%s'%( ORG_DATA_DIR, e, folder_names[e] )
+      dirs[e] = '%s/ORG_%s/%s'%( H5TF_DATA_DIR, e, folder_names[e] )
 
     # get the desiged base file names of train and test from benchmark
     if DATASET == 'SCANNET_util':
@@ -337,11 +338,9 @@ class H5Prepare():
     '''
 
     '''
-    BasicDataDir = os.path.join( ORG_DATA_DIR,'BasicData' )
 
     def __init__(self):
-        self.rawh5f_dir =  self.BasicDataDir+'/rawh5'
-
+        self.rawh5f_dir =  H5TF_DATA_DIR+'/rawh5'
 
     def ParseRaw(self, MultiProcess):
         raw_path = '/DS/' + DATASET
@@ -390,12 +389,12 @@ class H5Prepare():
     def RawToTfrecord(self, MultiProcess=0):
 
       t0 = time.time()
-      if DATASET == 'MODELNET40':
+      if DATASET == 'MODELNET40' or 'MATTERPORT':
           rawh5_file_ls = glob.glob( os.path.join( self.rawh5f_dir,'*/*.rh5' ) )
       else:
           rawh5_file_ls = glob.glob( os.path.join( self.rawh5f_dir,'*.rh5' ) )
       rawh5_file_ls.sort()
-      rawtfrecord_path = self.BasicDataDir + '/raw_tfrecord'
+      rawtfrecord_path = H5TF_DATA_DIR + '/raw_tfrecord'
       IsShowInfoFinished = True
 
       IsMultiProcess = MultiProcess>1
@@ -425,7 +424,7 @@ class H5Prepare():
         else:
             rawh5_file_ls = glob.glob( os.path.join( self.rawh5f_dir,'*.rh5' ) )
         rawh5_file_ls.sort()
-        sorted_path = self.BasicDataDir + '/'+get_stride_step_name(block_step_xyz,block_step_xyz)
+        sorted_path = H5TF_DATA_DIR + '/'+get_stride_step_name(block_step_xyz,block_step_xyz)
         if type(RxyzBeforeSort)!=type(None) and np.sum(RxyzBeforeSort==0)!=0:
             RotateBeforeSort = geo_util.EulerRotate( RxyzBeforeSort, 'xyz' )
             rdgr = RxyzBeforeSort * 180/np.pi
@@ -457,7 +456,7 @@ class H5Prepare():
 
 
     def GenPyramid(self, base_stride, base_step, data_aug_configs, MultiProcess=0):
-        sh5f_dir = self.BasicDataDir+'/%s'%(get_stride_step_name(base_stride,base_step))
+        sh5f_dir = H5TF_DATA_DIR+'/%s'%(get_stride_step_name(base_stride,base_step))
         file_list = glob.glob( os.path.join( sh5f_dir, '*.sh5' ) )
         file_list.sort()
         assert len(file_list)>0, sh5f_dir
@@ -497,12 +496,11 @@ class H5Prepare():
     def MergeTfrecord(self):
         from dataset_utils import merge_tfrecord
 
-        if DATASET == 'MODELNET40':
-            tfrecord_path = '/home/z/Research/SparseVoxelNet/data/MODELNET40_H5TF/raw_tfrecord'
-            rawdata_dir = tfrecord_path+'/data'
-            merged_dir = tfrecord_path+'/merged_data'
-            if not os.path.exists(merged_dir):
-              os.makedirs(merged_dir)
+        tfrecord_path = '/home/z/Research/SparseVoxelNet/data/{}_H5TF/raw_tfrecord'.format(DATASET)
+        rawdata_dir = tfrecord_path+'/data'
+        merged_dir = tfrecord_path+'/merged_data'
+        if not os.path.exists(merged_dir):
+          os.makedirs(merged_dir)
 
         train_fn_ls = DS_Meta.get_train_test_file_list(rawdata_dir, True)
         random.shuffle(train_fn_ls)

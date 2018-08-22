@@ -950,9 +950,11 @@ class BlockGroupSampling():
 
     check_gpn = tf.assert_less_equal(tf.shape(grouped_point_index)[0],
                           tf.reduce_sum( self._npoint_per_blocks[self.scale] *\
-                                        self.nb_enoughp_per_gb) )
+                                        self.nb_enoughp_per_gb),
+                          message="sampled grouped point num too many")
     with tf.control_dependencies([check_gpn]):
-      return bid_index__pindex_inb, grouped_point_index, block_id_unique
+      grouped_point_index = tf.identity(grouped_point_index)
+    return bid_index__pindex_inb, grouped_point_index, block_id_unique
 
   def record_samplings(self, npoint_per_block):
     self.samplings[self.scale]['n_out_global_'] += tf.cast(self.n_out_global,tf.int64) / self.bsgbn
@@ -1465,7 +1467,7 @@ if __name__ == '__main__':
 
   sg_settings = get_sg_settings()
 
-  batch_size = 100
+  batch_size = 32
   if len(sys.argv) > 1:
     main_flag = sys.argv[1]
     if len(sys.argv) > 2:
@@ -1479,7 +1481,7 @@ if __name__ == '__main__':
   print(main_flag)
 
   file_num = 12311
-  num_epoch = 10
+  num_epoch = 1
   cycles = (file_num // batch_size) * num_epoch
   #cycles = 1
 

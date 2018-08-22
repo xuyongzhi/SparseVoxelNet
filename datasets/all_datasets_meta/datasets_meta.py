@@ -2,7 +2,7 @@
 
 from __future__ import print_function
 import os
-import sys
+import sys, glob
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT_DIR = os.path.dirname(BASE_DIR)
 
@@ -67,6 +67,26 @@ class DatasetsMeta():
     def get_train_test_file_list(self, data_dir, is_training):
       if self.datasource_name == "MODELNET40":
         return self.get_train_test_file_list_MODELNET(data_dir, is_training)
+      if self.datasource_name == "MATTERPORT":
+        return self.get_train_test_file_list_MATTERPORT(data_dir, is_training)
+
+    def get_train_test_file_list_MATTERPORT(self, data_dir, is_training):
+      from MATTERPORT_util import benchmark
+      tte_scene_names = benchmark()
+      split = 'train' if is_training else 'test'
+      scene_names = tte_scene_names[split]
+      tte_fnum = {}
+      tte_fnum['train'] = 1554
+      tte_fnum['test'] = 406
+      tte_fnum['val'] = 234
+
+      all_fns = glob.glob(os.path.join(data_dir, '*.tfrecord'))
+      assert len(all_fns) == 2194
+      def sence_name(fn):
+        return os.path.basename(fn).split('_')[0]
+      the_fns = [e for e in all_fns if sence_name(e) in scene_names]
+      assert len(the_fns) == tte_fnum[split]
+      return  the_fns
 
     def get_train_test_file_list_MODELNET(self, data_dir, is_training):
       from MODELNET_util import train_names, test_names

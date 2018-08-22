@@ -94,3 +94,13 @@ def get_cat40_from_rawcat(raw_category_indexs):
         mpcat40s[j] += mpcat40_j
     return mpcat40_idxs
 
+def benchmark():
+  tte_names = {}
+  tte_names['train'] = np.loadtxt( os.path.join(BASE_DIR,'scenes_train.txt'), dtype=str )
+  tte_names['test'] = np.loadtxt( os.path.join(BASE_DIR,'scenes_test.txt'), dtype=str )
+  tte_names['val'] = np.loadtxt( os.path.join(BASE_DIR,'scenes_val.txt'), dtype=str )
+  #for item in tte_names:
+  #  print('{} {}'.format(item, len(tte_names[item])))
+  return tte_names
+
+
