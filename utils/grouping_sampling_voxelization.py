@@ -948,12 +948,13 @@ class BlockGroupSampling():
     if self._record_samplings:
       self.record_samplings(npoint_per_block)
 
-    check_gpn = tf.assert_less_equal(tf.shape(grouped_point_index)[0],
-                          tf.reduce_sum( self._npoint_per_blocks[self.scale] *\
-                                        self.nb_enoughp_per_gb),
-                          message="sampled grouped point num too many")
-    with tf.control_dependencies([check_gpn]):
-      grouped_point_index = tf.identity(grouped_point_index)
+    if not SMALL_BUGS_IGNORE:
+      check_gpn = tf.assert_less_equal(tf.shape(grouped_point_index)[0],
+                            tf.reduce_sum( self._npoint_per_blocks[self.scale] *\
+                                          self.nb_enoughp_per_gb),
+                            message="sampled grouped point num too many")
+      with tf.control_dependencies([check_gpn]):
+        grouped_point_index = tf.identity(grouped_point_index)
     return bid_index__pindex_inb, grouped_point_index, block_id_unique
 
   def record_samplings(self, npoint_per_block):
