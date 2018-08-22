@@ -1013,25 +1013,27 @@ class Model(ResConvOps):
                              custom_getter=self._custom_dtype_getter)
 
 
-  def pre_pro_inputs(self, inputs_dic, sg_num_scale):
+  def sg_in_inputpipeline(self, inputs_dic, sg_num_scale):
     # scale 0 is global scale!
     inputs_dic1 = {}
-    import pdb; pdb.set_trace()  # XXX BREAKPOINT
-    inputs_dic1['points'] = tf.squeeze(inputs_dic['grouped_xyz_0'], 1)
+    #inputs_dic1['points'] = tf.squeeze(inputs_dic['grouped_xyz_0'], 1)
 
-    if self.feed_data_idxs!='ALL':
-      inputs_dic1['points']  = tf.gather(inputs_dic1['points'] , self.feed_data_idxs, axis=-1)
+    #if self.feed_data_idxs!='ALL':
+    #  inputs_dic1['points']  = tf.gather(inputs_dic1['points'] , self.feed_data_idxs, axis=-1)
 
-    items = ['grouped_pindex','grouped_xyz', 'empty_mask', 'bot_cen_top',
+    items = ['grouped_pindex','grouped_bot_cen_top', 'empty_mask', 'bot_cen_top',
              'vox_index']
     for item in items:
       inputs_dic1[item] = []
-      for s in range(1, sg_num_scale+1):
+      for s in range(0, sg_num_scale+1):
         if item+'_%d'%(s) in inputs_dic:
-          inputs_dic1[item].append(inputs_dic[item+'_%d'%(s)])
-        else:
-          inputs_dic1[item].append([])
-    return inputs_dic1
+          value = inputs_dic[item+'_%d'%(s)]
+          #shape = value.shape
+          #value = tf.reshape(value, [-1, shape[2], shape[3]])
+          inputs_dic1[item].append(value)
+        #else:
+        #  inputs_dic1[item].append([])
+    return self.pre_pro_inputs(inputs_dic1, inputs_dic['points'])
 
   def pre_sampling_grouping(self, inputs_dic):
     # get the indices for grouping and sampling on line
@@ -1040,12 +1042,18 @@ class Model(ResConvOps):
     points = inputs_dic['points']
 
     dsb = {}
-    dsb['grouped_pindex'], dsb['vox_index'], dsb['grouped_xyz'], \
+    dsb['grouped_pindex'], dsb['vox_index'], dsb['grouped_bot_cen_top'], \
       dsb['empty_mask'], dsb['bot_cen_top'], nblock_valid, others =\
       self.bsg.grouping_multi_scale(points[..., 0:3])
+    return self.pre_pro_inputs(dsb, points)
 
-    for s in range(len(dsb['grouped_xyz'])):
-      dsb['grouped_xyz'][s] = dsb['grouped_xyz'][s][...,3:6]
+  def pre_pro_inputs(self, dsb, points):
+
+    dsb['grouped_center'] = []
+    for s in range(len(dsb['grouped_bot_cen_top'])):
+      dsb['grouped_center'].append([])
+      dsb['grouped_center'][s] = dsb['grouped_bot_cen_top'][s][...,3:6]
+    del dsb['grouped_bot_cen_top']
 
     shape0 = [e.value for e in dsb['grouped_pindex'][0].shape]
     batch_size = shape0[0]
@@ -1071,7 +1079,7 @@ class Model(ResConvOps):
     for item in dsb:
       del dsb[item][0]
       if len(dsb[item]) < self.net_num_scale:
-        dsb[item].append([])
+        dsb[item].append(tf.zeros([0]*len(dsb[item][0].shape), dsb[item][0].dtype))
 
     #*************************************************************
     is_show_inputs = False
@@ -1079,12 +1087,9 @@ class Model(ResConvOps):
     for item in dsb:
       num_scale = len(dsb[item])
       for s in range(num_scale):
-        if dsb[item][s] == []:
-          shape_i = '[]'
-        else:
-          shape_i = [e.value for e in dsb[item][s].shape]
-          dsb[item][s] = tf.reshape(dsb[item][s], [bsgbn] + shape_i[2:])
-          shape_i1 = [e.value for e in dsb[item][s].shape]
+        shape_i = [e.value for e in dsb[item][s].shape]
+        dsb[item][s] = tf.reshape(dsb[item][s], [bsgbn] + shape_i[2:])
+        shape_i1 = [e.value for e in dsb[item][s].shape]
         if is_show_inputs:
           print('{}:{}'.format(item, shape_i1))
 
@@ -1113,14 +1118,14 @@ class Model(ResConvOps):
     if not self.data_net_configs['precpu_sg']:
       inputs_dic = self.pre_sampling_grouping(inputs_dic)
     else:
-      inputs_dic = self.pre_pro_inputs(inputs_dic, self.sg_num_scale)
+      inputs_dic = self.sg_in_inputpipeline(inputs_dic, self.sg_num_scale)
 
     IsMultiView = len(inputs_dic['points'].shape) == 4
     if not IsMultiView:
       assert len(inputs_dic['points'].shape) == 3
       outputs = self._call(
             inputs_dic['points'],
-            inputs_dic['grouped_xyz'],
+            inputs_dic['grouped_center'],
             inputs_dic['grouped_pindex'],
             inputs_dic['empty_mask'],
             inputs_dic['bot_cen_top'],
@@ -1179,6 +1184,19 @@ class Model(ResConvOps):
     bot_cen_top_ms: [(12, 1, 9), (12, 1024, 9), (12, 48, 9)]
     vox_index_ms: [[], [], (12, 48, 48, 3), (12, 1, 48, 3)]
     '''
+    #***************************************************************************
+    # check input shapes
+    assert len(inputs.shape) == 3
+    for s in range(self.sg_num_scale):
+      assert len(grouped_xyz_ms[s].shape) == 4
+      assert len(grouped_pindex_ms[s].shape) == 3
+      assert len(empty_mask_ms[s].shape) == 3
+      assert len(bot_cen_top_ms[s].shape) == 3
+      if s==0:
+        assert vox_index_ms[s] == [] or vox_index_ms[s].shape[-1].value==0
+      else:
+        assert len(vox_index_ms[s].shape) == 4
+    #***************************************************************************
     tf.add_to_collection('raw_inputs', inputs)
     if self.IsShowModel: self.log('')
     self.is_training = is_training

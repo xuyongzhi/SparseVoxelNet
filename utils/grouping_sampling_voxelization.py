@@ -1061,7 +1061,7 @@ class BlockGroupSampling():
     assert shape0[-1] == shape1[-1] == 9
 
     if self.scale <= 1:
-      return []
+      return tf.zeros([0]*5, tf.int32)
     out_bot_cen_top = tf.expand_dims(out_bot_cen_top, -2)
     grouped_bot_aligned = grouped_bot_cen_top[...,0:3] - out_bot_cen_top[...,0:3]
     vox_index0 = grouped_bot_aligned / self._strides[self.scale-1]

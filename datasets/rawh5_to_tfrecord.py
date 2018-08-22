@@ -246,7 +246,7 @@ def parse_pl_record(tfrecord_serialized, is_training, data_shapes=None, bsg=None
         points, b_bottom_centers_mm, augs = aug_views(points, b_bottom_centers_mm,
                     data_shapes['eval_views'],
                     data_shapes['data_metas']['data_idxs'])
-
+    #if bsg==None:
     features['points'] = points
     # ------------------------------------------------
     #             grouping and sampling on line
@@ -264,8 +264,8 @@ def parse_pl_record(tfrecord_serialized, is_training, data_shapes=None, bsg=None
         bsi = 0
         for s in range(num_scale+1):
           features['empty_mask_%d'%(s)] = tf.cast(empty_mask[s][bsi], tf.int8)
-          if vox_index[s]==[]:
-            features['vox_index_%d'%(s)] = []
+          if vox_index[s].shape[0].value == 0:
+            features['vox_index_%d'%(s)] = tf.zeros([0]*4, tf.int32)
           else:
             features['vox_index_%d'%(s)] = vox_index[s][bsi]
           if s==num_scale:
