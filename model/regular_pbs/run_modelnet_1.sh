@@ -1,7 +1,7 @@
 #!/bin/bash
 
 gpu_id=1
-num_gpus=1
+num_gpus=2
 batch_size=32
 
 learning_rate0=0.001
