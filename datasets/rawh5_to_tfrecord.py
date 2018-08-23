@@ -89,8 +89,8 @@ def parse_pl_record(tfrecord_serialized, is_training, dset_metas=None, bsg=None)
       points_shape = dset_metas['shape']['points']
     # the points tensor is flattened out, so we have to reconstruct the shape
     points = tf.reshape(points, points_shape)
-    #if dset_metas != None:
-    #  points = pc_normalize(points)
+    if dset_metas != None:
+      points = pc_normalize(points)
 
     # ------------------------------------------------
     #             data augmentation
@@ -380,7 +380,7 @@ def get_dataset_summary(dataset_name, tf_path, loss_lw_gama=2):
 
   data_path = os.path.join(tf_path, 'data')
   filenames = glob.glob(os.path.join(data_path,'*.tfrecord'))
-  assert len(filenames) > 0
+  assert len(filenames) > 0, data_path
 
   datasets_meta = DatasetsMeta(dataset_name)
   num_classes = datasets_meta.num_classes

@@ -1,0 +1,53 @@
+\documentclass[,table,dvipsnames]{article}
+\usepackage[usenames, dvipsnames]{color}
+\usepackage{graphicx}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{hyperref}
+\usepackage{longtable}
+\usepackage{float}
+\usepackage{tikz}
+\usetikzlibrary{shapes.geometric, arrows}
+\usepackage{xcolor}
+
+\graphicspath{ {images/} {images/mat60_1AG/} }
+\title{ModelNet \\On line sampling grouping}
+\author{xyz}
+\date{Aug 2018}
+
+
+\begin{document}
+\noindent
+\begin{titlepage}
+	\maketitle
+\end{titlepage}	
+
+\section{Pointnet, 3 scales, 2048, no normalize}
+\noindent\begin{tabular}{|p{10cm}|p{5.5cm}| }	
+\hline
+nblock:[  1 800  40] &\\	\hline
+model bs aug feed drop\_imo loss\_weight lr0\_drate\_depoch bnd optimizer block\_config& \\ \hline
+
+\rowcolor{green!20}
+ P\_R20Am 32 N xyzs 0\_0\_5 No 0.001\_0.7\_10 0.6 ada par & 30 0.293/0.535--0.902/0.838\par 60 0.138/0.474--0.948/0.863\\
+ 
+\rowcolor{red!20}
+RMC\_R20Am 48 N xyzs 0\_0\_5 No 0.001\_0.7\_15 0.6 ada par & 2 1.033/1.226--0.693/0.632\par 10 0.520/0.698--0.828/0.779\par 30 0.238/0.490--0.919/0.846 \par 48 0.122/0.443--0.958/0.874 \par 64 0.084/0.437--0.966/0.878 \par 92 0.047/0.468--0.984/0.884 \par 100 0.033/0.490--0.989/0.875\\
+\hline 	
+\end{tabular}
+
+
+
+\section{Voxnet, 3 scales, 2048, no normalize}
+\noindent\begin{tabular}{|p{10cm}|p{5.5cm}| }	
+	\hline
+	nblock:[  1 800  40] &\\	\hline
+	model bs aug feed drop\_imo loss\_weight lr0\_drate\_depoch bnd optimizer block\_config& \\ \hline
+	
+	\rowcolor{green!20}
+	3 RMC\_R20AV 48 N xyzs 0\_0\_5 No 0.001\_0.7\_15 0.6 ada par & 100 0.021/0.987--0.992/0.831\\
+	
+	\hline 	
+\end{tabular}
+
+\end{document}
