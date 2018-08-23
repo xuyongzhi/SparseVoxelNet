@@ -32,6 +32,8 @@ sg_flag='2048'
 model_flag='m'
 
 
+aug_types='rlpsfj-360_0_0'
+
 ./modelnet.sh   $aug_types  $batch_size $model_flag $learning_rate0 $num_gpus $feed_data $drop_imo  $optimizer $use_bias $lr_decay_epochs $lr_decay_rate $resnet_size $block_style $residual $shortcut $loss_lw_gama  $train_epochs  $batch_norm_decay0 $gpu_id $use_xyz $sg_flag
 
 
