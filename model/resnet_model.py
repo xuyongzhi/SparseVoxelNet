@@ -1079,7 +1079,10 @@ class Model(ResConvOps):
     for item in dsb:
       del dsb[item][0]
       if len(dsb[item]) < self.net_num_scale:
-        dsb[item].append(tf.zeros([0]*len(dsb[item][0].shape), dsb[item][0].dtype))
+        if len(dsb[item]) == 0:  # one scale only: pointnet
+          dsb[item].append([])
+        else:
+          dsb[item].append(tf.zeros([0]*len(dsb[item][0].shape), dsb[item][0].dtype))
 
     #*************************************************************
     is_show_inputs = False
@@ -1087,6 +1090,8 @@ class Model(ResConvOps):
     for item in dsb:
       num_scale = len(dsb[item])
       for s in range(num_scale):
+        if dsb[item][s] == []: # one scale only: pointnet
+          continue
         shape_i = [e.value for e in dsb[item][s].shape]
         dsb[item][s] = tf.reshape(dsb[item][s], [bsgbn] + shape_i[2:])
         shape_i1 = [e.value for e in dsb[item][s].shape]
@@ -1188,10 +1193,13 @@ class Model(ResConvOps):
     # check input shapes
     assert len(inputs.shape) == 3
     for s in range(self.sg_num_scale):
-      assert len(grouped_xyz_ms[s].shape) == 4
-      assert len(grouped_pindex_ms[s].shape) == 3
+      if grouped_xyz_ms[s]!=[]:
+        assert len(grouped_xyz_ms[s].shape) == 4
+      if grouped_pindex_ms[s]!=[]:
+        assert len(grouped_pindex_ms[s].shape) == 3
       assert len(empty_mask_ms[s].shape) == 3
-      assert len(bot_cen_top_ms[s].shape) == 3
+      if bot_cen_top_ms[s]!=[]:
+        assert len(bot_cen_top_ms[s].shape) == 3
       if s==0:
         assert vox_index_ms[s] == [] or vox_index_ms[s].shape[-1].value==0
       else:

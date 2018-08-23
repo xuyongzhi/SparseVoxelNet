@@ -9,7 +9,7 @@ def check_sg_setting_for_vox(sg_settings):
   # scale 1 is not aligned
   vox_sizes = [[],[]]
   num_sg_scale = sg_settings['num_sg_scale']
-  flag = ''
+  flag = '_VS_'
   for s in range(2, num_sg_scale+1):
     if s<num_sg_scale:
       cur_width = sg_settings['width'][s]
@@ -27,7 +27,7 @@ def check_sg_setting_for_vox(sg_settings):
     flag += str(vox_size[0])
 
   sg_settings['vox_size'] = vox_sizes
-  sg_settings['flag'] = flag
+  sg_settings['flag'] += flag
   return sg_settings
 
 def update_sg_str(sg_settings):
@@ -41,33 +41,57 @@ def update_sg_str(sg_settings):
   sg_settings['sg_str'] = sg_str
   return sg_settings
 
-def get_sg_settings():
-  sg_settings0 = {}
-  sg_settings0['width'] =  [[1.0,1.0,1.0], [0.2,0.2,0.2], [0.6,0.6,0.6]]
-  sg_settings0['stride'] = [[1.0,1.0,1.0], [0.1,0.1,0.1], [0.4,0.4,0.4]]
-  sg_settings0['nblock'] =  [3, 512,           64]
-  sg_settings0['max_nblock'] =  [8, 6000,  500]
-  sg_settings0['npoint_per_block'] = [1024, 10,   12]
-  sg_settings0['np_perb_min_include'] = [128, 4, 2]
+def sg_flag(sg_settings_):
+  tmp = np.concatenate( [sg_settings_['npoint_per_block'][0:1], sg_settings_['nblock'][1:]],0 )
+  return '_'.join([str(int(e)) for e in tmp])
+
+def get_sg_settings(sgflag):
+  sg_settings_all = {}
 
 
-  sg_settings1 = {}
-  sg_settings1['width'] =  [[2.2,2.2,2.2], [0.2,0.2,0.2], [0.6,0.6,0.6]]
-  sg_settings1['stride'] = [[2.2,2.2,2.2], [0.1,0.1,0.1], [0.4,0.4,0.4]]
-  sg_settings1['nblock'] =  [1, 1024,           48]
-  sg_settings1['max_nblock'] =      [1, 4000,  200]
-  sg_settings1['npoint_per_block'] = [4096, 40,  64]
-  sg_settings1['np_perb_min_include'] = [1024, 2, 1]
+  #-----------------------------------------------------------------------------
+  sg_settings = {}
+  sg_settings['width'] =  [[1.0,1.0,1.0], [0.2,0.2,0.2], [0.6,0.6,0.6]]
+  sg_settings['stride'] = [[1.0,1.0,1.0], [0.1,0.1,0.1], [0.4,0.4,0.4]]
+  sg_settings['nblock'] =  [3, 512,           64]
+  sg_settings['max_nblock'] =  [8, 6000,  500]
+  sg_settings['npoint_per_block'] = [1024, 10,   12]
+  sg_settings['np_perb_min_include'] = [128, 4, 2]
+  sg_settings_all[sg_flag(sg_settings)] = sg_settings
 
-  sg_settings2 = {}
-  sg_settings2['width'] =  [[2.2,2.2,2.2], [0.2,0.2,0.2], [0.6,0.6,0.6]]
-  sg_settings2['stride'] = [[2.2,2.2,2.2], [0.1,0.1,0.1], [0.4,0.4,0.4]]
-  sg_settings2['nblock'] =  [1,     800,    40]
-  sg_settings2['npoint_per_block'] = [2048, 24,  48]
-  sg_settings2['max_nblock'] =      [1, 4000,  200]
-  sg_settings2['np_perb_min_include'] = [1024, 2, 1]
+  #-----------------------------------------------------------------------------
+  sg_settings = {}
+  sg_settings['width'] =  [[2.2,2.2,2.2], [0.2,0.2,0.2], [0.6,0.6,0.6]]
+  sg_settings['stride'] = [[2.2,2.2,2.2], [0.1,0.1,0.1], [0.4,0.4,0.4]]
+  sg_settings['nblock'] =  [1, 1024,           48]
+  sg_settings['max_nblock'] =      [1, 4000,  200]
+  sg_settings['npoint_per_block'] = [4096, 40,  64]
+  sg_settings['np_perb_min_include'] = [1024, 2, 1]
+  sg_settings_all[sg_flag(sg_settings)] = sg_settings
 
-  sg_settings = sg_settings2
+  #-----------------------------------------------------------------------------
+  # 2048_800_40
+  sg_settings = {}
+  sg_settings['width'] =  [[2.2,2.2,2.2], [0.2,0.2,0.2], [0.6,0.6,0.6]]
+  sg_settings['stride'] = [[2.2,2.2,2.2], [0.1,0.1,0.1], [0.4,0.4,0.4]]
+  sg_settings['nblock'] =  [1,     800,    40]
+  sg_settings['npoint_per_block'] = [2048, 24,  48]
+  sg_settings['max_nblock'] =      [1, 4000,  200]
+  sg_settings['np_perb_min_include'] = [1024, 2, 1]
+  sg_settings_all[sg_flag(sg_settings)] = sg_settings
+
+  #-----------------------------------------------------------------------------
+  # 2048
+  sg_settings = {}
+  sg_settings['width'] =  [[2.2,2.2,2.2]]
+  sg_settings['stride'] = [[2.2,2.2,2.2]]
+  sg_settings['nblock'] =  [1]
+  sg_settings['npoint_per_block'] = [2048]
+  sg_settings['max_nblock'] =      [1]
+  sg_settings['np_perb_min_include'] = [1024]
+  sg_settings_all[sg_flag(sg_settings)] = sg_settings
+
+  sg_settings = sg_settings_all[sgflag]
 
   for item in sg_settings:
     sg_settings[item] = np.array(sg_settings[item])
@@ -76,6 +100,7 @@ def get_sg_settings():
     else:
       sg_settings[item] = sg_settings[item].astype(np.int32)
 
+  sg_settings['flag'] = 'SG_'+sg_flag(sg_settings)
   sg_settings['num_sg_scale'] = len(sg_settings['width'])
   sg_settings['gen_ply'] = False
   sg_settings['record'] = False

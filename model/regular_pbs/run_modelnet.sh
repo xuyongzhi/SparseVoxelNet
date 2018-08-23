@@ -24,7 +24,7 @@ shortcut='MC'
 loss_lw_gama=-1
 train_epochs=81
 residual=1
-resnet_size='20A'
+resnet_size='1A20'
 
 model_flag='m'
 

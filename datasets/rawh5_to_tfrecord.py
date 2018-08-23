@@ -378,7 +378,7 @@ def get_dataset_summary(dataset_name, tf_path, loss_lw_gama=2):
     get_label_num_weights(dataset_summary, loss_lw_gama)
     return dataset_summary
 
-  data_path = os.path.join(tf_path, 'data')
+  data_path = os.path.join(tf_path, 'merged_data')
   filenames = glob.glob(os.path.join(data_path,'*.tfrecord'))
   assert len(filenames) > 0, data_path
 

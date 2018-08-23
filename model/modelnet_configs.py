@@ -19,6 +19,8 @@ DATA_DIR = os.path.join(ROOT_DIR, 'data')
 DEFAULTS = {}
 DEFAULTS['data_path'] = os.path.join(DATA_DIR, 'MODELNET40_H5TF/raw_tfrecord')
 DEFAULTS['precpu_sg'] = True
+#DEFAULTS['sg_flag'] = '2048_800_40'
+DEFAULTS['sg_flag'] = '2048'
 
 DEFAULTS['only_eval'] = 0
 DEFAULTS['eval_views'] = 1
@@ -40,7 +42,8 @@ DEFAULTS['lr_warmup'] = 0
 DEFAULTS['batch_norm_decay0'] = 0.7
 
 DEFAULTS['model_flag'] = 'V'
-DEFAULTS['resnet_size'] = '20A'
+DEFAULTS['resnet_size'] = '1A20'
+#DEFAULTS['resnet_size'] = '3A20'
 DEFAULTS['feed_data'] = 'xyzs'
 DEFAULTS['use_xyz'] = 1
 DEFAULTS['aug_types'] = 'N' # 'rpsfj-360_0_0'
@@ -155,7 +158,15 @@ def get_block_paras_bottle_regu(resnet_size, model_flag):
   block_paddings = {}   # only used when strides == 1
   block_filters = {}
 
-  rs = '20A'
+  rs = '1A20'
+  num_filters0s[rs] = 32
+  block_sizes[rs]    = [[1, 1,    1,  1,    1]  ]
+  block_filters[rs]  = [[64,128, 256, 512, 1024]]
+  block_kernels[rs]  = [[],        ]
+  block_strides[rs]  = [[],        ]
+  block_paddings[rs] = [[],        ]
+
+  rs = '3A20'
   num_filters0s[rs] = 32
   block_sizes[rs]    = [[2,1, 1],     [1,1],      [1,1,1]]
   block_filters[rs]  = [[32,64,125],  [128,256],  [256,512,1024]]

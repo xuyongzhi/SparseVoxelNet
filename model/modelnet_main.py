@@ -325,7 +325,11 @@ def define_net_configs(flags_obj):
   _DATA_PARAS['batch_size'] = flags_obj.batch_size
   _DATA_PARAS['model_flag'] = flags_obj.model_flag
   _get_block_paras()
-  _DATA_PARAS['sg_settings'] = get_sg_settings()
+  _DATA_PARAS['sg_settings'] = get_sg_settings(flags_obj.sg_flag)
+  net_num_scale = len(_DATA_PARAS['block_params']['filters'])
+  sg_num_scale = _DATA_PARAS['sg_settings']['width'].shape[0]
+  assert net_num_scale == sg_num_scale, "net_num_scale:{}, sg_num_scale:{}".\
+                            format(net_num_scale, sg_num_scale)
 
   _DATA_PARAS['precpu_sg'] = DEFAULTS['precpu_sg']
 
@@ -495,6 +499,8 @@ def define_modelnet_flags():
   flags.DEFINE_integer('use_xyz', DEFAULTS['use_xyz'], '1,0')
   flags.DEFINE_string('aug_types',DEFAULTS['aug_types'],'rsfj-360_0_0')
   flags.DEFINE_string('drop_imo',DEFAULTS['drop_imo'],'0_0_5')
+
+  flags.DEFINE_string('sg_flag', DEFAULTS['sg_flag'], '2048_800_40')
 
   resnet_run_loop.define_resnet_flags(
       resnet_size_choices=['18', '34', '50', '101', '152', '200'])
