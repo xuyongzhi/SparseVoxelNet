@@ -11,8 +11,13 @@ import numpy as np
   aug types
 '''
 
+import os, sys
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+ROOT_DIR = os.path.dirname(BASE_DIR)
+DATA_DIR = os.path.join(ROOT_DIR, 'data')
+
 DEFAULTS = {}
-DEFAULTS['data_path'] = '/home/z/Research/SparseVoxelNet/data/MODELNET40_H5TF/raw_tfrecord'
+DEFAULTS['data_path'] = os.path.join(DATA_DIR, 'MODELNET40_H5TF/raw_tfrecord')
 DEFAULTS['precpu_sg'] = True
 
 DEFAULTS['only_eval'] = 0
