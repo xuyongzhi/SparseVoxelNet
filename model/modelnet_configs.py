@@ -17,10 +17,13 @@ ROOT_DIR = os.path.dirname(BASE_DIR)
 DATA_DIR = os.path.join(ROOT_DIR, 'data')
 
 DEFAULTS = {}
-DEFAULTS['data_path'] = os.path.join(DATA_DIR, 'MODELNET40_H5TF/raw_tfrecord')
+dataset_name = 'MODELNET40'
+dataset_name = 'MATTERPORT'
+DEFAULTS['data_path'] = os.path.join(DATA_DIR, \
+                          '{}_H5TF/raw_tfrecord'.format(dataset_name))
 DEFAULTS['precpu_sg'] = True
 #DEFAULTS['sg_flag'] = '2048_800_40'
-DEFAULTS['sg_flag'] = '2048'
+#DEFAULTS['sg_flag'] = '2048'
 
 DEFAULTS['only_eval'] = 0
 DEFAULTS['eval_views'] = 1

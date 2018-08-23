@@ -125,6 +125,8 @@ def parse_pl_record(tfrecord_serialized, is_training, dset_metas=None, bsg=None)
       with tf.control_dependencies([check_g]):
         bsi = 0
         for s in range(num_scale+1):
+          if len(empty_mask) <= s:
+            continue
           features['empty_mask_%d'%(s)] = tf.cast(empty_mask[s][bsi], tf.int8)
           if vox_index[s].shape[0].value == 0:
             features['vox_index_%d'%(s)] = tf.zeros([0]*4, tf.int32)
@@ -185,7 +187,10 @@ class RawH5_To_Tfrecord():
     metas_fn = os.path.join(self.tfrecord_path, 'metas.txt')
     with open(metas_fn, 'w') as f:
       for item in self.eles_sorted:
-        shape_str = ','.join([str(k) for k in dls[item].shape])
+        shape = dls[item].shape
+        if self.num_point!=None:
+          shape = (self.num_point,) + shape[1:]
+        shape_str = ','.join([str(k) for k in shape])
         shape_str = 'shape: {}: {}\n'.format(item, shape_str)
         f.write(shape_str)
 
@@ -198,6 +203,7 @@ class RawH5_To_Tfrecord():
         f.write('indices: labels: label_category: 0\n')
       f.flush()
     print('write ok: {}'.format(metas_fn))
+    pass
 
   def sampling(self, dls):
     if self.num_point == None:
@@ -459,7 +465,7 @@ if __name__ == '__main__':
   rawh5_glob = os.path.join(dset_path, 'rawh5/*/*.rh5')
   tfrecord_path = os.path.join(dset_path, 'raw_tfrecord')
 
-  #main_write(dataset_name, rawh5_glob, tfrecord_path, num_point[dataset_name])
+  main_write(dataset_name, rawh5_glob, tfrecord_path, num_point[dataset_name])
 
   #get_dataset_summary(dataset_name, tfrecord_path)
   #get_dset_metas(tfrecord_path)

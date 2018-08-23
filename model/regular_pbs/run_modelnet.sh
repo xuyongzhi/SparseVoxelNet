@@ -3,7 +3,7 @@
 num_gpus=2
 gpu_id=0
 batch_size=32
-train_epochs=81
+train_epochs=121
 
 learning_rate0=0.001
 optimizer='adam'
@@ -25,10 +25,10 @@ use_bias=1
 
 block_style='Regular'
 shortcut='MC'
-residual=0
+residual=1
 
-resnet_size='1A20'
-sg_flag='2048'
+resnet_size='3A20'
+sg_flag='2048_800_40'
 model_flag='m'
 
 

@@ -228,8 +228,6 @@ def resnet_model_fn(model_flag, features, labels, mode, model_class,
     current mode.
   """
 
-
-  #features = tf.cast(features, dtype)
   assert data_format == 'channels_last'
   model = model_class(model_flag, resnet_size, data_format, resnet_version=resnet_version,
                       dtype=dtype, data_net_configs=data_net_configs)
@@ -266,8 +264,8 @@ def resnet_model_fn(model_flag, features, labels, mode, model_class,
 
   # Calculate loss, which includes softmax cross entropy and L2 regularization.
   dset_metas = data_net_configs['dset_metas']
+  assert len(labels.shape) == len(logits.shape), "network error"
   labels = labels[:, dset_metas['indices']['labels']['label_category'][0]]
-  #labels = tf.squeeze(labels, 1)
   if data_net_configs['loss_lw_gama'] < 0:
     weights = 1
   else:
