@@ -130,7 +130,6 @@ def get_data_shapes_from_tfrecord(data_dir):
       #print('points', features['points'][0,0:5,:])
 
 
-
 def check_data():
   from ply_util import create_ply_dset
 
@@ -183,34 +182,10 @@ def check_data():
         pass
 
 
-
 def get_data_meta(data_dir):
   global _DATA_PARAS
   dset_metas = get_dset_metas(data_dir)
   _DATA_PARAS['dset_metas'] = dset_metas
-
-
-def get_data_meta_from_hdf5(data_dir):
-  global _DATA_PARAS
-  from datasets.block_data_prep_util import GlobalSubBaseBLOCK
-  gsbb_load = GlobalSubBaseBLOCK()
-  basen = os.path.basename(data_dir)
-  dirn = os.path.dirname(os.path.dirname(data_dir))
-  bxmh5_dir = os.path.join(dirn, 'Merged_bxmh5', basen)
-  bxmh5_fns = glob.glob(os.path.join(bxmh5_dir,'*.bxmh5'))
-  assert len(bxmh5_fns) > 0, (bxmh5_dir)
-  bxmh5_fn = bxmh5_fns[0]
-  gsbb_load.load_para_from_bxmh5(bxmh5_fn)
-
-  _DATA_PARAS['dataset_name'] = DATASET_NAME
-  _DATA_PARAS['sg_bm_extract_idx'] = gsbb_load.sg_bidxmaps_extract_idx
-  _DATA_PARAS['flatten_bm_extract_idx'] = gsbb_load.flatten_bidxmaps_extract_idx
-  _DATA_PARAS['global_step'] = gsbb_load.global_step
-  _DATA_PARAS['global_stride'] = gsbb_load.global_stride
-  _DATA_PARAS['sub_block_stride_candis'] = gsbb_load.sub_block_stride_candis
-  _DATA_PARAS['sub_block_step_candis'] = gsbb_load.sub_block_step_candis
-  _DATA_PARAS['flatbxmap_max_nearest_num'] = gsbb_load.flatbxmap_max_nearest_num
-  _DATA_PARAS['data_idxs'] = gsbb_load.data_idxs
 
 
 ###############################################################################

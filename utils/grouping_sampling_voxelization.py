@@ -38,8 +38,6 @@ def get_data_shapes_from_tfrecord(filenames):
   return _DATA_PARAS
 
 
-
-
 def add_permutation_combination_template(A, B):
   '''
   Utilize tf broadcast: https://stackoverflow.com/questions/43534057/evaluate-all-pair-combinations-of-rows-of-two-tensors-in-tensorflow/43542926
@@ -1360,19 +1358,6 @@ def main_eager(DATASET_NAME, filenames, sg_settings, batch_size, cycles=1):
   return points, grouped_bot_cen_top, others, bsg._shuffle
 
 
-def test_sparse_to_dense(vox_index):
-  vox_index = vox_index[1][0]
-  s0 = vox_index.shape[0]
-  tmp0 = tf.reshape(tf.range(0,s0,1), [s0,1])
-  #vox_index = tf.concat([tmp0, vox_index], -1)
-  value = tf.range(0,s0,1)+11
-  dense = tf.sparse_to_dense(vox_index, [5,5,5], value, validate_indices=False)
-
-  print(dense)
-  import pdb; pdb.set_trace()  # XXX BREAKPOINT
-  pass
-
-
 def gen_plys(DATASET_NAME, frame, points, grouped_bot_cen_top,
              out_bot_cen_top, valid_flag='', main_flag=''):
   path = '/tmp/%d_plys'%(frame) + main_flag
@@ -1408,47 +1393,6 @@ def gen_plys(DATASET_NAME, frame, points, grouped_bot_cen_top,
     ply_fn = '%s/blocks%s/%d_points.ply'%(path, valid_flag, j)
     create_ply_dset(DATASET_NAME, grouped_xyz[j], ply_fn,
                   extra='random_same_color')
-
-
-def test_voxelization(vox_size, grouped_points, vox_index, empty_mask=None):
-
-    gp_size = [e.value for e in grouped_points.shape]
-    voxind_size = [e.value for e in vox_index.shape]
-    assert len(gp_size) == 5
-    assert len(voxind_size) == 5
-    bsgbn = gp_size[0] * gp_size[1]
-    grouped_points = tf.reshape(grouped_points, [bsgbn]+gp_size[2:])
-    vox_index = tf.reshape(vox_index, [bsgbn]+voxind_size[2:])
-
-    #---------------------------------------------------------------------------
-    gp_size = [e.value for e in grouped_points.shape]
-    voxind_size = [e.value for e in vox_index.shape]
-
-    batch_size = gp_size[0]
-    block_num = gp_size[1]
-    point_num = gp_size[2]
-
-    grouped_vox_size = [batch_size, block_num, vox_size[0], vox_size[1],
-                        vox_size[2], gp_size[3]]
-
-    batch_idx = tf.reshape( tf.range(batch_size),[batch_size,1,1,1] )
-    batch_idx = tf.tile( batch_idx, [1,block_num,point_num,1] )
-    bn_idx = tf.reshape( tf.range(block_num),[1,block_num,1,1] )
-    bn_idx = tf.tile( bn_idx, [batch_size,1,point_num,1] )
-    vox_index = tf.concat( [batch_idx, bn_idx, vox_index], -1 )
-
-    grouped_voxels = tf.scatter_nd(vox_index, grouped_points, grouped_vox_size)
-
-    #vox_index = tf.reshape(vox_index, [-1, vox_index.shape[-1].value])
-    #grouped_points = tf.reshape(grouped_points, [-1, gp_size[-1]])
-    #import pdb; pdb.set_trace()  # XXX BREAKPOINT
-    #grouped_voxels = tf.sparse_to_dense( vox_index, grouped_vox_size, grouped_points, default_value=0, validate_indices=False )
-    import pdb; pdb.set_trace()  # XXX BREAKPOINT
-
-    grouped_vox_size = [batch_size * block_num, vox_size[0], vox_size[1],
-                        vox_size[2], gp_size[3]]
-    grouped_voxels = tf.reshape(grouped_voxels, grouped_vox_size)
-    return grouped_voxels
 
 
 

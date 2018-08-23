@@ -149,7 +149,6 @@ def get_block_paras_inception(resnet_size, model_flag):
   return block_params
 
 
-
 def get_block_paras_bottle_regu(resnet_size, model_flag):
   num_filters0s = {}
   block_sizes = {}
@@ -224,47 +223,8 @@ def get_block_paras_bottle_regu_unused(resnet_size, model_flag, block_style):
       block_strides[rs]  = [[], [1,1,1], [1,1,1]]
       block_paddings[rs] = [[], ['s','v','s'], ['v','v','v']]
 
-      rs = 37
-      num_filters0s[rs] = 32
-      block_sizes[rs]    = [[1,1,1], [1,1,1], [1,1,1]]
-      block_filters[rs] = [[32,64,128], [256,256,512], [512,512,1024]]
-      block_kernels[rs]  = [[], [1,3,1], [3,2,1]]
-      block_strides[rs]  = [[], [1,1,1], [1,1,1]]
-      block_paddings[rs] = [[], ['s','v','s'], ['v','v','v']]
-
     elif block_style == 'Regular':
       #------------------------------- Regular -----------------------------------
-      rs = 10
-      num_filters0s[rs] = 32
-      block_sizes[rs]    = [[1], [1], [1,1]]
-      block_filters[rs] = [[64], [128], [256,512]]
-      block_kernels[rs]  = [[], [3], [3,3]]
-      block_strides[rs]  = [[], [1], [1,1]]
-      block_paddings[rs] = [[], ['v'], ['v','v']]
-
-      rs = 15
-      num_filters0s[rs] = 16
-      block_sizes[rs]    = [[1,1], [1,1], [1,1,1]]
-      block_filters[rs] = [[16,32], [64,64], [64,128,256]]
-      block_kernels[rs]  = [[], [3,1], [3,3,3]]
-      block_strides[rs]  = [[], [1,1], [1,1,1]]
-      block_paddings[rs] = [[], ['v','s'], ['v','v','v']]
-
-      rs = 16
-      num_filters0s[rs] = 32
-      block_sizes[rs]    = [[1,1], [1,1], [1,1,1]]
-      block_filters[rs] = [[32,64], [128,128], [128,256,512]]
-      block_kernels[rs]  = [[], [3,3], [3,3,2]]
-      block_strides[rs]  = [[], [1,1], [1,1,1]]
-      block_paddings[rs] = [[], ['v','v'], ['v','v','v']]
-
-      rs = 24
-      num_filters0s[rs] = 32
-      block_sizes[rs]    = [[2,2], [1,2], [2,2,1]]
-      block_filters[rs] = [[32,64], [128,128], [128,256,512]]
-      block_kernels[rs]  = [[], [3,1], [3,3,3]]
-      block_strides[rs]  = [[], [1,1], [1,1,1]]
-      block_paddings[rs] = [[], ['v','s'], ['v','v','v']]
 
       rs = 26
       num_filters0s[rs] = 32
@@ -274,32 +234,10 @@ def get_block_paras_bottle_regu_unused(resnet_size, model_flag, block_style):
       block_strides[rs]  = [[],     [1,1],      [2,1,1,1]]
       block_paddings[rs] = [[],     ['v','s'],  ['v','v','v','v']]
 
-      rs = 37
-      num_filters0s[rs] = 32
-      block_sizes[rs]    = [[2,1,1], [1,2], [1,1,1,1,1]]
-      block_filters[rs] = [[32,64,128], [256,256], [256,384,512,768,1024]]
-      block_kernels[rs]  = [[], [3,1], [3,2,2,2,2]]
-      block_strides[rs]  = [[], [1,1], [1,1,1,1,1]]
-      block_paddings[rs] = [[], ['v','s'], ['v','v','v','v','v']]
-
-      rs = 38
-      num_filters0s[rs] = 32
-      block_sizes[rs]    = [[2,1,1], [1,2], [1,1,1,1,1]]
-      block_filters[rs] = [[32,64,128], [256,256], [256,384,512,768,1024]]
-      block_kernels[rs]  = [[], [3,1], [3,3,3,2,2]]
-      block_strides[rs]  = [[], [1,1], [1,1,1,1,1]]
-      block_paddings[rs] = [[], ['v','s'], ['v','v','v','v','v']]
 
 
   if data_flag == '3M1':
     if block_style == 'Regular':
-      rs = 6
-      num_filters0s[rs] = 8
-      block_sizes[rs]    = [[0.5],    [0.5],    [0.5,0.5],      [0.5,0.5]]
-      block_filters[rs]  = [[13], [16],  [18,18],[32,32]]
-      block_kernels[rs]  = [[],       [3],    [3,3],      [3,3]]
-      block_strides[rs]  = [[],       [1],    [1,1],      [1,1]]
-      block_paddings[rs] = [[],       ['v'],['v','v'],['v','v']]
 
       rs = 14
       num_filters0s[rs] = 64
@@ -308,15 +246,6 @@ def get_block_paras_bottle_regu_unused(resnet_size, model_flag, block_style):
       block_kernels[rs]  = [[],       [3],    [3,3],      [3,3,1]]
       block_strides[rs]  = [[],       [1],    [1,1],      [1,1,1]]
       block_paddings[rs] = [[],       ['v'],['v','v'],['v','v','s']]
-
-      rs = 31
-      num_filters0s[rs] = 32
-      block_sizes[rs]    = [[2,1,1],    [1,3],    [1,1,2],      [1,1,0.5]]
-      block_filters[rs]  = [[32,64,125],[128,128],[131,256,256],[256,512,1024]]
-      block_kernels[rs]  = [[],         [3,1],    [3,3,1],      [3,3,1]]
-      block_strides[rs]  = [[],         [1,1],    [1,1,1],      [1,1,1]]
-      block_paddings[rs] = [[],         ['v','v'],['v','v','v'],['v','v','s']]
-
 
   if 'V' not in model_flag:
     for i in range(len(block_sizes[resnet_size])):
@@ -360,15 +289,7 @@ def get_block_paras_pointnet(resnet_size, model_flag, block_style):
   rs = 14
   block_filters[rs]  = [[64,64,128,128,256], [256,256,256,512], [512,512,1024]]
 
-  #for k in block_kernels:
-  #  # cascade_id 0 is pointnet
-  #  assert (np.array(block_kernels[k][0])==1).all()
-  #  assert (np.array(block_strides[k][0])==1).all()
 
   block_params = {}
   block_params['filters'] = block_filters[resnet_size]
-  #block_params['kernels'] = block_kernels[resnet_size]
-  #block_params['strides'] = block_strides[resnet_size]
-  #block_params['padding_s1'] = block_paddings[resnet_size]
-  #block_params['block_sizes'] = block_sizes[resnet_size]
   return block_params
