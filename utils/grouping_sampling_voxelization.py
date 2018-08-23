@@ -67,7 +67,6 @@ def get_data_summary_from_tfrecord(filenames, raw_tfrecord_path):
     print('write: {}'.format(data_summary_fn))
 
 
-
 def add_permutation_combination_template(A, B):
   '''
   Utilize tf broadcast: https://stackoverflow.com/questions/43534057/evaluate-all-pair-combinations-of-rows-of-two-tensors-in-tensorflow/43542926
@@ -215,6 +214,14 @@ class BlockGroupSampling():
     self.global_bot_bot_bot = tf.tile(self.global_bot_cen_top[...,0:3], [1,1,1,3])
     #print(self.global_bot_cen_top[...,0:3])
 
+  def pre_sampling(self, xyz):
+    if xyz.shape[1].value < 20000:
+      return xyz
+    xyz = tf.transpose(xyz, [1,0,2])
+    xyz = tf.random_shuffle(xyz)
+    xyz = tf.transpose(xyz, [1,0,2])
+    xyz = xyz[:,0:20000,:]
+    return xyz
 
   def grouping_multi_scale(self, xyz):
     '''
@@ -223,6 +230,7 @@ class BlockGroupSampling():
     xyz_shape = xyz.shape
     assert len(xyz_shape) == 3
     assert xyz_shape[2] == 3
+    xyz = self.pre_sampling(xyz)
     self.batch_size = xyz_shape[0].value
     self.update_global_bot_cen_top_for_global(xyz)
 
@@ -1422,7 +1430,7 @@ def main(filenames, dset_metas):
   from utils.sg_settings import get_sg_settings
   sg_settings = get_sg_settings('A')
 
-  batch_size = 2
+  batch_size = 32
   if len(sys.argv) > 1:
     main_flag = sys.argv[1]
     if len(sys.argv) > 2:
@@ -1438,7 +1446,7 @@ def main(filenames, dset_metas):
   file_num = 12311
   num_epoch = 1
   cycles = (file_num // batch_size) * num_epoch
-  cycles = 1
+  cycles = 100
 
   if 'e' in main_flag:
     xyzs_E, grouped_xyzs_E, others_E, shuffle_E = \
@@ -1490,7 +1498,7 @@ if __name__ == '__main__':
   data_path = os.path.join(raw_tfrecord_path, 'merged_data')
   tmp = '*'
   filenames = glob.glob(os.path.join(data_path, tmp+'.tfrecord'))
-  random.shuffle(filenames)
+  #random.shuffle(filenames)
   assert len(filenames) >= 1, data_path
 
   dset_metas = get_dset_metas(raw_tfrecord_path)

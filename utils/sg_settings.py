@@ -56,7 +56,7 @@ def get_sg_settings(sgflag):
   sg_settings['nblock'] =  [4,            ]
   sg_settings['max_nblock'] =  [30,       ]
   sg_settings['npoint_per_block'] = [8192, ]
-  sg_settings['np_perb_min_include'] = [8192*2,]
+  sg_settings['np_perb_min_include'] = [128,]
   sg_settings_all[sg_flag(sg_settings)] = sg_settings
   sg_settings_all['A'] = sg_settings
 
