@@ -81,11 +81,11 @@ class DatasetsMeta():
       tte_fnum['val'] = 234
 
       all_fns = glob.glob(os.path.join(data_dir, '*.tfrecord'))
-      assert len(all_fns) == 2194
+      #assert len(all_fns) == 2194, len(all_fns)
       def sence_name(fn):
         return os.path.basename(fn).split('_')[0]
       the_fns = [e for e in all_fns if sence_name(e) in scene_names]
-      assert len(the_fns) == tte_fnum[split]
+      #assert len(the_fns) == tte_fnum[split]
       return  the_fns
 
     def get_train_test_file_list_MODELNET(self, data_dir, is_training):

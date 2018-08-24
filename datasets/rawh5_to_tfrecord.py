@@ -3,6 +3,7 @@ import numpy as np
 import tensorflow as tf
 from datasets.block_data_prep_util import Raw_H5f
 from datasets.all_datasets_meta.datasets_meta import DatasetsMeta
+import math
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT_DIR = os.path.dirname(BASE_DIR)
@@ -59,7 +60,7 @@ def random_choice(org_vector, sample_N, random_sampl_pro=None,
     return sampled_vector
 
 
-def parse_pl_record(tfrecord_serialized, is_training, dset_metas=None, bsg=None):
+def parse_pl_record(tfrecord_serialized, is_training, dset_metas=None, bsg=None, is_normalize_pcl=False):
     from aug_data_tf import aug_main, aug_views
     #if dset_metas!=None:
     #  from aug_data_tf import aug_data, tf_Rz
@@ -144,8 +145,8 @@ def parse_pl_record(tfrecord_serialized, is_training, dset_metas=None, bsg=None)
 
     # ------------------------------------------------
     # normalize points after sg
-    if dset_metas != None:
-      points = pc_normalize(points)
+    if is_normalize_pcl:
+      points = pc_normalize(points, dset_metas)
     features['points'] = points
 
     return features, labels
@@ -162,7 +163,7 @@ class RawH5_To_Tfrecord():
       os.makedirs(self.data_path)
     self.num_point = num_point
     self.block_size = block_size
-    self.min_pointnum_inblock = self.num_point * 0.2
+    self.min_pn_inblock = self.num_point * 0.1
     self.sampling_rates = []
 
   def __call__(self, rawh5fns):
@@ -264,7 +265,7 @@ class RawH5_To_Tfrecord():
       new_n = np.sum(mask)
       indices = np.where(mask)[0]
       num_point_i = indices.size
-      if num_point_i < self.min_pointnum_inblock:
+      if num_point_i < self.min_pn_inblock:
         #print('num point {} < {}, block {}/{}'.format(num_point_i,\
         #                                self.num_point * 0.1, i, block_num))
         continue
@@ -272,6 +273,10 @@ class RawH5_To_Tfrecord():
       dls_i['points'] = np.take(dls['points'], indices, axis=0)
       dls_i['labels'] = np.take(dls['labels'], indices, axis=0)
       dls_splited.append(dls_i)
+
+      xyz_i = dls_i['points'][:,0:3]
+      xyz_min_i = np.min(xyz_i,0)
+      xyz_max_i = np.max(xyz_i,0)
 
     valid_block_num = len(dls_splited)
     print('xyz scope:{} \tblock_num:{} \tvalid block num:{}'.format(xyz_scope,\
@@ -387,19 +392,19 @@ def read_dataset_summary(data_dir):
   return dataset_summary
 
 
-def pc_normalize(points):
-  has_normal = points.shape[-1].value == 6
-  points_xyz = points[:,0:3]
-  if has_normal:
-    points_normal = points[:,3:6]
+def pc_normalize(points, dset_metas):
+  assert len(points.shape) == 2
+  #has_normal = points.shape[-1].value > 3
+  tmp = dset_metas['indices']['points']['xyz']
+  assert tmp == [0,1,2]
+  points_xyz = points[:, tmp[0]:tmp[-1]+1]
+  #if has_normal:
+  #  points_normal = points[:,3:6]
   centroid = tf.reduce_mean(points_xyz, axis=0)
   points_xyz -= centroid
   m = tf.reduce_max(tf.sqrt(tf.reduce_sum(tf.pow(points_xyz, 2),axis=1)))
   points_xyz = points_xyz / m
-  if has_normal:
-    points_normed = tf.concat([points_xyz, points_normal], -1)
-  else:
-    points_normed = points_xyz
+  points_normed = tf.concat([points_xyz, points[:,3:]], -1)
   return points_normed
 
 
@@ -508,13 +513,6 @@ def get_dataset_summary(dataset_name, tf_path, loss_lw_gama=2):
             print('%d  %d'%(m,n))
           m += 1
           n += category_label.size
-          #if n==batch_size:
-          #  print(features['points'][0])
-          #  print(object_label)
-          #  #for i in range(batch_size):
-          #  #  plyfn = '/tmp/tfrecord_%d.ply'%(i)
-          #     import ply_util
-          #  #  ply_util.create_ply(features['points'][i], plyfn)
       except:
         print('Total: %d  %d'%(m,n))
         print(label_hist)
@@ -532,7 +530,96 @@ def main_write(dataset_name, rawh5_glob, tfrecord_path, num_point, block_size):
   raw_to_tf = RawH5_To_Tfrecord(dataset_name, tfrecord_path, num_point, block_size)
   raw_to_tf(rawh5_fns)
 
+def split_fn_ls( tfrecordfn_ls, merged_n):
+    nf = len(tfrecordfn_ls)
+    assert merged_n < nf
+    group_n = int(math.ceil( 1.0*nf/merged_n ))
+    merged_fnls = []
+    group_name_ls = []
+    for i in range( 0, nf, group_n ):
+        end = min( nf, i+group_n )
+        merged_fnls.append( tfrecordfn_ls[i:end] )
+        group_name_ls.append( '%d_%d'%(i, end) )
+    return merged_fnls, group_name_ls
 
+def merge_tfrecord(dataset_name, tfrecord_path):
+  from dataset_utils import merge_tfrecord
+  import random
+
+  rawdata_dir = tfrecord_path+'/data'
+  merged_dir = tfrecord_path+'/merged_data'
+  if not os.path.exists(merged_dir):
+    os.makedirs(merged_dir)
+
+  datasets_meta = DatasetsMeta(dataset_name)
+  train_fn_ls = datasets_meta.get_train_test_file_list(rawdata_dir, True)
+  random.shuffle(train_fn_ls)
+  test_fn_ls = datasets_meta.get_train_test_file_list(rawdata_dir, False)
+  random.shuffle(test_fn_ls)
+
+  grouped_train_fnls, train_groupe_names = split_fn_ls(train_fn_ls, 10)
+  train_groupe_names = ['train_'+e for e in train_groupe_names]
+  grouped_test_fnls, test_groupe_names = split_fn_ls(test_fn_ls, 5)
+  test_groupe_names = ['test_'+e for e in test_groupe_names]
+
+  grouped_fnls = grouped_train_fnls + grouped_test_fnls
+  group_names = train_groupe_names + test_groupe_names
+  merged_fnls = [os.path.join(merged_dir, e+'.tfrecord') for e in group_names]
+
+  for k in range(len(grouped_fnls)):
+    merge_tfrecord(grouped_fnls[k], merged_fnls[k])
+
+
+def gen_ply(dataset_name, tf_path):
+  from utils.ply_util import create_ply_dset
+  #name_base = 'data/gxdoqLR6rwA_region2*.tfrecord'
+  name_base = 'data/s8pcmisQ38h_region0*.tfrecord'
+  fn_glob = os.path.join(tf_path, name_base)
+  filenames = glob.glob(fn_glob)
+  assert len(filenames) > 0, fn_glob
+
+  ply_dir = os.path.join(tf_path, 'ply')
+  if not os.path.exists(ply_dir):
+    os.makedirs(ply_dir)
+
+  data_infos = get_dset_metas(tf_path)
+  datasets_meta = DatasetsMeta(dataset_name)
+  num_classes = datasets_meta.num_classes
+
+  with tf.Graph().as_default():
+    dataset = tf.data.TFRecordDataset(filenames,
+                                      compression_type="",
+                                      buffer_size=1024*100,
+                                      num_parallel_reads=1)
+
+    batch_size = 1
+    is_training = False
+
+    dataset = dataset.prefetch(buffer_size=batch_size)
+    dataset = dataset.apply(
+      tf.contrib.data.map_and_batch(
+        lambda value: parse_pl_record(value, is_training, data_infos),
+        batch_size=batch_size,
+        num_parallel_batches=1,
+        drop_remainder=False))
+    dataset = dataset.prefetch(buffer_size=tf.contrib.data.AUTOTUNE)
+    get_next = dataset.make_one_shot_iterator().get_next()
+
+    with tf.Session() as sess:
+      n = 0
+      try:
+        print('start reading all the dataset to get summary')
+        while(True):
+          features, labels = sess.run(get_next)
+          points = features['points'][:,:, data_infos['indices']['points']['xyz']]
+
+          fn = filenames[n]
+          base_name = os.path.splitext( os.path.basename(fn) )[0]
+          ply_fn = os.path.join(ply_dir, base_name+'.ply')
+          create_ply_dset( dataset_name, points,  ply_fn)
+          n += 1
+      except:
+        pass
 
 if __name__ == '__main__':
   dataset_name = 'MODELNET40'
@@ -545,6 +632,9 @@ if __name__ == '__main__':
   tfrecord_path = os.path.join(dset_path, 'raw_tfrecord')
 
   main_write(dataset_name, rawh5_glob, tfrecord_path, num_point[dataset_name], block_size[dataset_name])
+  merge_tfrecord(dataset_name, tfrecord_path)
+
+  #gen_ply(dataset_name, tfrecord_path)
 
   #get_dataset_summary(dataset_name, tfrecord_path)
   #get_dset_metas(tfrecord_path)
