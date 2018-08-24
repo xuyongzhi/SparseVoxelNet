@@ -569,14 +569,19 @@ def merge_tfrecord(dataset_name, tfrecord_path):
   for k in range(len(grouped_fnls)):
     merge_tfrecord(grouped_fnls[k], merged_fnls[k])
 
-
 def gen_ply(dataset_name, tf_path):
-  from utils.ply_util import create_ply_dset
-  #name_base = 'data/gxdoqLR6rwA_region2*.tfrecord'
-  name_base = 'data/s8pcmisQ38h_region0*.tfrecord'
+  scene = 'gxdoqLR6rwA_region2'
+  scene = 'gTV8FGcVJC9_region7'
+  scene = 'Vvot9Ly1tCj_region24'
+  name_base = 'data/{}*.tfrecord'.format(scene)
   fn_glob = os.path.join(tf_path, name_base)
   filenames = glob.glob(fn_glob)
   assert len(filenames) > 0, fn_glob
+  for fn in filenames:
+    gen_ply_onef(dataset_name, tf_path, fn)
+
+def gen_ply_onef(dataset_name, tf_path, filename):
+  from utils.ply_util import create_ply_dset
 
   ply_dir = os.path.join(tf_path, 'ply')
   if not os.path.exists(ply_dir):
@@ -587,12 +592,12 @@ def gen_ply(dataset_name, tf_path):
   num_classes = datasets_meta.num_classes
 
   with tf.Graph().as_default():
-    dataset = tf.data.TFRecordDataset(filenames,
+    dataset = tf.data.TFRecordDataset([filename],
                                       compression_type="",
                                       buffer_size=1024*100,
                                       num_parallel_reads=1)
 
-    batch_size = 1
+    batch_size = 10
     is_training = False
 
     dataset = dataset.prefetch(buffer_size=batch_size)
@@ -607,19 +612,22 @@ def gen_ply(dataset_name, tf_path):
 
     with tf.Session() as sess:
       n = 0
+      all_points = []
       try:
         print('start reading all the dataset to get summary')
         while(True):
           features, labels = sess.run(get_next)
-          points = features['points'][:,:, data_infos['indices']['points']['xyz']]
-
-          fn = filenames[n]
-          base_name = os.path.splitext( os.path.basename(fn) )[0]
-          ply_fn = os.path.join(ply_dir, base_name+'.ply')
-          create_ply_dset( dataset_name, points,  ply_fn)
+          xyz = features['points'][:,:, data_infos['indices']['points']['xyz']]
+          color = features['points'][:,:, data_infos['indices']['points']['color']]
+          points = np.concatenate([xyz, color], -1)
+          all_points.append(points)
           n += 1
       except:
         pass
+      all_points = np.concatenate(all_points, 0)
+      base_name = os.path.splitext( os.path.basename(filename) )[0]
+      ply_fn = os.path.join(ply_dir, base_name+'.ply')
+      create_ply_dset( dataset_name, all_points,  ply_fn)
 
 if __name__ == '__main__':
   dataset_name = 'MODELNET40'
@@ -631,10 +639,10 @@ if __name__ == '__main__':
   rawh5_glob = os.path.join(dset_path, 'rawh5/*/*.rh5')
   tfrecord_path = os.path.join(dset_path, 'raw_tfrecord')
 
-  main_write(dataset_name, rawh5_glob, tfrecord_path, num_point[dataset_name], block_size[dataset_name])
-  merge_tfrecord(dataset_name, tfrecord_path)
+  #main_write(dataset_name, rawh5_glob, tfrecord_path, num_point[dataset_name], block_size[dataset_name])
+  #merge_tfrecord(dataset_name, tfrecord_path)
 
-  #gen_ply(dataset_name, tfrecord_path)
+  gen_ply(dataset_name, tfrecord_path)
 
   #get_dataset_summary(dataset_name, tfrecord_path)
   #get_dset_metas(tfrecord_path)
