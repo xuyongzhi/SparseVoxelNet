@@ -10,6 +10,8 @@ ROOT_DIR = os.path.dirname(BASE_DIR)
 Points_eles_order = ['xyz','nxnynz', 'color']
 Label_eles_order = ['label_category', 'label_instance', 'label_material']
 
+MAX_FLOAT_DRIFT = 1e-6
+
 def bytes_feature(values):
   """Returns a TF-Feature of bytes.
 
@@ -151,7 +153,7 @@ def parse_pl_record(tfrecord_serialized, is_training, dset_metas=None, bsg=None)
 
 
 class RawH5_To_Tfrecord():
-  def __init__(self, dataset_name, tfrecord_path, num_point=None):
+  def __init__(self, dataset_name, tfrecord_path, num_point=None, block_size=None):
     self.dataset_name = dataset_name
     self.tfrecord_path = tfrecord_path
     self.data_path = os.path.join(self.tfrecord_path, 'data')
@@ -159,6 +161,8 @@ class RawH5_To_Tfrecord():
     if not os.path.exists(self.data_path):
       os.makedirs(self.data_path)
     self.num_point = num_point
+    self.block_size = block_size
+    self.min_pointnum_inblock = self.num_point * 0.2
     self.sampling_rates = []
 
   def __call__(self, rawh5fns):
@@ -167,6 +171,7 @@ class RawH5_To_Tfrecord():
     for fi, rawh5fn in enumerate(rawh5fns):
       self.fi = fi
       self.transfer_onefile(rawh5fn)
+    print('All file are converted to tfreord')
 
   def sort_eles(self, h5f):
     # elements *************************
@@ -185,6 +190,7 @@ class RawH5_To_Tfrecord():
         shape_i = h5f[e].shape
         ele_idxs[item][e] = np.arange(n, n+shape_i[-1])
         n += shape_i[-1]
+    self.ele_idxs = ele_idxs
 
     metas_fn = os.path.join(self.tfrecord_path, 'metas.txt')
     with open(metas_fn, 'w') as f:
@@ -207,6 +213,71 @@ class RawH5_To_Tfrecord():
     print('write ok: {}'.format(metas_fn))
     pass
 
+  def split_pcl(self, dls):
+    if type(self.block_size) == type(None):
+      return dls
+
+    xyz = dls['points'][:, self.ele_idxs['points']['xyz']]
+    xyz_min = np.min(xyz, 0)
+    xyz_max = np.max(xyz, 0)
+    xyz_scope = xyz_max - xyz_min
+    #print(xyz_scope)
+
+    block_size = self.block_size
+    block_stride = block_size * 0.5
+    block_dims0 =  (xyz_scope - block_size) / block_stride + 1
+    block_dims0 = np.maximum(block_dims0, 1)
+    block_dims = np.ceil(block_dims0).astype(np.int32)
+    #print(block_dims)
+    xyzindices = [np.arange(0, k) for k in block_dims]
+    bot_indices = [np.array([[xyzindices[0][i], xyzindices[1][j], xyzindices[2][k]]]) for i in range(block_dims[0]) \
+                   for j  in range(block_dims[1]) for k in range(block_dims[2])]
+    bot_indices = np.concatenate(bot_indices, 0)
+    bot = bot_indices * block_stride
+    top = bot + block_size
+
+    block_num = bot.shape[0]
+    if block_num == 1:
+      #print('xyz scope:{} block_num:{}'.format(xyz_scope, block_num))
+      return [dls]
+
+    if block_num>1:
+      for i in range(block_num):
+        for j in range(3):
+          if top[i,j] > xyz_scope[j]:
+            top[i,j] = xyz_scope[j] - MAX_FLOAT_DRIFT
+            bot[i,j] = np.maximum(xyz_scope[j] - block_size[j] + MAX_FLOAT_DRIFT, 0)
+    #print(xyzindices)
+    #print(bot_indices)
+    #print(bot)
+    #print(top)
+
+    bot += xyz_min
+    top += xyz_min
+
+    dls_splited = []
+    for i in range(block_num):
+      mask0 = xyz >= bot[i]
+      mask1 = xyz < top[i]
+      mask = mask0 * mask1
+      mask = np.all(mask, 1)
+      new_n = np.sum(mask)
+      indices = np.where(mask)[0]
+      num_point_i = indices.size
+      if num_point_i < self.min_pointnum_inblock:
+        #print('num point {} < {}, block {}/{}'.format(num_point_i,\
+        #                                self.num_point * 0.1, i, block_num))
+        continue
+      dls_i = {}
+      dls_i['points'] = np.take(dls['points'], indices, axis=0)
+      dls_i['labels'] = np.take(dls['labels'], indices, axis=0)
+      dls_splited.append(dls_i)
+
+    valid_block_num = len(dls_splited)
+    print('xyz scope:{} \tblock_num:{} \tvalid block num:{}'.format(xyz_scope,\
+                                          block_num, valid_block_num))
+    return dls_splited
+
   def sampling(self, dls):
     if self.num_point == None:
       return dls
@@ -221,7 +292,7 @@ class RawH5_To_Tfrecord():
     self.sampling_rates.append(sampling_rate)
     if len(self.sampling_rates) % 10 == 0:
       ave_samplings_rate = np.mean(self.sampling_rates)
-      print('ave_samplings_rate:{:.2f}'.format(ave_samplings_rate))
+      print('sampled num point/ real:{:.2f}'.format(ave_samplings_rate))
     return dls
 
   def transfer_onefile(self, rawh5fn):
@@ -229,9 +300,7 @@ class RawH5_To_Tfrecord():
     base_name1 = os.path.basename(os.path.dirname(rawh5fn))
     if self.dataset_name == "MATTERPORT":
       base_name = base_name1 + '_' + base_name
-    tfrecord_fn = os.path.join(self.data_path, base_name) + '.tfrecord'
-    with h5py.File(rawh5fn, 'r') as h5f,\
-      tf.python_io.TFRecordWriter( tfrecord_fn ) as raw_tfrecord_writer:
+    with h5py.File(rawh5fn, 'r') as h5f:
 
       if self.fi == 0:
         self.sort_eles(h5f)
@@ -267,25 +336,32 @@ class RawH5_To_Tfrecord():
       if self.fi == 0:
         self.record_metas(h5f, dls)
 
-      dls = self.sampling(dls)
-      datas_bin = dls['points'].tobytes()
-      datas_shape_bin = np.array(dls['points'].shape, np.int32).tobytes()
-      labels_bin = dls['labels'].tobytes()
-      labels_shape_bin = np.array(dls['labels'].shape, np.int32).tobytes()
-      features_map = {
-        'points/encoded':  bytes_feature(datas_bin),
-        'points/shape':   bytes_feature(datas_shape_bin),
-        'labels/encoded':  bytes_feature(labels_bin),
-        'labels/shape':   bytes_feature(labels_shape_bin) }
-        #'object':   int64_feature(object_label) }
+      dls_splited = self.split_pcl(dls)
+      block_num = len(dls_splited)
+      for bk, ds in enumerate(dls_splited):
+        ds = self.sampling(ds)
 
-      example = tf.train.Example(features=tf.train.Features(feature=features_map))
+        datas_bin = ds['points'].tobytes()
+        datas_shape_bin = np.array(ds['points'].shape, np.int32).tobytes()
+        labels_bin = ds['labels'].tobytes()
+        labels_shape_bin = np.array(ds['labels'].shape, np.int32).tobytes()
+        features_map = {
+          'points/encoded':  bytes_feature(datas_bin),
+          'points/shape':   bytes_feature(datas_shape_bin),
+          'labels/encoded':  bytes_feature(labels_bin),
+          'labels/shape':   bytes_feature(labels_shape_bin) }
+          #'object':   int64_feature(object_label) }
 
-      #*************************************************************************
-      raw_tfrecord_writer.write(example.SerializeToString())
+        example = tf.train.Example(features=tf.train.Features(feature=features_map))
 
-    if self.fi %10 ==0:
-      print('{}/{} write tfrecord OK: {}'.format(self.fi, self.fn, tfrecord_fn))
+        #*************************************************************************
+        tmp = '' if block_num==1 else '_'+str(bk)
+        tfrecord_fn = os.path.join(self.data_path, base_name)+tmp + '.tfrecord'
+        with tf.python_io.TFRecordWriter( tfrecord_fn ) as raw_tfrecord_writer:
+          raw_tfrecord_writer.write(example.SerializeToString())
+
+        if self.fi %50 ==0:
+          print('{}/{} write tfrecord OK: {}'.format(self.fi, self.fn, tfrecord_fn))
 
 
 
@@ -450,10 +526,10 @@ def get_dataset_summary(dataset_name, tf_path, loss_lw_gama=2):
       return dataset_summary
 
 
-def main_write(dataset_name, rawh5_glob, tfrecord_path, num_point):
+def main_write(dataset_name, rawh5_glob, tfrecord_path, num_point, block_size):
   rawh5_fns = glob.glob(rawh5_glob)
 
-  raw_to_tf = RawH5_To_Tfrecord(dataset_name, tfrecord_path, num_point)
+  raw_to_tf = RawH5_To_Tfrecord(dataset_name, tfrecord_path, num_point, block_size)
   raw_to_tf(rawh5_fns)
 
 
@@ -462,12 +538,13 @@ if __name__ == '__main__':
   dataset_name = 'MODELNET40'
   dataset_name = 'MATTERPORT'
   dset_path = '/home/z/Research/SparseVoxelNet/data/{}_H5TF'.format(dataset_name)
-  num_point = {'MODELNET40':None, 'MATTERPORT':100000}
+  num_point = {'MODELNET40':None, 'MATTERPORT':30000}
+  block_size = {'MODELNET40':None, 'MATTERPORT':np.array([6,6,5]) }
 
   rawh5_glob = os.path.join(dset_path, 'rawh5/*/*.rh5')
   tfrecord_path = os.path.join(dset_path, 'raw_tfrecord')
 
-  main_write(dataset_name, rawh5_glob, tfrecord_path, num_point[dataset_name])
+  main_write(dataset_name, rawh5_glob, tfrecord_path, num_point[dataset_name], block_size[dataset_name])
 
   #get_dataset_summary(dataset_name, tfrecord_path)
   #get_dset_metas(tfrecord_path)
