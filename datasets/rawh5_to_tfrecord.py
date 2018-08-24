@@ -89,8 +89,6 @@ def parse_pl_record(tfrecord_serialized, is_training, dset_metas=None, bsg=None)
       points_shape = dset_metas['shape']['points']
     # the points tensor is flattened out, so we have to reconstruct the shape
     points = tf.reshape(points, points_shape)
-    if dset_metas != None:
-      points = pc_normalize(points)
 
     # ------------------------------------------------
     #             data augmentation
@@ -108,8 +106,6 @@ def parse_pl_record(tfrecord_serialized, is_training, dset_metas=None, bsg=None)
         points, b_bottom_centers_mm, augs = aug_views(points, b_bottom_centers_mm,
                     dset_metas['eval_views'],
                     dset_metas['indices'])
-    #if bsg==None:
-    features['points'] = points
     # ------------------------------------------------
     #             grouping and sampling on line
     if bsg!=None:
@@ -143,6 +139,12 @@ def parse_pl_record(tfrecord_serialized, is_training, dset_metas=None, bsg=None)
           #  if name not in features:
           #    features[name] = []
           #  features[name].append( others[s]['value'][k][bsi] )
+
+    # ------------------------------------------------
+    # normalize points after sg
+    if dset_metas != None:
+      points = pc_normalize(points)
+    features['points'] = points
 
     return features, labels
 

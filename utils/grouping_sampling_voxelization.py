@@ -7,7 +7,7 @@ from datasets.all_datasets_meta.datasets_meta import DatasetsMeta
 from utils.ply_util import create_ply_dset, draw_blocks_by_bot_cen_top
 import time
 
-DEBUG = False
+DEBUG = True
 MAX_FLOAT_DRIFT = 1e-5
 SMALL_BUGS_IGNORE = True
 
@@ -420,12 +420,12 @@ class BlockGroupSampling():
     return grouped_bot_cen_top
 
   def show_settings(self):
-    items = ['_width', '_stride', '_npoint_per_block', '_nblock',
-              '_np_perb_min_include','_n_maxerr_same_nb_perp', '_shuffle']
+    items = ['_widths', '_strides', '_nblocks_per_point', '_nblocks', '_npoint_per_blocks',
+              '_np_perb_min_includes','_nblock_buf_maxs', '_shuffle']
     print('\n\nsettings:\n')
     for item in items:
-      if hasattr(self, item):
-        print('{}:{}'.format(item, getattr(self,item)))
+      #if hasattr(self, item):
+      print('{}:{}'.format(item, getattr(self,item)))
     print('\n\n')
 
 
@@ -467,6 +467,7 @@ class BlockGroupSampling():
               'ngp_valid_rate', 'ngp_out_block_','ngp_out_global_','',
               '_np_perb_min_includes','nb_lessp_ave_', '',
               '_npoint_per_blocks','ave_np_perb_', 'std_np_perb_', 'nempty_perb_','',]
+    key_items = ['nb_enoughp_ave_','ave_np_perb_']
 
     def sum_str(scale, item):
       value = self.samplings[scale][item]
@@ -475,6 +476,8 @@ class BlockGroupSampling():
         value = value / tf.cast(nbatches_, value.dtype)
       s = tf.as_string(value)
       s = tf.string_join([item, s], ':')
+      if item in key_items:
+        s = tf.Print(s, [s], message=' scale {} '.format(scale))
       return s
 
     def set_str(scale, item):
@@ -482,6 +485,7 @@ class BlockGroupSampling():
       value = value[scale]
       s = tf.as_string(value)
       s = tf.string_join([item, s], ':')
+      #s = tf.Print(s, [s], message=' scale {} '.format(scale))
       return s
 
     def item_str(scale, item):
@@ -502,7 +506,8 @@ class BlockGroupSampling():
     sg_str_ms = []
     for scale in range(self._num_scale):
       for item in the_items:
-        sg_str_ms.append(item_str(scale, item))
+        istr = item_str(scale, item)
+        sg_str_ms.append(istr)
 
     sg_str = tf.string_join(sg_str_ms, '\n')
     frame_str = tf.as_string(self.samplings[0]['nbatches_'])
@@ -898,10 +903,12 @@ class BlockGroupSampling():
     check_gbn1 = tf.assert_greater_equal(self._nblock_buf_maxs[self.scale], nblock_max,
                             message="scale {} _nblock_buf_maxs:{} < {}".format\
                             (self.scale, self._nblock_buf_maxs[self.scale], nblock_max))
+
+    self.nblocks_per_gb = nblocks_per_gb
+    self.nblock_max = nblock_max
+    self.nblock_min = tf.reduce_min(nblocks_per_gb)
     with tf.control_dependencies([check_gbn0, check_gbn1]):
-      self.nblocks_per_gb = nblocks_per_gb
-      self.nblock_max = nblock_max
-      self.nblock_min = tf.reduce_min(nblocks_per_gb)
+      gb_indices = tf.identity(gb_indices)
 
     #***************************************************************************
     # get self.nb_enough_p for each global block
@@ -941,7 +948,9 @@ class BlockGroupSampling():
       bid_ind_fixed += last_num
       last_num += self.nblocks_per_gb[i]
       bid_inds.append(bid_ind_fixed)
-    self.valid_bid_index_all_sampled = tf.concat(bid_inds, 0)
+
+    valid_bid_index_all_sampled = tf.concat(bid_inds, 0)
+    return valid_bid_index_all_sampled
 
 
   def get_bid_point_index(self, bid_pindex):
@@ -968,7 +977,8 @@ class BlockGroupSampling():
                                                 tf.unique_with_counts(block_id)
     # get blockid_index for blocks with fewer points than self._np_perb_min_include
     valid_bid_mask = tf.greater_equal(npoint_per_block, self._np_perb_min_includes[self.scale])
-    self.split_bids_and_get_nblocks(block_id_unique, valid_bid_mask)
+
+    self.valid_bid_index_all_sampled = self.split_bids_and_get_nblocks(block_id_unique, valid_bid_mask)
 
     #(2.3) Get point index per block
     #      Based on: all points belong to same block is together
@@ -1036,6 +1046,8 @@ class BlockGroupSampling():
   def get_grouped_pindex(self, bid_index__pindex_inb, point_index):
     #(3.1) gather grouped point index
     # gen point index: (real nblock, self._npoint_per_block, 1)
+    bid_index__pindex_inb_max = tf.reduce_max(bid_index__pindex_inb, 0)
+    #bid_index__pindex_inb = tf.Print(bid_index__pindex_inb, [bid_index__pindex_inb_max], message="ind")
     grouped_pindex0 = tf.sparse_to_dense(bid_index__pindex_inb,
         (self._nblock_buf_maxs[self.scale] * self.bsgbn,
                            self._npoint_per_blocks[self.scale]),
@@ -1211,24 +1223,22 @@ def main_input_pipeline(DATASET_NAME, filenames, sg_settings, dset_metas, batch_
         points, grouped_pindex, vox_index, grouped_xyzs, empty_masks, bot_cen_tops, others = \
           sess.run([points_next, grouped_pindex_next, vox_index_next, grouped_xyz_next, empty_mask_next, bot_cen_top_next, others_next] )
         t_batch = time.time()-t0
-        print("t_batch:{} t_frame:{}".format( t_batch*1000, t_batch/batch_size*1000 ))
-
-        #bsg.show_samplings_np(samplings)
         xyzs = points[:,:,0:3]
-        print('group OK %d'%(i))
+        print("\n\n{} t_batch:{} t_frame:{}\n".format(i, t_batch*1000, t_batch/batch_size*1000))
 
-        for frame in range(batch_size):
-          for s in range(num_scale):
-            others[s]['empty_mask'] = empty_masks[s]
-            if bsg._gen_ply:
-              valid_flag = ''
-              if not bsg._shuffle:
-                valid_flag += '_NoShuffle'
-              bids_sampling = others[s]['bids_sampling_%d'%(s)][frame,0]
-              gen_plys(DATASET_NAME, frame, points[frame], grouped_xyzs[s][frame], bot_cen_tops[s][frame],\
-                        bids_sampling, valid_flag, 'S%d'%(s))
 
-    return xyzs, grouped_xyzs, others, bsg._shuffle
+        #for frame in range(batch_size):
+        #  for s in range(num_scale):
+        #    others[s]['empty_mask'] = empty_masks[s]
+        #    if bsg._gen_ply:
+        #      valid_flag = ''
+        #      if not bsg._shuffle:
+        #        valid_flag += '_NoShuffle'
+        #      bids_sampling = others[s]['bids_sampling_%d'%(s)][frame,0]
+        #      gen_plys(DATASET_NAME, frame, points[frame], grouped_xyzs[s][frame], bot_cen_tops[s][frame],\
+        #                bids_sampling, valid_flag, 'S%d'%(s))
+
+  return xyzs, grouped_xyzs, others, bsg._shuffle
 
 
 def main_gpu(DATASET_NAME, filenames, sg_settings, dset_metas, batch_size, cycles=1, num_epoch=10):
@@ -1430,7 +1440,7 @@ def main(filenames, dset_metas):
   from utils.sg_settings import get_sg_settings
   sg_settings = get_sg_settings('A')
 
-  batch_size = 32
+  batch_size = 1
   if len(sys.argv) > 1:
     main_flag = sys.argv[1]
     if len(sys.argv) > 2:

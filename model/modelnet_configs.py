@@ -18,7 +18,7 @@ DATA_DIR = os.path.join(ROOT_DIR, 'data')
 
 DEFAULTS = {}
 dataset_name = 'MODELNET40'
-dataset_name = 'MATTERPORT'
+#dataset_name = 'MATTERPORT'
 DEFAULTS['data_path'] = os.path.join(DATA_DIR, \
                           '{}_H5TF/raw_tfrecord'.format(dataset_name))
 DEFAULTS['precpu_sg'] = True
