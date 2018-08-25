@@ -167,11 +167,23 @@ class RawH5_To_Tfrecord():
     self.sampling_rates = []
 
   def __call__(self, rawh5fns):
+    block_split_dir = os.path.join(self.tfrecord_path, 'block_split_summary')
+    if not os.path.exists(block_split_dir):
+      os.makedirs(block_split_dir)
+
     self.fn = len(rawh5fns)
     #rawh5fns = rawh5fns[5577:]
     for fi, rawh5fn in enumerate(rawh5fns):
       self.fi = fi
-      self.transfer_onefile(rawh5fn)
+      block_num, valid_block_num = self.transfer_onefile(rawh5fn)
+
+      scene_name = os.path.basename(os.path.dirname(rawh5fn))
+      scene_bs_fn = os.path.join(block_split_dir, scene_name+'.txt')
+      basefn = os.path.splitext(os.path.basename(rawh5fn))[0]
+      with open(scene_bs_fn, 'a') as bsf:
+        bnstr = '{} \tblock_num:{} \tvalid block num:{}\n'.format(basefn, block_num, valid_block_num)
+        bsf.write(bnstr)
+        bsf.flush()
     print('All file are converted to tfreord')
 
   def sort_eles(self, h5f):
@@ -240,7 +252,7 @@ class RawH5_To_Tfrecord():
     block_num = bot.shape[0]
     if block_num == 1:
       #print('xyz scope:{} block_num:{}'.format(xyz_scope, block_num))
-      return [dls]
+      return [dls], 1, 1
 
     if block_num>1:
       for i in range(block_num):
@@ -281,7 +293,7 @@ class RawH5_To_Tfrecord():
     valid_block_num = len(dls_splited)
     print('xyz scope:{} \tblock_num:{} \tvalid block num:{}'.format(xyz_scope,\
                                           block_num, valid_block_num))
-    return dls_splited
+    return dls_splited, block_num, valid_block_num
 
   def sampling(self, dls):
     if self.num_point == None:
@@ -341,8 +353,7 @@ class RawH5_To_Tfrecord():
       if self.fi == 0:
         self.record_metas(h5f, dls)
 
-      dls_splited = self.split_pcl(dls)
-      block_num = len(dls_splited)
+      dls_splited, block_num, valid_block_num = self.split_pcl(dls)
       for bk, ds in enumerate(dls_splited):
         ds = self.sampling(ds)
 
@@ -368,7 +379,7 @@ class RawH5_To_Tfrecord():
         if self.fi %50 ==0:
           print('{}/{} write tfrecord OK: {}'.format(self.fi, self.fn, tfrecord_fn))
 
-
+    return block_num, valid_block_num
 
 def write_dataset_summary(dataset_summary, data_dir):
   import pickle, shutil
@@ -573,17 +584,20 @@ def gen_ply(dataset_name, tf_path):
   scene = 'gxdoqLR6rwA_region2'
   scene = 'gTV8FGcVJC9_region7'
   scene = 'Vvot9Ly1tCj_region24'
+  scene = 'Pm6F8kyY3z2_region3'
+  scene = '17DRP5sb8fy_region0'
+  scene = 'ac26ZMwG7aT_region9'
   name_base = 'data/{}*.tfrecord'.format(scene)
   fn_glob = os.path.join(tf_path, name_base)
   filenames = glob.glob(fn_glob)
   assert len(filenames) > 0, fn_glob
   for fn in filenames:
-    gen_ply_onef(dataset_name, tf_path, fn)
+    gen_ply_onef(dataset_name, tf_path, fn, scene)
 
-def gen_ply_onef(dataset_name, tf_path, filename):
+def gen_ply_onef(dataset_name, tf_path, filename, scene):
   from utils.ply_util import create_ply_dset
 
-  ply_dir = os.path.join(tf_path, 'ply')
+  ply_dir = os.path.join(tf_path, 'plys/ply_'+scene)
   if not os.path.exists(ply_dir):
     os.makedirs(ply_dir)
 
