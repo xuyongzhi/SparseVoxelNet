@@ -163,11 +163,20 @@ class RawH5_To_Tfrecord():
       os.makedirs(self.data_path)
     self.num_point = num_point
     self.block_size = block_size
+    if type(block_size)!=type(None):
+      self.block_stride = block_size * 0.5
     self.min_pn_inblock = self.num_point * 0.1
     self.sampling_rates = []
 
   def __call__(self, rawh5fns):
     block_split_dir = os.path.join(self.tfrecord_path, 'block_split_summary')
+    bsfn0 = os.path.join(self.tfrecord_path, 'block_split_settings.txt')
+    if type(self.block_size)!=type(None):
+      with open(bsfn0, 'w') as bsf:
+        bsf.write('num_point:{}\nblock_size:{}\nblock_stride:{}\nmin_pn_inblock:{}'.format(\
+                      self.num_point, self.block_size,\
+                      self.block_stride, self.min_pn_inblock))
+
     if not os.path.exists(block_split_dir):
       os.makedirs(block_split_dir)
 
@@ -237,7 +246,7 @@ class RawH5_To_Tfrecord():
     #print(xyz_scope)
 
     block_size = self.block_size
-    block_stride = block_size * 0.5
+    block_stride = self.block_stride
     block_dims0 =  (xyz_scope - block_size) / block_stride + 1
     block_dims0 = np.maximum(block_dims0, 1)
     block_dims = np.ceil(block_dims0).astype(np.int32)
@@ -653,10 +662,10 @@ if __name__ == '__main__':
   rawh5_glob = os.path.join(dset_path, 'rawh5/*/*.rh5')
   tfrecord_path = os.path.join(dset_path, 'raw_tfrecord')
 
-  #main_write(dataset_name, rawh5_glob, tfrecord_path, num_point[dataset_name], block_size[dataset_name])
+  main_write(dataset_name, rawh5_glob, tfrecord_path, num_point[dataset_name], block_size[dataset_name])
   #merge_tfrecord(dataset_name, tfrecord_path)
 
-  gen_ply(dataset_name, tfrecord_path)
+  #gen_ply(dataset_name, tfrecord_path)
 
   #get_dataset_summary(dataset_name, tfrecord_path)
   #get_dset_metas(tfrecord_path)

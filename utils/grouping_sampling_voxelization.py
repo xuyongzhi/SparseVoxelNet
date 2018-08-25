@@ -187,7 +187,7 @@ class BlockGroupSampling():
     xyz_min = tf.reduce_min(xyz, 1)
     xyz_mean = (xyz_max + xyz_min) / 2
     self.xyz_scope = xyz_max - xyz_min
-    #print('raw xyz scope:{}'.format(self.xyz_scope))
+    print('raw xyz scope:{}'.format(self.xyz_scope))
 
     # align to 0.1
     bot = 0.1 * tf.floor(xyz_min / 0.1)
@@ -476,8 +476,8 @@ class BlockGroupSampling():
         value = value / tf.cast(nbatches_, value.dtype)
       s = tf.as_string(value)
       s = tf.string_join([item, s], ':')
-      if item in key_items:
-        s = tf.Print(s, [s], message=' scale {} '.format(scale))
+      #if self.batch_size<3 and item in key_items:
+      #  s = tf.Print(s, [s], message=' scale {} '.format(scale))
       return s
 
     def set_str(scale, item):
@@ -1131,7 +1131,7 @@ class BlockGroupSampling():
       vox_size = self._vox_sizes[self.scale]
       vox_index_align_err = tf.abs(vox_index0 - vox_index1)
       max_vox_index_align_err = tf.reduce_max(vox_index_align_err)
-      check_align = tf.assert_less(max_vox_index_align_err, 1e-5,
+      check_align = tf.assert_less(max_vox_index_align_err, 5e-5,
                                   message="scale {} points are not aligned".format(self.scale))
 
       check_low_bound = tf.assert_greater_equal(vox_index, 0,
@@ -1438,9 +1438,9 @@ def gen_plys(DATASET_NAME, frame, points, grouped_bot_cen_top,
 
 def main(filenames, dset_metas):
   from utils.sg_settings import get_sg_settings
-  sg_settings = get_sg_settings('A')
+  sg_settings = get_sg_settings('8192_1024_64')
 
-  batch_size = 1
+  batch_size = 16
   if len(sys.argv) > 1:
     main_flag = sys.argv[1]
     if len(sys.argv) > 2:
