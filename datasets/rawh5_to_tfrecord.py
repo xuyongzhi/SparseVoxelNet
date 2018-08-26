@@ -9,10 +9,10 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT_DIR = os.path.dirname(BASE_DIR)
 
 Points_eles_order = ['xyz','nxnynz', 'color']
-Label_eles_order = ['label_category', 'label_instance', 'label_material']
+Label_eles_order = ['label_category', 'label_instance', 'label_material', 'label_raw_category']
 
 MAX_FLOAT_DRIFT = 1e-6
-DEBUG = True
+DEBUG = False
 
 def bytes_feature(values):
   """Returns a TF-Feature of bytes.
@@ -166,7 +166,7 @@ class RawH5_To_Tfrecord():
     self.block_size = block_size
     if type(block_size)!=type(None):
       self.block_stride = block_size * 0.5
-    self.min_pn_inblock = self.num_point * 0.1
+    self.min_pn_inblock = min(self.num_point * 0.1, 2000)
     self.sampling_rates = []
 
   def __call__(self, rawh5fns):
@@ -181,19 +181,24 @@ class RawH5_To_Tfrecord():
     if not os.path.exists(block_split_dir):
       os.makedirs(block_split_dir)
 
+
     self.fn = len(rawh5fns)
     #rawh5fns = rawh5fns[5577:]
     for fi, rawh5fn in enumerate(rawh5fns):
       self.fi = fi
-      block_num, valid_block_num = self.transfer_onefile(rawh5fn)
+      block_num, valid_block_num, num_points_splited = self.transfer_onefile(rawh5fn)
 
       scene_name = os.path.basename(os.path.dirname(rawh5fn))
       scene_bs_fn = os.path.join(block_split_dir, scene_name+'.txt')
+      valid_num_points_splited_fn = os.path.join(block_split_dir, scene_name+'_valid_np.txt')
       basefn = os.path.splitext(os.path.basename(rawh5fn))[0]
       with open(scene_bs_fn, 'a') as bsf:
         bnstr = '{} \tblock_num:{} \tvalid block num:{}\n'.format(basefn, block_num, valid_block_num)
         bsf.write(bnstr)
         bsf.flush()
+      with open(valid_num_points_splited_fn, 'a') as vnpsf:
+        vnstr = '\n'+'\n'.join(['{}_{}: {}'.format(basefn, i, num_points_splited[i]) for i in range(valid_block_num)])
+        vnpsf.write(vnstr)
     print('All file are converted to tfreord')
 
   def sort_eles(self, h5f):
@@ -238,7 +243,7 @@ class RawH5_To_Tfrecord():
 
   def split_pcl(self, dls):
     if type(self.block_size) == type(None):
-      return dls
+      return [dls], 1, [dls['points'].shape[0]]
 
     xyz = dls['points'][:, self.ele_idxs['points']['xyz']]
     xyz_min = np.min(xyz, 0)
@@ -262,7 +267,7 @@ class RawH5_To_Tfrecord():
     block_num = bot.shape[0]
     if block_num == 1:
       #print('xyz scope:{} block_num:{}'.format(xyz_scope, block_num))
-      return [dls], 1, 1
+      return [dls], 1, [dls['points'].shape[0]]
 
     if block_num>1:
       for i in range(block_num):
@@ -279,6 +284,7 @@ class RawH5_To_Tfrecord():
     top += xyz_min
 
     dls_splited = []
+    num_points_splited = []
     for i in range(block_num):
       mask0 = xyz >= bot[i]
       mask1 = xyz < top[i]
@@ -291,6 +297,7 @@ class RawH5_To_Tfrecord():
         #print('num point {} < {}, block {}/{}'.format(num_point_i,\
         #                                self.num_point * 0.1, i, block_num))
         continue
+      num_points_splited.append(num_point_i)
       dls_i = {}
       dls_i['points'] = np.take(dls['points'], indices, axis=0)
       dls_i['labels'] = np.take(dls['labels'], indices, axis=0)
@@ -303,7 +310,7 @@ class RawH5_To_Tfrecord():
     valid_block_num = len(dls_splited)
     print('xyz scope:{} \tblock_num:{} \tvalid block num:{}'.format(xyz_scope,\
                                           block_num, valid_block_num))
-    return dls_splited, block_num, valid_block_num
+    return dls_splited,  valid_block_num, num_points_splited
 
   def sampling(self, dls):
     if self.num_point == None:
@@ -327,8 +334,10 @@ class RawH5_To_Tfrecord():
     base_name1 = os.path.basename(os.path.dirname(rawh5fn))
     if self.dataset_name == "MATTERPORT":
       base_name = base_name1 + '_' + base_name
-    with h5py.File(rawh5fn, 'r') as h5f:
+    dataset_meta = DatasetsMeta(self.dataset_name)
 
+    with h5py.File(rawh5fn, 'r') as h5f:
+      print('starting {} th file: {}'.format(self.fi, rawh5fn))
       if self.fi == 0:
         self.sort_eles(h5f)
       #*************************************************************************
@@ -345,11 +354,6 @@ class RawH5_To_Tfrecord():
         if len(dls[item]) >  0:
           dls[item] = np.concatenate(dls[item], -1)
 
-      if DEBUG:
-        max_label =  np.max(dls['labels'],0)
-        if not max_label[0] < 41:
-          print(max_label)
-          import pdb; pdb.set_trace()  # XXX BREAKPOINT
       #*************************************************************************
       # get label for MODELNET40
       if self.dataset_name == 'MODELNET40':
@@ -358,7 +362,6 @@ class RawH5_To_Tfrecord():
           category = tmp[0]
         elif len(tmp) == 3:
           category = '_'.join(tmp[0:2])
-        dataset_meta = DatasetsMeta(self.dataset_name)
         object_label = dataset_meta.class2label[category]
         dls['labels'] = np.array([object_label])
 
@@ -369,15 +372,13 @@ class RawH5_To_Tfrecord():
       if self.fi == 0:
         self.record_metas(h5f, dls)
 
-      dls_splited, block_num, valid_block_num = self.split_pcl(dls)
+      max_category =  np.max(dls['labels'][:,self.ele_idxs['labels']['label_category']])
+      assert max_category < dataset_meta.num_classes, "max_category > {}".format(dataset_meta.num_classes)
+
+      dls_splited, valid_block_num, num_points_splited = self.split_pcl(dls)
+      block_num = len(dls_splited)
       for bk, ds0 in enumerate(dls_splited):
         ds = self.sampling(ds0)
-
-        if DEBUG:
-          max_label =  np.max(ds['labels'],0)
-          if not max_label[0] < 41:
-            print(max_label)
-            import pdb; pdb.set_trace()  # XXX BREAKPOINT
 
         datas_bin = ds['points'].tobytes()
         datas_shape_bin = np.array(ds['points'].shape, np.int32).tobytes()
@@ -401,7 +402,7 @@ class RawH5_To_Tfrecord():
         if self.fi %50 ==0:
           print('{}/{} write tfrecord OK: {}'.format(self.fi, self.fn, tfrecord_fn))
 
-    return block_num, valid_block_num
+    return block_num, valid_block_num, num_points_splited
 
 def write_dataset_summary(dataset_summary, data_dir):
   import pickle, shutil
@@ -603,11 +604,11 @@ def main_merge_tfrecord(dataset_name, tfrecord_path):
     merge_tfrecord(grouped_fnls[k], merged_fnls[k])
 
 def main_gen_ply(dataset_name, tf_path):
-  scene = 'gxdoqLR6rwA_region2'
-  scene = 'gTV8FGcVJC9_region7'
+  #scene = 'gxdoqLR6rwA_region2'  # large ground
+  #scene = 'gTV8FGcVJC9_region7'
   scene = 'Vvot9Ly1tCj_region24'
-  scene = 'Pm6F8kyY3z2_region3'
-  scene = '17DRP5sb8fy_region0'
+  #scene = 'Pm6F8kyY3z2_region3'
+  #scene = '17DRP5sb8fy_region0'
   #scene = 'ac26ZMwG7aT_region9'
   name_base = 'data/{}*.tfrecord'.format(scene)
   fn_glob = os.path.join(tf_path, name_base)
@@ -672,23 +673,24 @@ def gen_ply_onef(dataset_name, tf_path, filename, scene):
       ply_fn = os.path.join(ply_dir, base_name+'.ply')
       create_ply_dset( dataset_name, all_points,  ply_fn)
       #
-      ply_fn = os.path.join(ply_dir, base_name+'_labeled.ply')
+      ply_fn = os.path.join(ply_dir+'_labeled', base_name+'.ply')
       create_ply_dset( dataset_name, all_points[...,0:3],  ply_fn, all_label_categories)
 
 if __name__ == '__main__':
   dataset_name = 'MODELNET40'
   dataset_name = 'MATTERPORT'
   dset_path = '/home/z/Research/SparseVoxelNet/data/{}_H5TF'.format(dataset_name)
-  num_point = {'MODELNET40':None, 'MATTERPORT':30000}
-  block_size = {'MODELNET40':None, 'MATTERPORT':np.array([6,6,5]) }
+  num_point = {'MODELNET40':None, 'MATTERPORT':60000}
+  block_size = {'MODELNET40':None, 'MATTERPORT':np.array([6.4,6.4,6.4]) }
 
   rawh5_glob = os.path.join(dset_path, 'rawh5/*/*.rh5')
+  #rawh5_glob = os.path.join(dset_path, 'rawh5/7y3sRwLe3Va/*.rh5')
   tfrecord_path = os.path.join(dset_path, 'raw_tfrecord')
 
   #main_write(dataset_name, rawh5_glob, tfrecord_path, num_point[dataset_name], block_size[dataset_name])
-  #main_merge_tfrecord(dataset_name, tfrecord_path)
+  main_merge_tfrecord(dataset_name, tfrecord_path)
 
-  main_gen_ply(dataset_name, tfrecord_path)
+  #main_gen_ply(dataset_name, tfrecord_path)
 
   #main_get_dataset_summary(dataset_name, tfrecord_path)
   #get_dset_metas(tfrecord_path)

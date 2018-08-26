@@ -30,13 +30,22 @@ def zip_extract(ply_item_name,zipf,house_dir_extracted):
     '''
     #zipfile_name = '%s/%s/%s.%s'%(house_name,groupe_name,file_name,file_format)
     file_path = house_dir_extracted + '/' + ply_item_name
-    if not os.path.exists(file_path):
+    noneed_extract = False
+    if os.path.exists(file_path):
+      try:
+        with open(file_path, 'r') as ply_fo:
+          plydata = PlyData.read(ply_fo)
+        noneed_extract = True
+      except:
+        print('\nfile extracted but not intact: %s\n'%(file_path))
+
+    if not noneed_extract:
         print('extracting %s...'%(file_path))
         file_path_extracted  = zipf.extract(ply_item_name,house_dir_extracted)
         print('file extracting finished: %s'%(file_path_extracted) )
         assert file_path == file_path_extracted
     else:
-        print('file file already extracted: %s'%(file_path))
+        print('file already extracted: %s'%(file_path))
     return file_path
 
 def parse_ply_file(ply_fo):
@@ -270,7 +279,7 @@ class Matterport3D_Prepare():
 
     def GenObj_RawH5f(self,house_name):
         house_h5f_dir = self.scans_h5f_dir+'/rawh5'+'/%s'%(house_name)
-        file_name = house_h5f_dir+'/region3.rh5'
+        file_name = house_h5f_dir+'/region0.rh5'
         xyz_cut_rate= [0,0,0.9]
         xyz_cut_rate= [0,0,0]
         with h5py.File(file_name,'r') as h5f:
@@ -297,14 +306,29 @@ class Matterport3D_Prepare():
 
 
 def main_parse_house():
-    house_names_ls = ['17DRP5sb8fy']
-    #house_names_ls = ['8194nk5LbLH']
+    house_names_ls = os.listdir('/DS/Matterport3D/Matterport3D_WHOLE/v1/scans')
+    #house_names_ls = ['s8pcmisQ38h', 'Vt2qJdWjCF2', '8WUmhLawc2A', 'dhjEzFoUFzH',\
+    #                  'b8cTxDM8gDG', 'ARNzJeq3xxb',  'EDJbREhghzL',\
+    #                  'VLzqgDo317F', 'r47D5H71a5s', 'TbHJrupSAjP', 'gxdoqLR6rwA',\
+    #                  'jtcxE69GiFV', 'cV4RVeZvu5T', 'VVfe2KiqLaN', '7y3sRwLe3Va',\
+    #                  'ac26ZMwG7aT', '5ZKStnWn8Zo', 'S9hNv5qa7GM', 'Vvot9Ly1tCj',\
+    #                  'sKLMLpTHeUy', 'VFuaQ6m2Qom', 'uNb9QFRL6hY', 'q9vSo1VnCiC',\
+    #                  'e9zR4mvMWw7', '8194nk5LbLH', '759xd9YjKW5', '2t7WUuJeko7',\
+    #                  '1pXnuDYAj8r', '82sE5b5pLXE', 'PX4nDJXEHrG', 'oLBMNvg9in8', 'ULsKaCPVFJR', 'Uxmj2M2itWa', 'mJXqzFtmKg4', 'JF19kD82Mey', 'vyrNrziPKCB', 'aayBHfsNo7d', 'D7G3Y4RVNrH', 'gYvKGZ5eRqb',\
+    #                  'jh4fc5c5qoQ', 'pa4otMbVnkk', '17DRP5sb8fy', 'qoiz87JEwZ2', 'ur6pFq6Qu1A', 'pLe4wQe7qrG', 'fzynW3qQPVF', '5q7pvUzZiYa', 'E9uDoFAP3SH', 'p5wJjkQkbXX', '1LXtFkjw3qL', 'rPc6DW4iMge',\
+    #                  'UwV83HsGsw3', 'V2XKFyX4ASd', 'r1Q1Z4BcV1o', 'gTV8FGcVJC9', 'RPmz2sHmrrY', 'kEZ7cmS4wCh', 'EU6Fwq7SyZv', '29hnd4uzFmX', 'rqfALeAoiTq', 'PuKPg4mmafe', 'JmbYfDe2QKZ', 'SN83YJsR3w2',\
+    #                  'B6ByNegPMKs', 'i5noydFURQK', '2azQ1b91cZZ', 'GdvgFV5R1Z5', 'QUCTc6BB5sX', 'gZ6f7yhEvPG', 'JeFG25nYj2p', '2n8kARJN3HM', 'Pm6F8kyY3z2', 'pRbA3pwrgk9', 'sT4fr6TAbpF', '5LpN3gDmAk7',\
+    #                  'HxpKQynjfin', 'D7N2EKCX4Sj']
+    house_names_ls.sort()
+    #house_names_ls = ['17DRP5sb8fy']
+    #house_names_ls = ['7y3sRwLe3Va']
     MultiProcess = 0
     matterport3d_prepare = Matterport3D_Prepare()
     matterport3d_prepare.Parse_houses_regions( house_names_ls,  MultiProcess)
 
 def main_GenObj_RawH5f():
     house_name = '17DRP5sb8fy'
+    #house_name = 'EDJbREhghzL'
     matterport3d_prepare = Matterport3D_Prepare()
     matterport3d_prepare.GenObj_RawH5f(house_name)
 
