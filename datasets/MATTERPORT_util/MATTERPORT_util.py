@@ -82,7 +82,7 @@ def get_cat40_from_rawcat(raw_category_indexs):
     for j in range(num_point):
         raw_category_index = int(raw_category_indexs[j])
 
-        if raw_category_index==0:
+        if raw_category_index<=0:
             mpcat40_j = 'void'
             mpcat40_idx_j = 0
         else:

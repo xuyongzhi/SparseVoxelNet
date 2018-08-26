@@ -95,12 +95,17 @@ def parse_ply_file(ply_fo):
 
     vertex_semantic,vertex_indices_multi_semantic,face_indices_multi_semantic = get_vertex_label_from_face(face_vertex_indices,face_semantic,num_vertex)
 
-    # get vertex and face  with category_id==-1 or ==0
-    vertex_nonpos_indices = np.where(vertex_semantic[:, Category_Index]<1)[0]
-    face_nonpos_indices = np.where(face_semantic[:,Category_Index]<1)[0]
+    IsDeleteNonPosId = False
+    if IsDeleteNonPosId:
+      # get vertex and face  with category_id==-1 or ==0
+      vertex_nonpos_indices = np.where(vertex_semantic[:, Category_Index]<1)[0]
+      face_nonpos_indices = np.where(face_semantic[:,Category_Index]<1)[0]
 
-    vertex_del_indices = np.concatenate([vertex_indices_multi_semantic, vertex_nonpos_indices], 0)
-    face_del_indices = np.concatenate([face_indices_multi_semantic, face_nonpos_indices], 0)
+      vertex_del_indices = np.concatenate([vertex_indices_multi_semantic, vertex_nonpos_indices], 0)
+      face_del_indices = np.concatenate([face_indices_multi_semantic, face_nonpos_indices], 0)
+    else:
+      vertex_del_indices = vertex_indices_multi_semantic
+      face_del_indices = face_indices_multi_semantic
 
     # Del VexMultiSem
     vertex_xyz = np.delete(vertex_xyz, vertex_del_indices, axis=0)
@@ -618,7 +623,7 @@ class Matterport3D_Prepare():
 
     def GenObj_RawH5f(self,house_name):
         house_h5f_dir = self.scans_h5f_dir+'/rawh5'+'/%s'%(house_name)
-        file_name = house_h5f_dir+'/region9.rh5'
+        file_name = house_h5f_dir+'/region3.rh5'
         xyz_cut_rate= [0,0,0.9]
         xyz_cut_rate= [0,0,0]
         with h5py.File(file_name,'r') as h5f:
@@ -748,12 +753,9 @@ def show_summary():
     matterport3d_prepare = Matterport3D_Prepare()
     matterport3d_prepare.ShowSummary()
 
-def show_all_label_colors():
-    Normed_H5f.show_all_colors('MATTERPORT')
 
 if __name__ == '__main__':
-  #main_parse_house()
-  main_GenObj_RawH5f()
+  main_parse_house()
+  #main_GenObj_RawH5f()
   #show_summary()
-  #show_all_label_colors()
 

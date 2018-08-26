@@ -3,6 +3,7 @@
 from __future__ import print_function
 import os
 import sys, glob
+import numpy as np
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT_DIR = os.path.dirname(BASE_DIR)
 
@@ -110,4 +111,30 @@ class DatasetsMeta():
         return test_fns
 
 
+
+
+def show_all_colors( datasource_name ):
+    from PIL import Image
+    dset_meta = DatasetsMeta(datasource_name)
+    label2color = dset_meta.label2color
+    label2class = dset_meta.label2class
+    path = os.path.join( BASE_DIR,'label_colors_'+datasource_name )
+    if not os.path.exists(path):
+        os.makedirs(path)
+    for label,color in label2color.iteritems():
+        if label < len( label2class ):
+            cls = label2class[label]
+        else:
+            cls = 'empty'
+        data = np.zeros((512,512,3),dtype=np.uint8)
+        color_ = np.array(color,dtype=np.uint8)
+        data += color_
+        img = Image.fromarray(data,'RGB')
+        fn = path+'/'+str(label)+'_'+cls+'.png'
+        img.save(fn)
+        print(fn)
+        img.show()
+
+if __name__ == '__main__':
+  show_all_colors('MATTERPORT')
 
