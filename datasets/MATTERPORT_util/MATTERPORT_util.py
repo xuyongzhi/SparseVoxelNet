@@ -76,7 +76,7 @@ def get_cat40_from_rawcat(raw_category_indexs):
     raw_category_indexs.shape=[num_point]
     '''
     assert raw_category_indexs.ndim==1
-    mpcat40_idxs = np.zeros(shape=raw_category_indexs.shape)
+    mpcat40_idxs = np.zeros(shape=raw_category_indexs.shape, dtype=np.int32)
     num_point = raw_category_indexs.shape[0]
     mpcat40s =['']*num_point
     for j in range(num_point):

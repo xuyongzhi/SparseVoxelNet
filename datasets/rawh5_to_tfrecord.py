@@ -12,6 +12,7 @@ Points_eles_order = ['xyz','nxnynz', 'color']
 Label_eles_order = ['label_category', 'label_instance', 'label_material']
 
 MAX_FLOAT_DRIFT = 1e-6
+DEBUG = True
 
 def bytes_feature(values):
   """Returns a TF-Feature of bytes.
@@ -343,6 +344,12 @@ class RawH5_To_Tfrecord():
           dls[item].append( data )
         if len(dls[item]) >  0:
           dls[item] = np.concatenate(dls[item], -1)
+
+      if DEBUG:
+        max_label =  np.max(dls['labels'],0)
+        if not max_label[0] < 41:
+          print(max_label)
+          import pdb; pdb.set_trace()  # XXX BREAKPOINT
       #*************************************************************************
       # get label for MODELNET40
       if self.dataset_name == 'MODELNET40':
@@ -363,8 +370,14 @@ class RawH5_To_Tfrecord():
         self.record_metas(h5f, dls)
 
       dls_splited, block_num, valid_block_num = self.split_pcl(dls)
-      for bk, ds in enumerate(dls_splited):
-        ds = self.sampling(ds)
+      for bk, ds0 in enumerate(dls_splited):
+        ds = self.sampling(ds0)
+
+        if DEBUG:
+          max_label =  np.max(ds['labels'],0)
+          if not max_label[0] < 41:
+            print(max_label)
+            import pdb; pdb.set_trace()  # XXX BREAKPOINT
 
         datas_bin = ds['points'].tobytes()
         datas_shape_bin = np.array(ds['points'].shape, np.int32).tobytes()
@@ -479,7 +492,7 @@ def get_dset_metas(tf_path):
     return dset_metas
 
 
-def get_dataset_summary(dataset_name, tf_path, loss_lw_gama=2):
+def main_get_dataset_summary(dataset_name, tf_path, loss_lw_gama=2):
   dset_metas = get_dset_metas(tf_path)
   dataset_summary = read_dataset_summary(tf_path)
   if dataset_summary['intact'] and False:
@@ -562,7 +575,7 @@ def split_fn_ls( tfrecordfn_ls, merged_n):
         group_name_ls.append( '%d_%d'%(i, end) )
     return merged_fnls, group_name_ls
 
-def merge_tfrecord(dataset_name, tfrecord_path):
+def main_merge_tfrecord(dataset_name, tfrecord_path):
   from dataset_utils import merge_tfrecord
   import random
 
@@ -589,13 +602,13 @@ def merge_tfrecord(dataset_name, tfrecord_path):
   for k in range(len(grouped_fnls)):
     merge_tfrecord(grouped_fnls[k], merged_fnls[k])
 
-def gen_ply(dataset_name, tf_path):
+def main_gen_ply(dataset_name, tf_path):
   scene = 'gxdoqLR6rwA_region2'
   scene = 'gTV8FGcVJC9_region7'
   scene = 'Vvot9Ly1tCj_region24'
   scene = 'Pm6F8kyY3z2_region3'
   scene = '17DRP5sb8fy_region0'
-  scene = 'ac26ZMwG7aT_region9'
+  #scene = 'ac26ZMwG7aT_region9'
   name_base = 'data/{}*.tfrecord'.format(scene)
   fn_glob = os.path.join(tf_path, name_base)
   filenames = glob.glob(fn_glob)
@@ -636,10 +649,15 @@ def gen_ply_onef(dataset_name, tf_path, filename, scene):
     with tf.Session() as sess:
       n = 0
       all_points = []
+      all_label_categories = []
       try:
         print('start reading all the dataset to get summary')
         while(True):
           features, labels = sess.run(get_next)
+
+          label_category = labels[:,:, data_infos['indices']['labels']['label_category'][0]]
+          all_label_categories.append(label_category)
+
           xyz = features['points'][:,:, data_infos['indices']['points']['xyz']]
           color = features['points'][:,:, data_infos['indices']['points']['color']]
           points = np.concatenate([xyz, color], -1)
@@ -648,9 +666,14 @@ def gen_ply_onef(dataset_name, tf_path, filename, scene):
       except:
         pass
       all_points = np.concatenate(all_points, 0)
+      all_label_categories = np.concatenate(all_label_categories, 0)
       base_name = os.path.splitext( os.path.basename(filename) )[0]
+
       ply_fn = os.path.join(ply_dir, base_name+'.ply')
       create_ply_dset( dataset_name, all_points,  ply_fn)
+      #
+      ply_fn = os.path.join(ply_dir, base_name+'_labeled.ply')
+      create_ply_dset( dataset_name, all_points[...,0:3],  ply_fn, all_label_categories)
 
 if __name__ == '__main__':
   dataset_name = 'MODELNET40'
@@ -662,11 +685,11 @@ if __name__ == '__main__':
   rawh5_glob = os.path.join(dset_path, 'rawh5/*/*.rh5')
   tfrecord_path = os.path.join(dset_path, 'raw_tfrecord')
 
-  main_write(dataset_name, rawh5_glob, tfrecord_path, num_point[dataset_name], block_size[dataset_name])
-  #merge_tfrecord(dataset_name, tfrecord_path)
+  #main_write(dataset_name, rawh5_glob, tfrecord_path, num_point[dataset_name], block_size[dataset_name])
+  #main_merge_tfrecord(dataset_name, tfrecord_path)
 
-  #gen_ply(dataset_name, tfrecord_path)
+  main_gen_ply(dataset_name, tfrecord_path)
 
-  #get_dataset_summary(dataset_name, tfrecord_path)
+  #main_get_dataset_summary(dataset_name, tfrecord_path)
   #get_dset_metas(tfrecord_path)
 

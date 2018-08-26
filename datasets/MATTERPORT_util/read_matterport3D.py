@@ -83,7 +83,6 @@ def parse_ply_file(ply_fo):
     print('\n')
     print(plydata.elements[1])
     #xyz = plydata['vertex']
-    import pdb; pdb.set_trace()  # XXX BREAKPOINT
     print(data_face[0:2])
 
 def parse_house_file(house_fo):
@@ -91,10 +90,15 @@ def parse_house_file(house_fo):
         if i<1:
             print(line)
         break
-
+def main_parse_ply_files():
+  fn = '/DS/Matterport3D/Matterport3D_Whole_extracted/v1/scans/17DRP5sb8fy/17DRP5sb8fy/region_segmentations/region0.ply'
+  parse_ply_file(fn)
 
 
 if __name__ == '__main__':
     house_name = '17DRP5sb8fy'
     #view_house(house_name)
-    read_house(house_name)
+    #read_house(house_name)
+    main_parse_ply_files()
+
+

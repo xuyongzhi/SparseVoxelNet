@@ -532,13 +532,16 @@ def GenObj_rh5():
     fn_ls = glob.glob( path+'/StGallenCathedral_station6_rgb_intensity-reduced.rh5' )
     fn_ls = glob.glob( path+'/untermaederbrunnen_station3_xyz_intensity_rgb.rh5' )
 
+    path = '/home/z/Research/SparseVoxelNet/data/MATTERPORT_H5TF/rawh5/17DRP5sb8fy'
+    fn_ls = glob.glob( path+'/region0.rh5' )
+
     for fn in fn_ls:
         if not Raw_H5f.check_rh5_intact( fn )[0]:
             print('rh5 not intact, abort gen obj')
             return
         with h5py.File( fn,'r' ) as h5f:
             rawh5f = Raw_H5f(h5f,fn)
-            rawh5f.generate_objfile(IsLabelColor=False,xyz_cut_rate=xyz_cut_rate)
+            rawh5f.generate_objfile(IsLabelColor=True,xyz_cut_rate=xyz_cut_rate)
 
 def GenObj_sh5():
     path = '/home/z/Research/dynamic_pointnet/data/Scannet__H5F/BasicData/stride_0d1_step_0d1'
@@ -573,7 +576,7 @@ def main( ):
     print('T = %f sec'%(time.time()-t0))
 
 if __name__ == '__main__':
-    main()
-    #GenObj_rh5()
+    #main()
+    GenObj_rh5()
     #GenObj_sph5()
     #GenObj_sh5()
