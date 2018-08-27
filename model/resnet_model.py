@@ -852,7 +852,7 @@ def pc_normalize(points):
 class Model(ResConvOps):
   """Base class for building the Resnet Model."""
 
-  def __init__(self, model_flag, resnet_size, block_style, num_classes,
+  def __init__(self, model_flag, resnet_size, block_style,
                block_params, resnet_version=DEFAULT_VERSION,
                data_format=None, dtype=DEFAULT_DTYPE, data_net_configs={}):
     """Creates a model for classifying an image.
@@ -918,7 +918,6 @@ class Model(ResConvOps):
     if dtype not in ALLOWED_TYPES:
       raise ValueError('dtype must be one of: {}'.format(ALLOWED_TYPES))
 
-    self.num_classes = num_classes
     self.block_params = block_params
     self.dtype = dtype
     self.pre_activation = resnet_version == 2
@@ -933,15 +932,17 @@ class Model(ResConvOps):
         self.num_neighbors = np.array( [ int(n) for n in num_neighbors ] )
     else:
         self.num_neighbors= None
-    for key in ['feed_data', 'sg_settings', 'dset_metas',
-                'xyz_elements']:
+    for key in ['feed_data', 'sg_settings', 'dset_shape_idxs',
+                'xyz_elements', 'datasets_meta']:
       setattr(self, key, self.data_net_configs[key])
-    self.global_numpoint = self.dset_metas['shape']['points'][0]
+
+    self.global_numpoint = self.dset_shape_idxs['shape']['points'][0]
     self.net_num_scale = len(self.data_net_configs['block_params']['filters'])
     self.sg_num_scale = len(self.data_net_configs['sg_settings']['width'])
     assert self.sg_num_scale == self.net_num_scale
+    self.num_classes = self.datasets_meta.num_classes
 
-    self.data_idxs = self.dset_metas['indices']
+    self.data_idxs = self.dset_shape_idxs['indices']
     for e in self.feed_data:
       assert e in self.data_idxs['points']
     IsAllInputs = len(self.data_idxs['points']) == len(self.feed_data)
@@ -1197,7 +1198,8 @@ class Model(ResConvOps):
         assert len(grouped_xyz_ms[s].shape) == 4
       if grouped_pindex_ms[s]!=[]:
         assert len(grouped_pindex_ms[s].shape) == 3
-      assert len(empty_mask_ms[s].shape) == 3
+      if empty_mask_ms[s]!=[]:
+        assert len(empty_mask_ms[s].shape) == 3
       if bot_cen_top_ms[s]!=[]:
         assert len(bot_cen_top_ms[s].shape) == 3
       if s==0:

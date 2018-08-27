@@ -530,7 +530,7 @@ def get_label_num_weights(dataset_summary, loss_lw_gama):
     plt.show()
 
 
-def get_dset_metas(tf_path):
+def get_dset_shape_idxs(tf_path):
   metas_fn = os.path.join(tf_path, 'metas.txt')
   with open(metas_fn, 'r') as mf:
     dset_metas = {}
@@ -566,8 +566,8 @@ def get_dset_metas(tf_path):
     return dset_metas
 
 
-def main_get_dataset_summary(dataset_name, tf_path, loss_lw_gama=2):
-  dset_metas = get_dset_metas(tf_path)
+def get_dataset_summary(dataset_name, tf_path, loss_lw_gama=2):
+  dset_metas = get_dset_shape_idxs(tf_path)
   dataset_summary = read_dataset_summary(tf_path)
   if dataset_summary['intact']:
     print('dataset_summary intact, no need to read')
@@ -702,7 +702,7 @@ def gen_ply_onef(dataset_name, tf_path, filename, scene):
   if not os.path.exists(ply_dir):
     os.makedirs(ply_dir)
 
-  data_infos = get_dset_metas(tf_path)
+  data_infos = get_dset_shape_idxs(tf_path)
   datasets_meta = DatasetsMeta(dataset_name)
   num_classes = datasets_meta.num_classes
 
@@ -774,6 +774,6 @@ if __name__ == '__main__':
 
   #main_gen_ply(dataset_name, tfrecord_path)
 
-  #main_get_dataset_summary(dataset_name, tfrecord_path)
-  #get_dset_metas(tfrecord_path)
+  #get_dataset_summary(dataset_name, tfrecord_path)
+  #get_dset_shape_idxs(tfrecord_path)
 

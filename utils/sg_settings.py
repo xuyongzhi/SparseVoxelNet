@@ -59,7 +59,17 @@ def get_sg_settings(sgflag):
   sg_settings['npoint_per_block'] = [32768, 48, 48]
   sg_settings['np_perb_min_include'] = [1000, 1, 1]
   sg_settings_all[sg_flag(sg_settings)] = sg_settings
-  #sg_settings_all['A'] = sg_settings
+
+  #-----------------------------------------------------------------------------
+  # matterport: 32768
+  sg_settings = {}
+  sg_settings['width'] =  [[6.5,6.5,6.5],]
+  sg_settings['stride'] = [[7.0,7,7],    ]
+  sg_settings['nblock'] =  [1,             ]
+  sg_settings['max_nblock'] =  [1,        ]
+  sg_settings['npoint_per_block'] = [32768, ]
+  sg_settings['np_perb_min_include'] = [1000, ]
+  sg_settings_all[sg_flag(sg_settings)] = sg_settings
 
   #-----------------------------------------------------------------------------
   sg_settings = {}
@@ -115,7 +125,7 @@ def get_sg_settings(sgflag):
   sg_settings['flag'] = 'SG_'+sg_flag(sg_settings)
   sg_settings['num_sg_scale'] = len(sg_settings['width'])
   sg_settings['gen_ply'] = False
-  sg_settings['record'] = True
+  sg_settings['record'] = False
 
 
   sg_settings['nblocks_per_point'] = np.ceil(sg_settings['width']/sg_settings['stride']-MAX_FLOAT_DRIFT).astype(np.int32)

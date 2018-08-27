@@ -17,13 +17,16 @@ ROOT_DIR = os.path.dirname(BASE_DIR)
 DATA_DIR = os.path.join(ROOT_DIR, 'data')
 
 DEFAULTS = {}
-dataset_name = 'MODELNET40'
-#dataset_name = 'MATTERPORT'
+#DATASET_NAME = 'MODELNET40'
+DATASET_NAME = 'MATTERPORT'
+DEFAULTS['dataset_name'] = DATASET_NAME
 DEFAULTS['data_path'] = os.path.join(DATA_DIR, \
-                          '{}_H5TF/raw_tfrecord'.format(dataset_name))
+                          '{}_H5TF/raw_tfrecord'.format(DATASET_NAME))
 DEFAULTS['precpu_sg'] = True
 #DEFAULTS['sg_flag'] = '2048_800_40'
 #DEFAULTS['sg_flag'] = '2048'
+DEFAULTS['sg_flag'] = '32768_1024_64'
+DEFAULTS['sg_flag'] = '32768'
 
 DEFAULTS['only_eval'] = 0
 DEFAULTS['eval_views'] = 1
@@ -152,7 +155,8 @@ def get_block_paras_inception(resnet_size, model_flag):
   return block_params
 
 
-def get_block_paras_bottle_regu(resnet_size, model_flag):
+
+def all_block_paras_bottle_regu_MODELNET():
   num_filters0s = {}
   block_sizes = {}
   block_kernels = {}
@@ -175,6 +179,34 @@ def get_block_paras_bottle_regu(resnet_size, model_flag):
   block_kernels[rs]  = [[],           [3,3],      [3,3,1]]
   block_strides[rs]  = [[],           [1,1],      [1,1,1]]
   block_paddings[rs] = [[],           ['v','v'],  ['v','v','s']]
+
+  return num_filters0s, block_sizes, block_filters, block_kernels, block_strides, block_paddings
+
+def all_block_paras_bottle_regu_MATTERPORT():
+  num_filters0s = {}
+  block_sizes = {}
+  block_kernels = {}
+  block_strides = {}
+  block_paddings = {}   # only used when strides == 1
+  block_filters = {}
+
+  rs = '1A20'
+  num_filters0s[rs] = 32
+  block_sizes[rs]    = [[1, 1,    1,  1,    1]  ]
+  block_filters[rs]  = [[64,128, 256, 512, 1024]]
+  block_kernels[rs]  = [[],        ]
+  block_strides[rs]  = [[],        ]
+  block_paddings[rs] = [[],        ]
+
+  return num_filters0s, block_sizes, block_filters, block_kernels, block_strides, block_paddings
+
+def get_block_paras_bottle_regu(resnet_size, model_flag):
+  if DATASET_NAME == 'MODELNET40':
+    all_block_paras = all_block_paras_bottle_regu_MODELNET
+  elif DATASET_NAME == 'MATTERPORT':
+    all_block_paras = all_block_paras_bottle_regu_MATTERPORT
+
+  num_filters0s, block_sizes, block_filters, block_kernels, block_strides, block_paddings = all_block_paras()
 
   if 'V' not in model_flag:
     for i in range(len(block_sizes[resnet_size])):

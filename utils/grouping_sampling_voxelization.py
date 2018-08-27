@@ -2,7 +2,7 @@
 import tensorflow as tf
 import glob, os, sys
 import numpy as np
-from datasets.rawh5_to_tfrecord import parse_pl_record, get_dset_metas
+from datasets.rawh5_to_tfrecord import parse_pl_record, get_dset_shape_idxs
 from datasets.all_datasets_meta.datasets_meta import DatasetsMeta
 from utils.ply_util import create_ply_dset, draw_blocks_by_bot_cen_top
 import time
@@ -1516,7 +1516,7 @@ if __name__ == '__main__':
   #random.shuffle(filenames)
   assert len(filenames) >= 1, data_path
 
-  dset_metas = get_dset_metas(raw_tfrecord_path)
+  dset_metas = get_dset_shape_idxs(raw_tfrecord_path)
 
   main(filenames, dset_metas)
   #get_data_summary_from_tfrecord(filenames, raw_tfrecord_path)

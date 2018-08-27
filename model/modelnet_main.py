@@ -33,13 +33,13 @@ import resnet_run_loop
 import os, glob, sys
 import numpy as np
 from modelnet_configs import get_block_paras, DEFAULTS
-from datasets.rawh5_to_tfrecord import parse_pl_record, get_dataset_summary, get_dset_metas
+from datasets.rawh5_to_tfrecord import parse_pl_record, get_dataset_summary, get_dset_shape_idxs
 from utils.sg_settings import get_sg_settings
 from datasets.all_datasets_meta.datasets_meta import DatasetsMeta
 
 _DATA_PARAS = None
-
-_NUM_CLASSES = 40
+DATASET_NAME = DEFAULTS['dataset_name']
+datasets_meta = DatasetsMeta(DATASET_NAME)
 
 _NUM_IMAGES = {
     'train': 9843,
@@ -49,15 +49,11 @@ _NUM_IMAGES = {
 _NUM_TRAIN_FILES = 10
 _SHUFFLE_BUFFER = 1000
 
-DATASET_NAME = 'MODELNET40'
-
-
 ###############################################################################
 # Data processing
 ###############################################################################
 def get_filenames_1(is_training, data_dir):
   """Return filenames for dataset."""
-  datasets_meta = DatasetsMeta(DATASET_NAME)
   data_dir = os.path.join(data_dir, 'data')
   return datasets_meta.get_train_test_file_list(data_dir, is_training)
 
@@ -119,12 +115,12 @@ def get_data_shapes_from_tfrecord(data_dir):
     with tf.Session() as sess:
       features, labels = sess.run(iterator)
 
-      dset_metas = _DATA_PARAS['dset_metas']
+      dset_shape_idxs = _DATA_PARAS['dset_shape_idxs']
       for key in features:
-        dset_metas[key] = features[key][0].shape
-        print('{}:{}'.format(key, dset_metas[key]))
-      dset_metas['labels'] = labels.shape
-      _DATA_PARAS['dset_metas'] = dset_metas
+        dset_shape_idxs[key] = features[key][0].shape
+        print('{}:{}'.format(key, dset_shape_idxs[key]))
+      dset_shape_idxs['labels'] = labels.shape
+      _DATA_PARAS['dset_shape_idxs'] = dset_shape_idxs
       points_raw = features['points'][0]
       print('\n\nget shape from tfrecord OK:\n %s\n\n'%(_DATA_PARAS))
       #print('points', features['points'][0,0:5,:])
@@ -133,7 +129,6 @@ def get_data_shapes_from_tfrecord(data_dir):
 def check_data():
   from ply_util import create_ply_dset
 
-  datasets_meta = DatasetsMeta(DATASET_NAME)
 
   IsCreatePly = False
   batch_size = 32
@@ -184,8 +179,9 @@ def check_data():
 
 def get_data_meta(data_dir):
   global _DATA_PARAS
-  dset_metas = get_dset_metas(data_dir)
-  _DATA_PARAS['dset_metas'] = dset_metas
+  dset_shape_idxs = get_dset_shape_idxs(data_dir)
+  _DATA_PARAS['dset_shape_idxs'] = dset_shape_idxs
+  _DATA_PARAS['datasets_meta'] = datasets_meta
 
 
 ###############################################################################
@@ -194,7 +190,7 @@ def get_data_meta(data_dir):
 class ModelnetModel(resnet_model.Model):
   """Model class with appropriate defaults for Modelnet data."""
 
-  def __init__(self, model_flag, resnet_size, data_format=None, num_classes=_NUM_CLASSES,
+  def __init__(self, model_flag, resnet_size, data_format=None,
                resnet_version=resnet_model.DEFAULT_VERSION,
                dtype=resnet_model.DEFAULT_DTYPE, data_net_configs={}):
     """These are the parameters that work for Modelnet data.
@@ -214,7 +210,6 @@ class ModelnetModel(resnet_model.Model):
         model_flag = model_flag,
         resnet_size=resnet_size,
         block_style=data_net_configs['block_style'],
-        num_classes=num_classes,
         block_params=data_net_configs['block_params'],
         resnet_version=resnet_version,
         data_format=data_format,
