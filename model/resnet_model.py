@@ -1262,9 +1262,10 @@ class Model(ResConvOps):
       inputs = tf.identity(inputs, 'final_reduce_mean')
 
       ##########################################################################
-      #if self.dataset_name == 'MODELNET40':
-      if self.dataset_name == 'MATTERPORT':
+      if self.dataset_name == 'MODELNET40':
         inputs = self.classifier(inputs, is_training)
+      if self.dataset_name == 'MATTERPORT':
+        raise NotImplementedError
       ##########################################################################
       if self.IsShowModel:
         self.log( tensor_info(inputs, 'dense', 'final1') +'\n\n' )

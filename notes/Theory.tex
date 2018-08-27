@@ -1,4 +1,5 @@
 \documentclass[,table,dvipsnames]{article}
+\usepackage{amsmath}
 \usepackage[usenames, dvipsnames]{color}
 \usepackage{graphicx}
 \usepackage{caption}
@@ -6,6 +7,7 @@
 \usepackage{hyperref}
 \usepackage{longtable}
 \usepackage{float}
+
 \usepackage{tikz}
 \usetikzlibrary{shapes.geometric, arrows}
 \tikzstyle{startstop} = [rectangle, rounded corners, minimum width=3cm, minimum height=1cm,text centered, draw=black, fill=red!10]
@@ -141,6 +143,95 @@ $$ 0.6=0.3*2 $$
 $$$$
 $$ 6.3=2.7+1.8*2 $$
 $$ 3.6=1.8*2 $$
+
+\subsection{Flatten}
+
+$$ 5 => gpidx => (2,4) $$
+\[ gpidx =  \begin{bmatrix}
+2 & 3 & 4 & -1 \\ 0 & 2 & 3 & -1
+\end{bmatrix} \]
+\subsubsection{A}
+\[  
+\begin{bmatrix}
+2 & 0 \\ 3 & 0 \\  4 & 0 \\ -1 & 0 \\ 0 & 1\\ 2 & 1\\ 3 & 1 \\ -1 & 1
+\end{bmatrix} 
+\begin{bmatrix}
+2 & 0 \\ 3 & 0 \\  4 & 0 \\ 0 & 1\\ 2 & 1\\ 3 & 1 
+\end{bmatrix} 
+\begin{bmatrix}
+0 & 1 \\ 2 & 0 \\  2 & 1 \\ 3 & 0\\ 3 & 1\\ 4 & 0 
+\end{bmatrix} 
+gp\ same\ with\ last
+\begin{bmatrix}
+0 \\ 0 \\ 1 \\ 0 \\ 1 \\ 0 
+\end{bmatrix} 
+cumsum
+\begin{bmatrix}
+0 \\ 0 \\ 1 \\ 1 \\ 2 \\ 2 
+\end{bmatrix} 
+\]
+
+\subsubsection{B}
+\[  
+\begin{bmatrix}
+0 \\ 2 \\ 2 \\ 3 \\3 \\ 4 
+\end{bmatrix}
+unique
+\begin{bmatrix}
+0 \\ 2 \\ 3 \\ 4 
+\end{bmatrix} 
+count
+\begin{bmatrix}
+1 \\ 2 \\ 2 \\ 1
+\end{bmatrix} 
+-1=
+\begin{bmatrix}
+0 \\ 1 \\ 1 \\ 0
+\end{bmatrix}
+cum\ sum
+\begin{bmatrix}
+0 \\ 1 \\ 2 \\ 2
+\end{bmatrix}
+cat\ 0\ at\ begining
+\begin{bmatrix}
+0\\ 0 \\ 1 \\ 2 \\ 2
+\end{bmatrix}
+\]
+
+\subsubsection{C}
+\[  unique\ idx
+\begin{bmatrix}
+0 \\ 1 \\ 1 \\ 2 \\ 2 \\3 
+\end{bmatrix}
+the\ cum\ sum
+\begin{bmatrix}
+0 \\ 0 \\ 0 \\ 1 \\ 1 \\2 
+\end{bmatrix}
+\]
+
+\[ 
+\begin{bmatrix}
+0 \\ 0 \\ 1 \\ 1 \\ 2 \\ 2 
+\end{bmatrix}
+-
+\begin{bmatrix}
+0 \\ 0 \\ 0 \\ 1 \\ 1 \\2 
+\end{bmatrix}
+=
+\begin{bmatrix}
+0 \\ 0 \\ 1 \\ 0 \\ 1 \\0
+\end{bmatrix}
+\]
+
+\subsubsection{D}
+\[ 
+\begin{bmatrix}
+	0 & 1 \\ 2 & 0 \\  2 & 1 \\ 3 & 0\\ 3 & 1\\ 4 & 0 
+\end{bmatrix} 
+\begin{bmatrix}
+0 \\ 0 \\ 1 \\ 0 \\ 1 \\0
+\end{bmatrix}
+\]
 
 \section{Sparse voxel 3DCNN }
 

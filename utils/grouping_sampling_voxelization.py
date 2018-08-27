@@ -228,11 +228,12 @@ class BlockGroupSampling():
     '''
     xyz: (batch_size, num_point, 3)
     '''
-    xyz_shape = xyz.shape
+    xyz_shape = [e.value for e in xyz.shape]
     assert len(xyz_shape) == 3
     assert xyz_shape[2] == 3
     #xyz = self.pre_sampling(xyz)
-    self.batch_size = xyz_shape[0].value
+    self.batch_size = xyz_shape[0]
+    self.raw_point_num = xyz_shape[1]
     self.update_global_bot_cen_top_for_global(xyz)
 
     num_scale = self._num_scale
@@ -351,6 +352,8 @@ class BlockGroupSampling():
 
     grouped_pindex, grouped_empty_mask = self.get_grouped_pindex(
                                       bid_index__pindex_inb, point_index)
+
+    flatten_index = self.get_flatten_index(grouped_pindex)
 
     grouped_bot_cen_top = self.gather_grouped(grouped_pindex, bot_cen_top)
 
@@ -1074,6 +1077,102 @@ class BlockGroupSampling():
     grouped_pindex = tf.reshape(grouped_pindex, aim_shape)
     grouped_empty_mask = tf.reshape(grouped_empty_mask, aim_shape)
     return grouped_pindex, grouped_empty_mask
+
+  def get_flatten_index(self, grouped_pindex):
+    '''
+    grouped_pindex: (batch_size, global_block_num, _nblock, npoint_per_block)
+    '''
+    if self.scale == 0:
+      return
+    gp_shape = [e.value for e in grouped_pindex.shape]
+    assert len(gp_shape) == 4
+    assert gp_shape[0] == self.batch_size
+    assert gp_shape[1] == self.global_block_num
+
+    if self.scale==1:
+      out_num_point = self._npoint_per_blocks[self.scale-1]
+    else:
+      out_num_point = self._nblocks[self.scale-1]
+    self._max_flatten_num = 3
+    nblocks_perp_buf = np.prod(self._nblocks_per_point[self.scale])
+    assert nblocks_perp_buf >= self._max_flatten_num
+    flatten_idx_shape_buf = [self.batch_size, self.global_block_num, out_num_point,\
+                         nblocks_perp_buf]
+
+    ############################################################################
+    # The aim is to get the block index for each grouped point.
+
+    tmp = tf.reshape(tf.range(gp_shape[2]), [1,1,-1,1,1])
+    tmp = tf.tile(tmp, [self.batch_size, self.global_block_num,1, gp_shape[3], 1])
+    grouped_pindex = tf.expand_dims(grouped_pindex, -1)
+    gp_bi = tf.concat([grouped_pindex, tmp], -1)
+    gp_bi = tf.reshape(gp_bi, [self.batch_size, self.global_block_num, -1, 2])
+
+    ## remove duplicated: gpidx==-1
+    #valid_mask = tf.greater(gp_bi[...,0], 0)
+    #valid_indices = tf.where(valid_mask)[0]
+    #import pdb; pdb.set_trace()  # XXX BREAKPOINT
+    #gp_bi = tf.gather(gp_bi, valid_indices, axis=0)
+    #import pdb; pdb.set_trace()  # XXX BREAKPOINT
+
+    gp_bi_sorted = tf.contrib.framework.sort(gp_bi, axis=-2)
+
+    gp_sorted = gp_bi_sorted[...,0]
+    gp_num = tf.shape(gp_sorted)[2]
+    tmp_zero = tf.ones([self.batch_size, self.global_block_num,1], dtype=tf.int32)*(-1)
+    move_down_one_unit = tf.concat([tmp_zero, gp_sorted[..., 0:-1]],-1)
+    same_with_last = tf.cast(tf.equal(move_down_one_unit, gp_sorted), tf.int32)
+    gp_sl_cumsum = tf.cumsum(same_with_last, axis=2)
+
+    all_block_idx_for_gp = []
+    for b in range(self.batch_size):
+      batch_block_idx_for_gp = []
+      for g in range(self.global_block_num):
+        gp_uniqe, gp_idx_in_block, gp_count = tf.unique_with_counts(gp_sorted[b,g])
+        check = tf.assert_greater_equal(gp_uniqe[0], 0,
+                          message="grouped point idx <0, rm the duplicated gp")
+        with tf.control_dependencies([check]):
+          gp_count -= 1
+          cum_sum_count = tf.cumsum(gp_count)
+        cum_sum_count = tf.concat([tf.constant([0], tf.int32), cum_sum_count], 0)
+
+        the_cum_sum_count = tf.gather(cum_sum_count, gp_idx_in_block)
+        block_idx_for_gp = tf.expand_dims(gp_sl_cumsum[b,g] - the_cum_sum_count, 0)
+        batch_block_idx_for_gp.append(block_idx_for_gp)
+        #print(gp_bi_sorted[b,g,0:10])
+        #print(block_idx_for_gp[0:10])
+      all_block_idx_for_gp.append(tf.expand_dims(tf.concat(batch_block_idx_for_gp, 0),0))
+    all_block_idx_for_gp = tf.concat(all_block_idx_for_gp, 0)
+    max_bid = tf.reduce_max(all_block_idx_for_gp)
+    check_bid = tf.assert_less(max_bid, nblocks_perp_buf,\
+                    message="block_idx_for_gp is too large:{}".format(max_bid))
+    with tf.control_dependencies([check_bid]):
+      all_block_idx_for_gp = tf.expand_dims(all_block_idx_for_gp, -1)
+
+    ################ merge to get the sactter indices
+    gp_sorted = tf.expand_dims(gp_sorted, -1)
+    batch_tmp = tf.tile(tf.reshape(tf.range(self.batch_size),[-1,1,1,1]),\
+                        [1, self.global_block_num, gp_num, 1])
+    gb_tmp = tf.tile(tf.reshape(tf.range(self.global_block_num),[1,-1,1,1]),\
+                        [self.batch_size, 1, gp_num, 1])
+    scatter_indices = tf.concat([batch_tmp, gb_tmp, gp_sorted, all_block_idx_for_gp], -1)
+    flatten_index = tf.scatter_nd(scatter_indices, gp_bi_sorted[...,1], flatten_idx_shape_buf)
+    flatten_index = flatten_index[...,0:self._max_flatten_num]
+
+    import pdb; pdb.set_trace()  # XXX BREAKPOINT
+
+    print(gp_sorted[0,0,0:20])
+    print(same_with_last[0,0,0:20])
+    print('\n\n')
+    print(gp_sorted[0,0,100:120])
+    print(same_with_last[0,0,100:120])
+    #gp_sorted = tf.Print(gp_sorted, [gp_sorted, tmp], message="gp_sorted")
+
+
+
+    import pdb; pdb.set_trace()  # XXX BREAKPOINT
+    pass
+
 
   def rm_start_bids(self, bids_with_start):
     tmp = tf.cast(bids_with_start, tf.float32) / tf.cast(self.start_bid_step, tf.float32)
