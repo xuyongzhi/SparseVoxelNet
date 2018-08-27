@@ -63,16 +63,23 @@ def random_choice(org_vector, sample_N, random_sampl_pro=None,
 
 def parse_pl_record(tfrecord_serialized, is_training, dset_metas=None, bsg=None, is_normalize_pcl=False):
     from aug_data_tf import aug_main, aug_views
+    assert dset_metas!=None, "current vertion data do not have shape info"
     #if dset_metas!=None:
     #  from aug_data_tf import aug_data, tf_Rz
     #  R = tf_Rz(1)
     #  import pdb; pdb.set_trace()  # XXX BREAKPOINT
     feature_map = {
-        'points/shape': tf.FixedLenFeature([], tf.string),
         'points/encoded': tf.FixedLenFeature([], tf.string),
-        'labels/shape': tf.FixedLenFeature([], tf.string),
         'labels/encoded': tf.FixedLenFeature([], tf.string),
+        'valid_num':      tf.FixedLenFeature([1], tf.int64, default_value=-1)
     }
+    if dset_metas == None:
+      feature_map1 = {
+          'points/shape': tf.FixedLenFeature([], tf.string),
+          'labels/shape': tf.FixedLenFeature([], tf.string),
+      }
+      feature_map.update(feature_map1)
+
     tfrecord_features = tf.parse_single_example(tfrecord_serialized,
                                                 features=feature_map,
                                                 name='pl_features')
@@ -93,6 +100,8 @@ def parse_pl_record(tfrecord_serialized, is_training, dset_metas=None, bsg=None,
       points_shape = dset_metas['shape']['points']
     # the points tensor is flattened out, so we have to reconstruct the shape
     points = tf.reshape(points, points_shape)
+
+    valid_num_point = tf.cast(tfrecord_features['valid_num'], tf.int32)
 
     # ------------------------------------------------
     #             data augmentation
@@ -149,6 +158,7 @@ def parse_pl_record(tfrecord_serialized, is_training, dset_metas=None, bsg=None,
     if is_normalize_pcl:
       points = pc_normalize(points, dset_metas)
     features['points'] = points
+    features['valid_num_point'] = valid_num_point
 
     return features, labels
 
@@ -210,7 +220,7 @@ class RawH5_To_Tfrecord():
         bsf.write(bnstr)
         vnstr = '\n'+'\n'.join(['{}_{}: {}'.format(region_name, i, num_points_splited[i]) for i in range(valid_block_num)])
         bsf.write(vnstr)
-    print('All file are converted to tfreord')
+    print('All {} file are converted to tfreord'.format(fi+1))
 
   def sort_eles(self, h5f):
     # elements *************************
@@ -459,6 +469,7 @@ def get_label_num_weights(dataset_summary, loss_lw_gama):
   IsPlot = False
   label_hist = dataset_summary['label_hist']
   mean = np.mean(label_hist)
+  assert np.min(label_hist) > 0
   weight = mean / label_hist
   weights = {}
   gamas = [loss_lw_gama, 1, 2, 5, 10, 20]
@@ -507,7 +518,7 @@ def get_dset_metas(tf_path):
 def main_get_dataset_summary(dataset_name, tf_path, loss_lw_gama=2):
   dset_metas = get_dset_metas(tf_path)
   dataset_summary = read_dataset_summary(tf_path)
-  if dataset_summary['intact'] and False:
+  if dataset_summary['intact']:
     print('dataset_summary intact, no need to read')
     get_label_num_weights(dataset_summary, loss_lw_gama)
     return dataset_summary
@@ -531,7 +542,7 @@ def main_get_dataset_summary(dataset_name, tf_path, loss_lw_gama=2):
     dataset = dataset.prefetch(buffer_size=batch_size)
     dataset = dataset.apply(
       tf.contrib.data.map_and_batch(
-        lambda value: parse_pl_record(value, is_training),
+        lambda value: parse_pl_record(value, is_training, dset_metas),
         batch_size=batch_size,
         num_parallel_batches=1,
         drop_remainder=False))
@@ -552,7 +563,11 @@ def main_get_dataset_summary(dataset_name, tf_path, loss_lw_gama=2):
         print('start reading all the dataset to get summary')
         while(True):
           features, labels = sess.run(get_next)
-          category_label = labels[:, dset_metas['labels']['label_category']]
+          assert len(labels.shape) == 3
+          assert len(features['points'].shape) == 3
+          assert len(features['valid_num_point'].shape) == 2
+          category_label = labels[:, :, \
+                           dset_metas['indices']['labels']['label_category'][0]]
           label_hist += np.histogram(category_label, range(num_classes+1))[0]
           if m%10==0:
             print('%d  %d'%(m,n))
@@ -698,11 +713,11 @@ if __name__ == '__main__':
   #rawh5_glob = os.path.join(dset_path, 'rawh5/D7N2EKCX4Sj/*.rh5')
   tfrecord_path = os.path.join(dset_path, 'raw_tfrecord')
 
-  main_write(dataset_name, rawh5_glob, tfrecord_path, num_point[dataset_name], block_size[dataset_name])
-  #ain_merge_tfrecord(dataset_name, tfrecord_path)
+  #main_write(dataset_name, rawh5_glob, tfrecord_path, num_point[dataset_name], block_size[dataset_name])
+  #main_merge_tfrecord(dataset_name, tfrecord_path)
 
   #main_gen_ply(dataset_name, tfrecord_path)
 
-  #main_get_dataset_summary(dataset_name, tfrecord_path)
+  main_get_dataset_summary(dataset_name, tfrecord_path)
   #get_dset_metas(tfrecord_path)
 
