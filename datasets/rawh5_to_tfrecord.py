@@ -61,7 +61,49 @@ def random_choice(org_vector, sample_N, random_sampl_pro=None,
     return sampled_vector
 
 
-def parse_pl_record(tfrecord_serialized, is_training, dset_metas=None, bsg=None, is_normalize_pcl=False):
+def rm_some_labels(points, labels, valid_num_point, dset_metas):
+  if dset_metas['dataset_name'] == 'MODELNET40':
+    return points, labels
+  elif dset_metas['dataset_name'] == 'MATTERPORT':
+    assert len(points.shape) == 2
+    org_num_point = points.shape[0].value
+    label_category = labels[:, dset_metas['indices']['labels']['label_category'][0]]
+    mask_void = tf.equal(label_category, 0)    # void
+    mask_unlabeled = tf.equal(label_category, 41)  # unlabeld
+
+    #del_mask = tf.logical_or(mask_void, mask_unlabeled)
+    del_mask = mask_void
+
+    #del_indices = tf.squeeze(tf.where(del_mask),1)
+    #keep_indices = del_indices
+
+    keep_mask = tf.logical_not(del_mask)
+    keep_indices = tf.squeeze(tf.where(keep_mask),1)
+
+    keep_num = tf.shape(keep_indices)[0]
+    #keep_num = tf.Print(keep_num, [keep_num, org_num_point], message="keep num, org num")
+
+    check = tf.assert_greater(keep_num,0, message="all void or unlabled points")
+    with tf.control_dependencies([check]):
+      del_num = org_num_point - keep_num
+
+      points = tf.gather(points, keep_indices)
+      labels = tf.gather(labels, keep_indices)
+
+    def sampling(var):
+      tmp1 = lambda: tf.tile(var[0:1,:], [del_num,1])
+      tmp2 = lambda: var[0:del_num, :]
+      tmp = tf.case([(tf.less_equal(del_num, keep_num), tmp2)],\
+                  default = tmp1)
+      return tmp
+    points = tf.concat([points, sampling(points)], 0)
+    labels = tf.concat([labels, sampling(labels)], 0)
+    points.set_shape([org_num_point, points.shape[1].value])
+    labels.set_shape([org_num_point, labels.shape[1].value])
+    return points, labels
+
+def parse_pl_record(tfrecord_serialized, is_training, dset_metas=None, bsg=None,\
+                    is_normalize_pcl=False, is_rm_void_labels=True):
     from aug_data_tf import aug_main, aug_views
     assert dset_metas!=None, "current vertion data do not have shape info"
     #if dset_metas!=None:
@@ -103,6 +145,8 @@ def parse_pl_record(tfrecord_serialized, is_training, dset_metas=None, bsg=None,
 
     valid_num_point = tf.cast(tfrecord_features['valid_num'], tf.int32)
 
+    if is_rm_void_labels:
+      points, labels = rm_some_labels(points, labels, valid_num_point, dset_metas)
     # ------------------------------------------------
     #             data augmentation
     features = {}
@@ -243,6 +287,7 @@ class RawH5_To_Tfrecord():
 
     metas_fn = os.path.join(self.tfrecord_path, 'metas.txt')
     with open(metas_fn, 'w') as f:
+      f.write('dataset_name:{}\n'.format(self.dataset_name))
       for item in self.eles_sorted:
         shape = dls[item].shape
         if self.num_point!=None:
@@ -489,6 +534,8 @@ def get_dset_metas(tf_path):
   metas_fn = os.path.join(tf_path, 'metas.txt')
   with open(metas_fn, 'r') as mf:
     dset_metas = {}
+    dataset_name = ''
+
     shapes = {}
     shapes['points'] = {}
     shapes['labels'] = {}
@@ -502,9 +549,13 @@ def get_dset_metas(tf_path):
     for line in mf:
       tmp = line.split(':')
       tmp = [e.strip() for e in tmp]
-      assert tmp[0] == 'indices' or tmp[0]=='shape'
-      assert tmp[1] == 'points' or tmp[1]=='labels'
-      if tmp[0] == 'shape':
+      assert tmp[0] == 'indices' or tmp[0]=='shape' or tmp[0] == 'dataset_name'
+      if tmp[0]!='dataset_name':
+        assert tmp[1] == 'points' or tmp[1]=='labels'
+
+      if tmp[0] == 'dataset_name':
+        dset_metas['dataset_name'] = tmp[1]
+      elif tmp[0] == 'shape':
         value = [int(e) for e in tmp[2].split(',')]
         dset_metas[tmp[0]][tmp[1]] = value
       elif tmp[0] == 'indices':
@@ -632,8 +683,8 @@ def main_merge_tfrecord(dataset_name, tfrecord_path):
 def main_gen_ply(dataset_name, tf_path):
   #scene = 'gxdoqLR6rwA_region2'  # large ground
   #scene = 'gTV8FGcVJC9_region7'
-  scene = 'Vvot9Ly1tCj_region24'
-  #scene = 'Pm6F8kyY3z2_region3'
+  #scene = 'Vvot9Ly1tCj_region24'  # most unlabled points
+  scene = 'Pm6F8kyY3z2_region3'
   #scene = '17DRP5sb8fy_region0'
   #scene = 'ac26ZMwG7aT_region9'
   name_base = 'data/{}*.tfrecord'.format(scene)
@@ -645,6 +696,7 @@ def main_gen_ply(dataset_name, tf_path):
 
 def gen_ply_onef(dataset_name, tf_path, filename, scene):
   from utils.ply_util import create_ply_dset
+  is_rm_void_labels = True
 
   ply_dir = os.path.join(tf_path, 'plys/ply_'+scene)
   if not os.path.exists(ply_dir):
@@ -666,7 +718,8 @@ def gen_ply_onef(dataset_name, tf_path, filename, scene):
     dataset = dataset.prefetch(buffer_size=batch_size)
     dataset = dataset.apply(
       tf.contrib.data.map_and_batch(
-        lambda value: parse_pl_record(value, is_training, data_infos),
+        lambda value: parse_pl_record(value, is_training, data_infos,\
+                          is_rm_void_labels=is_rm_void_labels),
         batch_size=batch_size,
         num_parallel_batches=1,
         drop_remainder=False))
@@ -691,10 +744,13 @@ def gen_ply_onef(dataset_name, tf_path, filename, scene):
           all_points.append(points)
           n += 1
       except:
+        assert n>0, "some thing wrong inside parse_pl_record"
         pass
       all_points = np.concatenate(all_points, 0)
       all_label_categories = np.concatenate(all_label_categories, 0)
       base_name = os.path.splitext( os.path.basename(filename) )[0]
+      if is_rm_void_labels:
+        base_name = base_name + '_rmvoid'
 
       ply_fn = os.path.join(ply_dir, base_name+'.ply')
       create_ply_dset( dataset_name, all_points,  ply_fn)
@@ -718,6 +774,6 @@ if __name__ == '__main__':
 
   #main_gen_ply(dataset_name, tfrecord_path)
 
-  main_get_dataset_summary(dataset_name, tfrecord_path)
+  #main_get_dataset_summary(dataset_name, tfrecord_path)
   #get_dset_metas(tfrecord_path)
 

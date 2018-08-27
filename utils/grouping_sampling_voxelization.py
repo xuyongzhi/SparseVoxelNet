@@ -223,6 +223,7 @@ class BlockGroupSampling():
     xyz = xyz[:,0:20000,:]
     return xyz
 
+
   def grouping_multi_scale(self, xyz):
     '''
     xyz: (batch_size, num_point, 3)
@@ -399,6 +400,7 @@ class BlockGroupSampling():
 
     return grouped_pindex, vox_index, grouped_bot_cen_top, grouped_empty_mask, out_bot_cen_top, nb_enoughp_per_gb, others
 
+
   def gather_grouped(self, grouped_pindex, bot_cen_top):
     '''
     grouped_pindex: (batch_size, global_block_num, _nblock, npoint_per_block)
@@ -418,6 +420,7 @@ class BlockGroupSampling():
     grouped_pindex = tf.concat([bs_tmp, gb_tmp, grouped_pindex], -1)
     grouped_bot_cen_top = tf.gather_nd(bot_cen_top, grouped_pindex)
     return grouped_bot_cen_top
+
 
   def show_settings(self):
     items = ['_widths', '_strides', '_nblocks_per_point', '_nblocks', '_npoint_per_blocks',
@@ -1351,7 +1354,7 @@ def main_eager(DATASET_NAME, filenames, sg_settings, dset_metas, batch_size, cyc
   dataset = dataset.prefetch(buffer_size=batch_size)
   dataset = dataset.apply(
     tf.contrib.data.map_and_batch(
-      lambda value: parse_pl_record(value, is_training),
+      lambda value: parse_pl_record(value, is_training, dset_metas),
       batch_size=batch_size,
       num_parallel_batches=1,
       drop_remainder=False))
@@ -1364,6 +1367,7 @@ def main_eager(DATASET_NAME, filenames, sg_settings, dset_metas, batch_size, cyc
   for n in range(cycles):
     features_next, label_next = get_next
     points_next = features_next['points'][:,:,0:3]
+
     grouped_pindex, vox_index, grouped_bot_cen_top, empty_mask, out_bot_cen_top, nb_enoughp_ave, others = \
       bsg.grouping_multi_scale(points_next[:,:,0:3])
 
@@ -1440,7 +1444,7 @@ def main(filenames, dset_metas):
   from utils.sg_settings import get_sg_settings
   sg_settings = get_sg_settings('32768_1024_64')
 
-  batch_size = 1
+  batch_size = 12
   if len(sys.argv) > 1:
     main_flag = sys.argv[1]
     if len(sys.argv) > 2:
@@ -1456,7 +1460,7 @@ def main(filenames, dset_metas):
   file_num = 12311
   num_epoch = 1
   cycles = (file_num // batch_size) * num_epoch
-  cycles = 10
+  cycles = 200
 
   if 'e' in main_flag:
     xyzs_E, grouped_xyzs_E, others_E, shuffle_E = \
@@ -1505,8 +1509,9 @@ if __name__ == '__main__':
   DATASET_NAME = 'MATTERPORT'
   raw_tfrecord_path = '/home/z/Research/SparseVoxelNet/data/{}_H5TF/raw_tfrecord'.format(DATASET_NAME)
   data_path = os.path.join(raw_tfrecord_path, 'data')
-  data_path = os.path.join(raw_tfrecord_path, 'merged_data')
+  #data_path = os.path.join(raw_tfrecord_path, 'merged_data')
   tmp = '*'
+  #tmp = 'Vvot9Ly1tCj_region24*'
   filenames = glob.glob(os.path.join(data_path, tmp+'.tfrecord'))
   #random.shuffle(filenames)
   assert len(filenames) >= 1, data_path
