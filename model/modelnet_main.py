@@ -447,6 +447,7 @@ def define_modelnet_flags():
   #  os.environ['CUDA_VISIBLE_DEVICES'] = str(DEFAULTS['gpu_id'])
 
   _DATA_PARAS = {}
+  _DATA_PARAS['dataset_name'] = DATASET_NAME
   flags.DEFINE_integer('only_eval', DEFAULTS['only_eval'], '1, 0')
   flags.DEFINE_integer('eval_views', DEFAULTS['eval_views'], '1, 5')
 

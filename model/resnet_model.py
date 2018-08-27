@@ -932,7 +932,7 @@ class Model(ResConvOps):
         self.num_neighbors = np.array( [ int(n) for n in num_neighbors ] )
     else:
         self.num_neighbors= None
-    for key in ['feed_data', 'sg_settings', 'dset_shape_idxs',
+    for key in ['dataset_name', 'feed_data', 'sg_settings', 'dset_shape_idxs',
                 'xyz_elements', 'datasets_meta']:
       setattr(self, key, self.data_net_configs[key])
 
@@ -1229,6 +1229,8 @@ class Model(ResConvOps):
         raise NotImplementedError
         new_points = tf.transpose(new_points, [0, 2, 1])
 
+      ##########################################################################
+      #                       Point encoder
       for k in range(self.net_num_scale):
           if self.block_style == 'PointNet':
             l_xyz, new_points, root_point_features = self.pointnet2_module(k, l_xyz,
@@ -1259,21 +1261,11 @@ class Model(ResConvOps):
         inputs = tf.squeeze(inputs, 1)
       inputs = tf.identity(inputs, 'final_reduce_mean')
 
-      # Fully connect layers
-      out_drop_rate=self.data_net_configs['drop_imo']['output']
-      inputs = tf.layers.dense(inputs, 512, None, True, KERNEL_INI )
-      if self.IsShowModel: self.log( tensor_info(inputs, 'dense', 'dense0'))
-      inputs = self.batch_norm(inputs, is_training, tf.nn.relu)
-      inputs = tf.layers.dropout(inputs, out_drop_rate, training=is_training)
-
-      inputs = tf.layers.dense(inputs, 256, None, True, KERNEL_INI )
-      if self.IsShowModel: self.log( tensor_info(inputs, 'dense', 'dense1'))
-      inputs = self.batch_norm(inputs, is_training, tf.nn.relu)
-      inputs = tf.layers.dropout(inputs, out_drop_rate, training=is_training)
-
-      inputs = tf.layers.dense(inputs, self.num_classes, None, True, KERNEL_INI )
-      inputs = tf.identity(inputs, 'final_dense')
-
+      ##########################################################################
+      #if self.dataset_name == 'MODELNET40':
+      if self.dataset_name == 'MATTERPORT':
+        inputs = self.classifier(inputs, is_training)
+      ##########################################################################
       if self.IsShowModel:
         self.log( tensor_info(inputs, 'dense', 'final1') +'\n\n' )
         self.show_layers_num_summary()
@@ -1288,6 +1280,24 @@ class Model(ResConvOps):
         self.log_model_summary()
 
       return inputs
+
+  def classifier(self, inputs, is_training):
+      #                     Fully connect layers
+      out_drop_rate=self.data_net_configs['drop_imo']['output']
+      inputs = tf.layers.dense(inputs, 512, None, True, KERNEL_INI )
+      if self.IsShowModel: self.log( tensor_info(inputs, 'dense', 'dense0'))
+      inputs = self.batch_norm(inputs, is_training, tf.nn.relu)
+      inputs = tf.layers.dropout(inputs, out_drop_rate, training=is_training)
+
+      inputs = tf.layers.dense(inputs, 256, None, True, KERNEL_INI )
+      if self.IsShowModel: self.log( tensor_info(inputs, 'dense', 'dense1'))
+      inputs = self.batch_norm(inputs, is_training, tf.nn.relu)
+      inputs = tf.layers.dropout(inputs, out_drop_rate, training=is_training)
+
+      inputs = tf.layers.dense(inputs, self.num_classes, None, True, KERNEL_INI )
+      inputs = tf.identity(inputs, 'final_dense')
+      return inputs
+
 
   @staticmethod
   def grouping_online(points, grouped_pindex):
