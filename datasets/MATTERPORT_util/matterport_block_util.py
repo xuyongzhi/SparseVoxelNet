@@ -188,7 +188,7 @@ def WriteRawH5f_Region_Ply(ply_item_name,rs_zf,house_name,scans_h5f_dir,house_di
     IsIntact,_  = check_h5fs_intact(rawh5f_fn)
 
     if  IsIntact:
-        print('file intact: %s'%(region_ply_fn))
+        print('file intact: %s'%(rawh5f_fn))
     else:
         with open(region_ply_fn,'r') as ply_fo, h5py.File(rawh5f_fn,'w') as h5f:
             vertex_xyz, vertex_nxnynz, vertex_rgb, vertex_semantic, face_vertex_indices, face_semantic = \
@@ -321,7 +321,7 @@ def main_parse_house():
     #                  'HxpKQynjfin', 'D7N2EKCX4Sj']
     house_names_ls.sort()
     #house_names_ls = ['17DRP5sb8fy']
-    #house_names_ls = ['7y3sRwLe3Va']
+    house_names_ls = ['D7N2EKCX4Sj']
     MultiProcess = 0
     matterport3d_prepare = Matterport3D_Prepare()
     matterport3d_prepare.Parse_houses_regions( house_names_ls,  MultiProcess)

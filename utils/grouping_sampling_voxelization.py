@@ -230,7 +230,7 @@ class BlockGroupSampling():
     xyz_shape = xyz.shape
     assert len(xyz_shape) == 3
     assert xyz_shape[2] == 3
-    xyz = self.pre_sampling(xyz)
+    #xyz = self.pre_sampling(xyz)
     self.batch_size = xyz_shape[0].value
     self.update_global_bot_cen_top_for_global(xyz)
 
@@ -1438,9 +1438,9 @@ def gen_plys(DATASET_NAME, frame, points, grouped_bot_cen_top,
 
 def main(filenames, dset_metas):
   from utils.sg_settings import get_sg_settings
-  sg_settings = get_sg_settings('8192_1024_64')
+  sg_settings = get_sg_settings('32768_1024_64')
 
-  batch_size = 16
+  batch_size = 1
   if len(sys.argv) > 1:
     main_flag = sys.argv[1]
     if len(sys.argv) > 2:
@@ -1456,7 +1456,7 @@ def main(filenames, dset_metas):
   file_num = 12311
   num_epoch = 1
   cycles = (file_num // batch_size) * num_epoch
-  cycles = 100
+  cycles = 10
 
   if 'e' in main_flag:
     xyzs_E, grouped_xyzs_E, others_E, shuffle_E = \

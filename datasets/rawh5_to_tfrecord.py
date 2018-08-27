@@ -170,7 +170,6 @@ class RawH5_To_Tfrecord():
     self.sampling_rates = []
 
   def __call__(self, rawh5fns):
-    block_split_dir = os.path.join(self.tfrecord_path, 'block_split_summary')
     bsfn0 = os.path.join(self.tfrecord_path, 'block_split_settings.txt')
     if type(self.block_size)!=type(None):
       with open(bsfn0, 'w') as bsf:
@@ -178,6 +177,7 @@ class RawH5_To_Tfrecord():
                       self.num_point, self.block_size,\
                       self.block_stride, self.min_pn_inblock))
 
+    block_split_dir = os.path.join(self.tfrecord_path, 'block_split_summary')
     if not os.path.exists(block_split_dir):
       os.makedirs(block_split_dir)
 
@@ -186,19 +186,30 @@ class RawH5_To_Tfrecord():
     #rawh5fns = rawh5fns[5577:]
     for fi, rawh5fn in enumerate(rawh5fns):
       self.fi = fi
+      region_name = os.path.splitext(os.path.basename(rawh5fn))[0]
+      scene_name = os.path.basename(os.path.dirname(rawh5fn))
+      scene_bs_fn = os.path.join(block_split_dir, scene_name + '_' + region_name + '.txt')
+
+      cur_tfrecord_intact = False
+      if os.path.exists(scene_bs_fn):
+        with open(scene_bs_fn, 'r') as bsf:
+          for line in bsf:
+            line = line.strip()
+            break
+          if line == 'intact':
+            cur_tfrecord_intact = True
+      if cur_tfrecord_intact:
+        print('skip {} intact'.format(scene_bs_fn))
+        continue
+
       block_num, valid_block_num, num_points_splited = self.transfer_onefile(rawh5fn)
 
-      scene_name = os.path.basename(os.path.dirname(rawh5fn))
-      scene_bs_fn = os.path.join(block_split_dir, scene_name+'.txt')
-      valid_num_points_splited_fn = os.path.join(block_split_dir, scene_name+'_valid_np.txt')
-      basefn = os.path.splitext(os.path.basename(rawh5fn))[0]
-      with open(scene_bs_fn, 'a') as bsf:
-        bnstr = '{} \tblock_num:{} \tvalid block num:{}\n'.format(basefn, block_num, valid_block_num)
+      with open(scene_bs_fn, 'w') as bsf:
+        bsf.write('intact\n')
+        bnstr = '{} \tblock_num:{} \tvalid block num:{}\n\n'.format(region_name, block_num, valid_block_num)
         bsf.write(bnstr)
-        bsf.flush()
-      with open(valid_num_points_splited_fn, 'a') as vnpsf:
-        vnstr = '\n'+'\n'.join(['{}_{}: {}'.format(basefn, i, num_points_splited[i]) for i in range(valid_block_num)])
-        vnpsf.write(vnstr)
+        vnstr = '\n'+'\n'.join(['{}_{}: {}'.format(region_name, i, num_points_splited[i]) for i in range(valid_block_num)])
+        bsf.write(vnstr)
     print('All file are converted to tfreord')
 
   def sort_eles(self, h5f):
@@ -338,7 +349,7 @@ class RawH5_To_Tfrecord():
 
     with h5py.File(rawh5fn, 'r') as h5f:
       print('starting {} th file: {}'.format(self.fi, rawh5fn))
-      if self.fi == 0:
+      if not hasattr(self, 'eles_sorted'):
         self.sort_eles(h5f)
       #*************************************************************************
       # concat elements together
@@ -369,7 +380,7 @@ class RawH5_To_Tfrecord():
       # convert to expample
       dls['points'] = dls['points'].astype(np.float32, casting='same_kind')
       dls['labels'] = dls['labels'].astype(np.int32, casting='same_kind')
-      if self.fi == 0:
+      if not hasattr(self, 'ele_idxs'):
         self.record_metas(h5f, dls)
 
       max_category =  np.max(dls['labels'][:,self.ele_idxs['labels']['label_category']])
@@ -385,11 +396,11 @@ class RawH5_To_Tfrecord():
         labels_bin = ds['labels'].tobytes()
         labels_shape_bin = np.array(ds['labels'].shape, np.int32).tobytes()
         features_map = {
-          'points/encoded':  bytes_feature(datas_bin),
-          'points/shape':   bytes_feature(datas_shape_bin),
-          'labels/encoded':  bytes_feature(labels_bin),
-          'labels/shape':   bytes_feature(labels_shape_bin) }
-          #'object':   int64_feature(object_label) }
+          'points/encoded': bytes_feature(datas_bin),
+          #'points/shape':   bytes_feature(datas_shape_bin),
+          'labels/encoded': bytes_feature(labels_bin),
+          #'labels/shape':   bytes_feature(labels_shape_bin),
+          'valid_num':      int64_feature(num_points_splited[bk]) }
 
         example = tf.train.Example(features=tf.train.Features(feature=features_map))
 
@@ -684,11 +695,11 @@ if __name__ == '__main__':
   block_size = {'MODELNET40':None, 'MATTERPORT':np.array([6.4,6.4,6.4]) }
 
   rawh5_glob = os.path.join(dset_path, 'rawh5/*/*.rh5')
-  #rawh5_glob = os.path.join(dset_path, 'rawh5/7y3sRwLe3Va/*.rh5')
+  #rawh5_glob = os.path.join(dset_path, 'rawh5/D7N2EKCX4Sj/*.rh5')
   tfrecord_path = os.path.join(dset_path, 'raw_tfrecord')
 
-  #main_write(dataset_name, rawh5_glob, tfrecord_path, num_point[dataset_name], block_size[dataset_name])
-  main_merge_tfrecord(dataset_name, tfrecord_path)
+  main_write(dataset_name, rawh5_glob, tfrecord_path, num_point[dataset_name], block_size[dataset_name])
+  #ain_merge_tfrecord(dataset_name, tfrecord_path)
 
   #main_gen_ply(dataset_name, tfrecord_path)
 
