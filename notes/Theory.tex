@@ -226,12 +226,19 @@ the\ cum\ sum
 \subsubsection{D}
 \[ 
 \begin{bmatrix}
+gp & block\_id & flat\_id
+\end{bmatrix}
+=
+\begin{bmatrix}
 	0 & 1 \\ 2 & 0 \\  2 & 1 \\ 3 & 0\\ 3 & 1\\ 4 & 0 
 \end{bmatrix} 
 \begin{bmatrix}
 0 \\ 0 \\ 1 \\ 0 \\ 1 \\0
 \end{bmatrix}
 \]
+
+\subsubsection{E}
+scatter\_nd(indices=[gp,flat\_id], \par updates=block\_id, shape=(num\_point\_last\_scale, flatten\_num))
 
 \section{Sparse voxel 3DCNN }
 

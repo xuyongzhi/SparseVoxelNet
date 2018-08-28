@@ -350,10 +350,10 @@ class BlockGroupSampling():
 
     bid_index__pindex_inb, point_index, block_id_unique = self.get_bid_point_index(bid_pindex)
 
-    grouped_pindex, grouped_empty_mask = self.get_grouped_pindex(
-                                      bid_index__pindex_inb, point_index)
+    grouped_pindex, grouped_empty_mask, grouped_pindex_emptyneg = \
+                    self.get_grouped_pindex( bid_index__pindex_inb, point_index)
 
-    flatten_index = self.get_flatten_index(grouped_pindex)
+    flatten_index = self.get_flatten_index(grouped_pindex_emptyneg)
 
     grouped_bot_cen_top = self.gather_grouped(grouped_pindex, bot_cen_top)
 
@@ -1049,6 +1049,22 @@ class BlockGroupSampling():
     self.samplings[self.scale]['nempty_perb_'] += tmp
 
 
+  @staticmethod
+  def check_no_duplicate(grouped_pindex_emptyneg):
+    shape  = [e.value for e in grouped_pindex_emptyneg.shape]
+    assert len(shape) == 2
+    for i in range(shape[0]):
+      gp_i = grouped_pindex_emptyneg[i]
+      unique_gp, idx, counts = tf.unique_with_counts(gp_i)
+      counts = counts[0:-1]
+      max_count = tf.reduce_max(counts)
+      if max_count > 1:
+        import pdb; pdb.set_trace()  # XXX BREAKPOINT
+        pass
+      check = tf.assert_less(max_count, 2)
+    print('duplicate check passed: grouped_pindex_emptyneg')
+
+
   def get_grouped_pindex(self, bid_index__pindex_inb, point_index):
     #(3.1) gather grouped point index
     # gen point index: (real nblock, self._npoint_per_block, 1)
@@ -1060,35 +1076,38 @@ class BlockGroupSampling():
                               point_index, default_value=-1)
 
     #(3.3) sampling fixed number of blocks when too many blocks are provided
-    grouped_pindex = tf.gather(grouped_pindex0, self.valid_bid_index_all_sampled)
+    grouped_pindex_emptyneg = tf.gather(grouped_pindex0, self.valid_bid_index_all_sampled)
+    #BlockGroupSampling.check_no_duplicate(grouped_pindex_emptyneg)
 
     #(3.4) replace -1 by the first pindex of each block
-    grouped_empty_mask = tf.less(grouped_pindex,0)
+    grouped_empty_mask = tf.less(grouped_pindex_emptyneg,0)
     if self._empty_point_index != -1:
       # replace -1 with first one of each block
-      first_pindices0 = grouped_pindex[:,0:1] + 1
-      first_pindices1 = tf.tile(first_pindices0, [1,grouped_pindex.shape[1]])
+      first_pindices0 = grouped_pindex_emptyneg[:,0:1] + 1
+      first_pindices1 = tf.tile(first_pindices0, [1,grouped_pindex_emptyneg.shape[1]])
       first_pindices2 = first_pindices1 * tf.cast(grouped_empty_mask, tf.int32)
-      grouped_pindex = grouped_pindex + first_pindices2
+      grouped_pindex = grouped_pindex_emptyneg + first_pindices2
 
     #(3.5) reshape batch size and global block dims
     aim_shape = [self.batch_size, self.global_block_num,
                  self._nblocks[self.scale], self._npoint_per_blocks[self.scale]]
+    grouped_pindex_emptyneg = tf.reshape(grouped_pindex_emptyneg, aim_shape)
     grouped_pindex = tf.reshape(grouped_pindex, aim_shape)
     grouped_empty_mask = tf.reshape(grouped_empty_mask, aim_shape)
-    return grouped_pindex, grouped_empty_mask
+    return grouped_pindex, grouped_empty_mask, grouped_pindex_emptyneg
 
-  def get_flatten_index(self, grouped_pindex):
+  def get_flatten_index(self, grouped_pindex_emptyneg):
     '''
-    grouped_pindex: (batch_size, global_block_num, _nblock, npoint_per_block)
+    grouped_pindex_emptyneg: (batch_size, global_block_num, _nblock, npoint_per_block)
+    not duplicate grouped point index in each block is allowed, empty gp idx shoudl be -1!
     '''
     if self.scale == 0:
       return
-    gp_shape = [e.value for e in grouped_pindex.shape]
+    gp_shape = [e.value for e in grouped_pindex_emptyneg.shape]
     assert len(gp_shape) == 4
     assert gp_shape[0] == self.batch_size
     assert gp_shape[1] == self.global_block_num
-
+    #***************************************************************************
     if self.scale==1:
       out_num_point = self._npoint_per_blocks[self.scale-1]
     else:
@@ -1099,48 +1118,78 @@ class BlockGroupSampling():
     flatten_idx_shape_buf = [self.batch_size, self.global_block_num, out_num_point,\
                          nblocks_perp_buf]
 
+    #***************************************************************************
+    #                       set gp for all duplicated block as -1
+    tmp = tf.reshape(tf.range(gp_shape[2]), [1,1,-1])
+    tmp = tf.tile(tmp, [self.batch_size, self.global_block_num,1])
+    nb_enoughp_per_gb = tf.reshape(self.nb_enoughp_per_gb, [self.batch_size, self.global_block_num,1])
+    valid_block_mask = tf.expand_dims(tf.cast(tf.less(tmp, nb_enoughp_per_gb), tf.int32), -1)
+    grouped_pindex_emptyneg += 1
+    grouped_pindex_emptyneg *= valid_block_mask
+    grouped_pindex_emptyneg -= 1
+
     ############################################################################
     # The aim is to get the block index for each grouped point.
 
     tmp = tf.reshape(tf.range(gp_shape[2]), [1,1,-1,1,1])
     tmp = tf.tile(tmp, [self.batch_size, self.global_block_num,1, gp_shape[3], 1])
-    grouped_pindex = tf.expand_dims(grouped_pindex, -1)
-    gp_bi = tf.concat([grouped_pindex, tmp], -1)
+    grouped_pindex_emptyneg = tf.expand_dims(grouped_pindex_emptyneg, -1)
+    gp_bi = tf.concat([grouped_pindex_emptyneg, tmp], -1)
     gp_bi = tf.reshape(gp_bi, [self.batch_size, self.global_block_num, -1, 2])
 
-    ## remove duplicated: gpidx==-1
-    #valid_mask = tf.greater(gp_bi[...,0], 0)
-    #valid_indices = tf.where(valid_mask)[0]
-    #import pdb; pdb.set_trace()  # XXX BREAKPOINT
-    #gp_bi = tf.gather(gp_bi, valid_indices, axis=0)
-    #import pdb; pdb.set_trace()  # XXX BREAKPOINT
-
+    # sort
     gp_bi_sorted = tf.contrib.framework.sort(gp_bi, axis=-2)
 
     gp_sorted = gp_bi_sorted[...,0]
     gp_num = tf.shape(gp_sorted)[2]
-    tmp_zero = tf.ones([self.batch_size, self.global_block_num,1], dtype=tf.int32)*(-1)
-    move_down_one_unit = tf.concat([tmp_zero, gp_sorted[..., 0:-1]],-1)
+    tmp_neg = tf.ones([self.batch_size, self.global_block_num,1], dtype=tf.int32)*(-8)
+    move_down_one_unit = tf.concat([tmp_neg, gp_sorted[..., 0:-1]],-1)
     same_with_last = tf.cast(tf.equal(move_down_one_unit, gp_sorted), tf.int32)
     gp_sl_cumsum = tf.cumsum(same_with_last, axis=2)
+
+    # get neg nums
+    neg_mask = tf.less(gp_sorted, 0)
+    neg_num = tf.reduce_sum(tf.cast(neg_mask, tf.int32),-1)
 
     all_block_idx_for_gp = []
     for b in range(self.batch_size):
       batch_block_idx_for_gp = []
       for g in range(self.global_block_num):
-        gp_uniqe, gp_idx_in_block, gp_count = tf.unique_with_counts(gp_sorted[b,g])
-        check = tf.assert_greater_equal(gp_uniqe[0], 0,
-                          message="grouped point idx <0, rm the duplicated gp")
-        with tf.control_dependencies([check]):
-          gp_count -= 1
-          cum_sum_count = tf.cumsum(gp_count)
+        # remove empty gp: gpidx==-1
+        #gp_sorted_i = gp_sorted[b,g,neg_num[b,g]:]
+        gp_sorted_i = gp_sorted[b, g]
+
+        gp_uniqe, gp_idx_in_block, gp_count = tf.unique_with_counts(gp_sorted_i)
+        #################################################
+        # check maximum gp_count
+        is_check_max_gpcount = False
+        if is_check_max_gpcount:
+          max_gp_cout = tf.reduce_max(gp_count[1:])
+          if max_gp_cout > nblocks_perp_buf:
+            max_idx = tf.argmax(gp_count[1:]) + 1
+            gpm = gp_uniqe[max_idx]
+            idx_m = tf.where(tf.equal(gp_sorted_i, gpm))[:,0]
+            bid_m = tf.gather(gp_bi_sorted[b,g,:,1], idx_m)
+            import pdb; pdb.set_trace()  # XXX BREAKPOINT
+            pass
+        #################################################
+        #check = tf.assert_greater_equal(gp_uniqe[0], 0,
+        #                  message="grouped point idx <0, rm the duplicated gp")
+        #with tf.control_dependencies([check]):
+        gp_count -= 1
+        cum_sum_count = tf.cumsum(gp_count)
         cum_sum_count = tf.concat([tf.constant([0], tf.int32), cum_sum_count], 0)
 
         the_cum_sum_count = tf.gather(cum_sum_count, gp_idx_in_block)
-        block_idx_for_gp = tf.expand_dims(gp_sl_cumsum[b,g] - the_cum_sum_count, 0)
-        batch_block_idx_for_gp.append(block_idx_for_gp)
+        block_idx_for_gp = gp_sl_cumsum[b,g] - the_cum_sum_count
+
+        valid_mask_i = tf.cast(tf.greater_equal(gp_sorted_i,0), tf.int32)
+        block_idx_for_gp = tf.multiply(block_idx_for_gp, valid_mask_i)
+
+        batch_block_idx_for_gp.append(tf.expand_dims(block_idx_for_gp,0))
         #print(gp_bi_sorted[b,g,0:10])
         #print(block_idx_for_gp[0:10])
+
       all_block_idx_for_gp.append(tf.expand_dims(tf.concat(batch_block_idx_for_gp, 0),0))
     all_block_idx_for_gp = tf.concat(all_block_idx_for_gp, 0)
     max_bid = tf.reduce_max(all_block_idx_for_gp)
@@ -1156,7 +1205,9 @@ class BlockGroupSampling():
     gb_tmp = tf.tile(tf.reshape(tf.range(self.global_block_num),[1,-1,1,1]),\
                         [self.batch_size, 1, gp_num, 1])
     scatter_indices = tf.concat([batch_tmp, gb_tmp, gp_sorted, all_block_idx_for_gp], -1)
-    flatten_index = tf.scatter_nd(scatter_indices, gp_bi_sorted[...,1], flatten_idx_shape_buf)
+    # note scatter_nd default is 0, +1 and then -1
+    block_idx = gp_bi_sorted[...,1] + 1
+    flatten_index = tf.scatter_nd(scatter_indices, block_idx, flatten_idx_shape_buf) - 1
     flatten_index = flatten_index[...,0:self._max_flatten_num]
 
     import pdb; pdb.set_trace()  # XXX BREAKPOINT
