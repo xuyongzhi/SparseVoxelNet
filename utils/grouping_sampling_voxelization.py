@@ -1132,6 +1132,9 @@ class BlockGroupSampling():
       global block id
       (3) gpidx is not augmented by global block id.
 
+    npoint_per_block: [unique_block_num]
+    valid_bididx_all: [valid block num]
+
     Return
     flatten_idx: [batch_size, global_block_num, num_point_last_scale, _flat_num]
       Note: the value is the global block id augmented block index.
@@ -1140,6 +1143,11 @@ class BlockGroupSampling():
     if self.scale == 0:
       # no need to get faltten idx
       return
+    shape0 = tf.shape(pidx_bididx_bid_unsampled)
+    assert shape0.shape[0].value == 2
+    check0 = tf.assert_equal(shape0[0], self.ngp_valid_sum)
+    with tf.control_dependencies([check0]):
+      pidx_bididx_bid_unsampled = tf.identity(pidx_bididx_bid_unsampled)
     #***************************************************************************
     if self.scale==1:
       out_num_point = self._npoint_per_blocks[self.scale-1]
@@ -1152,6 +1160,7 @@ class BlockGroupSampling():
                               out_num_point, nblocks_perp_buf]
     flatting_idx_shape_buf = [self.bsgbn * out_num_point, nblocks_perp_buf]
 
+    valid_bn = tf.shape(valid_bididx_all)[0]
     #***************************************************************************
     # get valid block sampling g_index to implement valid_bididx_all
     cumsum_np_perb = tf.cumsum(npoint_per_block)
@@ -1160,7 +1169,6 @@ class BlockGroupSampling():
     # valid block sampling index start
     vbs_index_start = cumsum_np_perb_sampled - np_perb_sampled
     max_np_perb = tf.reduce_max(np_perb_sampled)
-    valid_bn = tf.shape(valid_bididx_all)[0]
     vbs_index_buf = tf.tile( tf.reshape(tf.range(max_np_perb), [1,-1]), [valid_bn, 1])
     valid_np_mask = tf.cast(tf.less(vbs_index_buf, tf.expand_dims(np_perb_sampled,1)), tf.int32)
     vbs_index_buf += tf.expand_dims( vbs_index_start,1) + 1
@@ -1213,16 +1221,15 @@ class BlockGroupSampling():
     bidx_perp = tf.expand_dims(bidx_perp, 1)
     if self._check_optional:
       max_flatidx = tf.reduce_max(bidx_perp)
-      print(max_flatidx)
-      if max_flatidx > nblocks_perp_buf:
-        i1 = tf.cast(tf.argmax(bidx_perp)[0], tf.int32)
-        i0 = i1-max_flatidx
-        print(pidx_bididx_sorted[i0:i1+1,:])
-        pidx0 = pidx_bididx_sorted[i0, 0]
-        n0 = tf.reduce_sum( tf.cast(tf.equal(pidx_bididx_new[:,0], pidx0), tf.int32))
-        import pdb; pdb.set_trace()  # XXX BREAKPOINT
-      check_max_flatidx = tf.assert_less(max_flatidx, nblocks_perp_buf,
-                    message="max_flatidx too large")
+      #if max_flatidx > nblocks_perp_buf:
+      #  i1 = tf.cast(tf.argmax(bidx_perp)[0], tf.int32)
+      #  i0 = i1-max_flatidx
+      #  print(pidx_bididx_sorted[i0:i1+1,:])
+      #  pidx0 = pidx_bididx_sorted[i0, 0]
+      #  n0 = tf.reduce_sum( tf.cast(tf.equal(pidx_bididx_new[:,0], pidx0), tf.int32))
+      #  import pdb; pdb.set_trace()  # XXX BREAKPOINT
+      check_max_flatidx = tf.assert_less(max_flatidx, tf.cast(nblocks_perp_buf,tf.int32),\
+                                          message="max_flatidx too large")
       with tf.control_dependencies([check_max_flatidx]):
         bidx_perp = tf.identity(bidx_perp)
 
@@ -1236,6 +1243,10 @@ class BlockGroupSampling():
     flatting_idx = tf.scatter_nd(scatter_indices, pidx_bididx_sorted[:,1]+1,\
                                  shape = flatting_idx_shape_buf)-1
     flatting_idx = flatting_idx[..., 0:self._flat_num]
+
+    flatting_idx = tf.Print(flatting_idx, [nump_missed, \
+        tf.cast(nump_missed,tf.float32)/tf.cast(self.ngp_valid_sum,tf.float32)],
+                            message="num missed, ngp")
 
     if self._check_gbinb_optial:
       nump_missed1 = tf.reduce_sum(tf.cast(tf.equal(flatting_idx[:,0], -1), tf.int32))
@@ -1760,7 +1771,7 @@ def main(filenames, dset_metas):
   file_num = 12311
   num_epoch = 1
   cycles = (file_num // batch_size) * num_epoch
-  cycles = 200
+  cycles = 2
 
   if 'e' in main_flag:
     xyzs_E, grouped_xyzs_E, others_E, shuffle_E = \
