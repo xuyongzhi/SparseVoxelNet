@@ -368,11 +368,13 @@ class BlockGroupSampling():
     bids_sampling, out_bot_cen_top = self.all_bot_cen_tops(\
                                       block_id_unique, valid_bididx_sampled_all)
 
+
     if self._check_gbinb_optial:
       gb_valid_mask, nerr_gb_in_ob = self.check_block_inblock(grouped_bot_cen_top,
                                         tf.expand_dims(out_bot_cen_top, -2),
                                         grouped_empty_mask)
-      with tf.control_dependencies([tf.assert_equal(nerr_gb_in_ob, 0)]):
+      check_flat_scope = self.check_flat(flatting_idx, flat_valid_mask, out_bot_cen_top, bot_cen_top)
+      with tf.control_dependencies([tf.assert_equal(nerr_gb_in_ob, 0), check_flat_scope]):
         grouped_bot_cen_top = tf.identity(grouped_bot_cen_top)
 
     vox_index = self.voxelization(grouped_bot_cen_top, out_bot_cen_top)
@@ -412,6 +414,22 @@ class BlockGroupSampling():
 
     return grouped_pindex, vox_index, grouped_bot_cen_top, grouped_empty_mask, out_bot_cen_top, nb_enoughp_per_gb, others
 
+
+  def check_flat(self, flatting_idx, flat_valid_mask, out_bot_cen_top, bot_cen_top):
+    if self.scale == 0:
+      return True
+    bot_cen_top = tf.reshape(bot_cen_top, [-1,9])
+    out_bot_cen_top = tf.reshape(out_bot_cen_top, [-1,9])
+    flatten_bot_cen_top = tf.gather(out_bot_cen_top, flatting_idx[:,0])
+    empty_mask = tf.equal(flat_valid_mask[:,0], 0)
+    correct_mask, nerr_scope = self.check_block_inblock( bot_cen_top, flatten_bot_cen_top, empty_mask=empty_mask)
+
+    nerr_scope = tf.Print(nerr_scope, [self.scale, nerr_scope], message="scale, flat scope check err")
+    if nerr_scope>0:
+      import pdb; pdb.set_trace()  # XXX BREAKPOINT
+      pass
+    check_flat_scope = tf.assert_equal(nerr_scope, 0, message="flat check err {}".format(nerr_scope))
+    return check_flat_scope
 
   def gather_grouped(self, grouped_pindex, bot_cen_top):
     '''
@@ -1137,6 +1155,7 @@ class BlockGroupSampling():
     grouped_empty_mask = tf.reshape(grouped_empty_mask, aim_shape)
     return grouped_pindex, grouped_empty_mask, grouped_pindex_emptyneg
 
+
   def get_flatten_index(self, pidx_bididx_bid_unsampled,  \
                         npoint_per_block, valid_bididx_dsampled_all ):
     '''
@@ -1715,7 +1734,7 @@ def main(filenames, dset_metas):
   #sg_settings = get_sg_settings('32768_1024_64')
   sg_settings = get_sg_settings('A')
 
-  batch_size = 3
+  batch_size = 2
   if len(sys.argv) > 1:
     main_flag = sys.argv[1]
     if len(sys.argv) > 2:
@@ -1731,7 +1750,7 @@ def main(filenames, dset_metas):
   file_num = 12311
   num_epoch = 1
   cycles = (file_num // batch_size) * num_epoch
-  cycles = 2
+  cycles = 20
 
   if 'e' in main_flag:
     xyzs_E, grouped_xyzs_E, others_E, shuffle_E = \
