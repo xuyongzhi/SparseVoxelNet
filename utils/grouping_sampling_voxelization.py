@@ -361,7 +361,7 @@ class BlockGroupSampling():
           self.get_grouped_pindex( bid_index__pindex_inb, point_index, valid_bididx_sampled_all)
 
     if self._check_optional:
-      self.check_grouping_flatting(grouped_pindex, flatting_idx, flat_valid_mask)
+      flatting_idx = self.check_grouping_flatting(grouped_pindex, flatting_idx, flat_valid_mask)
 
     grouped_bot_cen_top = self.gather_grouped(grouped_pindex, bot_cen_top)
 
@@ -1155,7 +1155,8 @@ class BlockGroupSampling():
     Return
     flatting_idx: [batch_size, global_block_num, num_point_last_scale, _flat_num]
                   [self.bsgbn * num_point_last_scale]
-      Note: the value is the global block id augmented block index.
+        Note: the value is the global block id augmented block index:
+              the block index in  all batches
     # flatten_idx: the block index for each grouped point
     '''
     if self.scale == 0:
@@ -1171,8 +1172,8 @@ class BlockGroupSampling():
       out_num_point = self._npoint_per_blocks[self.scale-1]
     else:
       out_num_point = self._nblocks[self.scale-1]
-    self._flat_num = 3
     nblocks_perp_buf = np.prod(self._nblocks_per_point[self.scale])
+    self._flat_num = nblocks_perp_buf
     assert nblocks_perp_buf >= self._flat_num
     flatting_idx_shape_buf = [self.batch_size, self.global_block_num,\
                               out_num_point, nblocks_perp_buf]
@@ -1290,38 +1291,59 @@ class BlockGroupSampling():
   def check_grouping_flatting(self, grouped_pindex, flatting_idx, flat_valid_mask):
     if self.scale==0:
       return
-    print(self.scale)
+    #print(self.scale)
     gp_shape = [e.value for e in grouped_pindex.shape]
     fi_shape = [e.value for e in flatting_idx.shape]
-    print('gp', gp_shape)
-    print('fi', fi_shape)
+    #print('gp', gp_shape)
+    #print('fi', fi_shape)
 
-    points0 = tf.reshape(tf.range(self._npoint_last_scale[self.scale]), [1,1,-1])
-    points0 = tf.tile(points0, [self.batch_size, self.global_block_num, 1])
-    points0 = tf.reshape(points0, [-1])
+    #***************************************************************************
+    # aug gpidx with global block id
+    start_pidx = tf.reshape(tf.range(self.bsgbn) * self.start_pidx_step,\
+                              [self.batch_size, self.global_block_num,1,1])
+    grouped_pindex += start_pidx
+    grouped_pindex = tf.reshape(grouped_pindex, [-1, gp_shape[3]])
 
-    grouped_points = tf.gather(points0, grouped_pindex)
-    grouped_pindex = tf.reshape(grouped_pindex, [-1, grouped_pindex.shape[-1].value])
+    # rm duplicated blocks
+    is_need_clean = tf.reduce_any( tf.less(self.nb_enoughp_per_gb, self._nblocks[self.scale]))
+    def clean_grouped_pindex():
+      tmp = tf.tile(tf.reshape(tf.range(self._nblocks[self.scale]), [1,-1]), [self.bsgbn,1])
+      nvalid_sampled = tf.minimum(self.nb_enoughp_per_gb, self._nblocks[self.scale])
+      valid_mask = tf.cast(tf.less(tmp, tf.expand_dims(nvalid_sampled, 1)), tf.int32)
 
-    points1 = tf.reshape(tf.range(self._nblocks[self.scale]), [1,1,-1])
-    points1 = tf.tile(points1, [self.batch_size, self.global_block_num, 1])
-    points1 = tf.reshape(points1, [-1])
+      tmp += tf.expand_dims(tf.range(self.bsgbn) * self._nblocks[self.scale], 1)
+      tmp = (tmp + 1) * valid_mask - 1
+      vb_indices = tf.reshape(tmp, [-1])
+      # rm -1
+      valid_indices = tf.where(tf.greater_equal(vb_indices, 0))[:,0]
+      vb_indices_cleaned = tf.gather(vb_indices, valid_indices)
+      grouped_pindex_vb = tf.gather(grouped_pindex, vb_indices_cleaned)
+      return grouped_pindex_vb
 
-    for bi in range(self._nblocks[self.scale]):
-      flatten_bididx = tf.gather(flatting_idx, grouped_pindex[bi])
-      mask_i = tf.gather(flat_valid_mask, grouped_pindex[bi])
-      flatten_bididx = (flatten_bididx+1) * mask_i - 1
+    grouped_pindex = tf.case([(is_need_clean, clean_grouped_pindex)], \
+                             default = lambda: grouped_pindex)
 
-      tmp0 = tf.equal(flatten_bididx, tf.constant([bi], tf.int32))
-      tmp1 = tf.reduce_any(tmp0, 1)
-      tmp1 = tf.cast(tmp1, tf.int32)
-      err_num = tf.reduce_sum(1- tmp1 )
-      if err_num>0:
-        import pdb; pdb.set_trace()  # XXX BREAKPOINT
-        pass
-      tf.assert_equal( err_num, 0, \
-                      message="flatten error")
-      print('check grouping faltting ok block {}/{}'.format(bi, self._nblocks[self.scale]))
+    #***************************************************************************
+    true_bididx_auged = tf.tile( tf.reshape( tf.range(tf.shape(grouped_pindex)[0]), [-1,1]), [1, gp_shape[3]])
+    true_bididx_auged = tf.reshape(true_bididx_auged, [-1,1])
+    grouped_pindex = tf.reshape(grouped_pindex, [-1])
+
+    flatten_bididx = tf.gather(flatting_idx, grouped_pindex)
+    mask = tf.gather(flat_valid_mask, grouped_pindex)
+    flatten_bididx = (flatten_bididx+1) * mask - 1
+
+    tmp0 = tf.equal(flatten_bididx, true_bididx_auged)
+    tmp1 = tf.reduce_any(tmp0, 1)
+    tmp1 = tf.cast(tmp1, tf.int32)
+    err_num = tf.reduce_sum(1- tmp1 )
+    #if err_num>0:
+    #  import pdb; pdb.set_trace()  # XXX BREAKPOINT
+    #  pass
+    tf.assert_equal( err_num, 0, \
+                    message="flatten error")
+    flatting_idx = tf.Print(flatting_idx, [err_num], \
+                            message = 'scale {} check grouping faltting for whole batch, errnum:'.format(self.scale))
+    return flatting_idx
 
 
   def get_flatten_index_version1(self, grouped_pindex_emptyneg):
@@ -1819,7 +1841,7 @@ def main(filenames, dset_metas):
   #sg_settings = get_sg_settings('32768_1024_64')
   sg_settings = get_sg_settings('A')
 
-  batch_size = 1
+  batch_size = 3
   if len(sys.argv) > 1:
     main_flag = sys.argv[1]
     if len(sys.argv) > 2:
