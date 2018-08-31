@@ -1179,38 +1179,48 @@ class BlockGroupSampling():
 
     #***************************************************************************
     # check if there is any invalid blocks
-    tmp = tf.less( self.nb_enoughp_per_gb, self._nblocks[self.scale])
-    is_any_invalid_blocks = tf.reduce_any(tmp)
+    c0 = tf.reduce_all( tf.equal(self.nb_enoughp_per_gb, self.nblocks_per_gb))
+    c1 = tf.reduce_all( tf.equal( self.nblocks_per_gb, self._nblocks[self.scale]))
+    no_invalid_blocks = tf.logical_and(c0, c1)
+    #if self.scale == 0:
+    #  check_no_invalid = tf.assert_equal(no_invalid_blocks, True)
+    #  with tf.control_dependencies([check_no_invalid]):
+    #    return pidx_bididx_bid_unsampled
+
     #***************************************************************************
-    # get valid block sampling g_index to implement valid_bididx_dsampled_all
-    valid_bn = tf.shape(valid_bididx_dsampled_all)[0]
-    cumsum_np_perb = tf.cumsum(npoint_per_block)
-    cumsum_np_perb_sampled = tf.gather(cumsum_np_perb, valid_bididx_dsampled_all)
-    np_perb_sampled = tf.gather(npoint_per_block, valid_bididx_dsampled_all)
-    # valid block sampling index start
-    vbs_index_start = cumsum_np_perb_sampled - np_perb_sampled
-    max_np_perb = tf.reduce_max(np_perb_sampled)
-    vbs_index_buf = tf.tile( tf.reshape(tf.range(max_np_perb), [1,-1]), [valid_bn, 1])
-    valid_np_mask = tf.cast(tf.less(vbs_index_buf, tf.expand_dims(np_perb_sampled,1)), tf.int32)
-    vbs_index_buf += tf.expand_dims( vbs_index_start,1) + 1
-    vbs_index_buf *= valid_np_mask
-    vbs_index_buf -= 1
-    vbs_index_buf = tf.reshape(vbs_index_buf, [-1])
-    pos_mask = tf.greater_equal(vbs_index_buf, 0)
-    pos_index = tf.where(pos_mask)[:,0]
-    vbs_index = tf.gather(vbs_index_buf, pos_index)
+    def sampling_fvb():
+      # get valid block sampling g_index to implement valid_bididx_dsampled_all
+      valid_bn = tf.shape(valid_bididx_dsampled_all)[0]
+      cumsum_np_perb = tf.cumsum(npoint_per_block)
+      cumsum_np_perb_sampled = tf.gather(cumsum_np_perb, valid_bididx_dsampled_all)
+      np_perb_sampled = tf.gather(npoint_per_block, valid_bididx_dsampled_all)
+      # valid block sampling index start
+      vbs_index_start = cumsum_np_perb_sampled - np_perb_sampled
+      max_np_perb = tf.reduce_max(np_perb_sampled)
+      vbs_index_buf = tf.tile( tf.reshape(tf.range(max_np_perb), [1,-1]), [valid_bn, 1])
+      valid_np_mask = tf.cast(tf.less(vbs_index_buf, tf.expand_dims(np_perb_sampled,1)), tf.int32)
+      vbs_index_buf += tf.expand_dims( vbs_index_start,1) + 1
+      vbs_index_buf *= valid_np_mask
+      vbs_index_buf -= 1
+      vbs_index_buf = tf.reshape(vbs_index_buf, [-1])
+      pos_mask = tf.greater_equal(vbs_index_buf, 0)
+      pos_index = tf.where(pos_mask)[:,0]
+      vbs_index = tf.gather(vbs_index_buf, pos_index)
 
-    #*********** get the new bididx (without the rmed blocks)
-    tmp0 = 1-tf.scatter_nd(tf.expand_dims(valid_bididx_dsampled_all,1), tf.ones([valid_bn],tf.int32), [self.nb_enoughp_all])
-    tmp1 = tf.cumsum(tmp0)
-    tmp_bididx = tf.expand_dims( tf.range(self.nb_enoughp_all) - tmp1, 1)
-    new_bididx = tf.gather(tmp_bididx, pidx_bididx_bid_unsampled[:,1])
-    pidx_bididx_bid_unsampled = tf.concat([pidx_bididx_bid_unsampled[:,0:1], new_bididx,
-                                           pidx_bididx_bid_unsampled[:,2:3]], 1)
+      #*********** get the new bididx (without the rmed blocks)
+      tmp0 = 1-tf.scatter_nd(tf.expand_dims(valid_bididx_dsampled_all,1), tf.ones([valid_bn],tf.int32), [self.nb_enoughp_all])
+      tmp1 = tf.cumsum(tmp0)
+      tmp_bididx = tf.expand_dims( tf.range(self.nb_enoughp_all) - tmp1, 1)
+      new_bididx = tf.gather(tmp_bididx, pidx_bididx_bid_unsampled[:,1])
+      pidx_bididx_bid_new = tf.concat([pidx_bididx_bid_unsampled[:,0:1], new_bididx,
+                                            pidx_bididx_bid_unsampled[:,2:3]], 1)
 
-    # rm the points belong to invalid block
-    pidx_bididx_bid_validb = tf.gather(pidx_bididx_bid_unsampled, vbs_index)
-    import pdb; pdb.set_trace()  # XXX BREAKPOINT
+      # rm the points belong to invalid block
+      return tf.gather(pidx_bididx_bid_new, vbs_index)
+    pidx_bididx_bid_validb = tf.cond( no_invalid_blocks, \
+                                      lambda: pidx_bididx_bid_unsampled,\
+                                      sampling_fvb)
+
     return pidx_bididx_bid_validb
 
 
