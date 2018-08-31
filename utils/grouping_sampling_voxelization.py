@@ -177,7 +177,7 @@ class BlockGroupSampling():
     self._cut_bindex_by_global_scope = True # compulsory
 
     self._check_optional = True
-    self._close_all_checking_info = True
+    self._close_all_checking_info = False
     self._use_less_points_block_when_not_enough_optial = True and self._check_optional
     # Theoretically, num_block_per_point should be same for all. This is 0.
     self._check_nblock_per_points_same_optial = True and self._check_optional
@@ -1047,8 +1047,9 @@ class BlockGroupSampling():
 
     pidx_bididx_bid_unsampled = tf.concat([bid_pindex[:,1:2], tf.expand_dims(blockid_index, -1),\
                                        tf.expand_dims(block_id, -1)], -1)
-    flatting_idx, flat_valid_mask = self.get_flatten_index(pidx_bididx_bid_unsampled,  \
-                           npoint_per_block, valid_bididx_dsampled_all)
+
+    pidx_bididx_bid_validb = self.sampling_fixed_valid_blocks(  pidx_bididx_bid_unsampled, npoint_per_block, valid_bididx_dsampled_all )
+    flatting_idx, flat_valid_mask = self.get_flatten_index(pidx_bididx_bid_validb)
     #if self.scale==1:
     #  pass
     #  import pdb; pdb.set_trace()  # XXX BREAKPOINT
@@ -1168,51 +1169,21 @@ class BlockGroupSampling():
     return grouped_pindex, grouped_empty_mask, grouped_pindex_emptyneg
 
 
-  def get_flatten_index(self, pidx_bididx_bid_unsampled,  \
+  def sampling_fixed_valid_blocks(self, pidx_bididx_bid_unsampled,  \
                         npoint_per_block, valid_bididx_dsampled_all ):
-    '''
-    pidx_bididx_bid_unsampled: [self.ngp_valid_sum, 3]
-      (1) To keep the flatten idx for later abandoned points,  _npoint_per_blocks
-      sampling is not performed yet.
-      Becasue _nblocks samplings can only be performed later, so this is also not
-      performed yet.
-      (2) pidx_bididx_bid_unsampled is sorted by bididx, and bididx is augmented by
-      global block id
-      (3) gpidx is not augmented by global block id.
-
-    npoint_per_block: [unique_block_num]
-    valid_bididx_dsampled_all: [valid block num]
-
-    Return
-    flatting_idx: [batch_size, global_block_num, num_point_last_scale, _flat_num]
-                  [self.bsgbn * num_point_last_scale]
-        Note: the value is the global block id augmented block index:
-              the block index in  all batches
-    # flatten_idx: the block index for each grouped point
-    '''
-    if self.scale == 0:
-      # no need to get faltten idx
-      return None, None
     shape0 = tf.shape(pidx_bididx_bid_unsampled)
     assert shape0.shape[0].value == 2
     check0 = tf.assert_equal(shape0[0], self.ngp_valid_sum)
     with tf.control_dependencies([check0]):
       pidx_bididx_bid_unsampled = tf.identity(pidx_bididx_bid_unsampled)
-    #***************************************************************************
-    if self.scale==1:
-      out_num_point = self._npoint_per_blocks[self.scale-1]
-    else:
-      out_num_point = self._nblocks[self.scale-1]
-    nblocks_perp_buf = np.prod(self._nblocks_per_point[self.scale])
-    self._flat_num = nblocks_perp_buf
-    assert nblocks_perp_buf >= self._flat_num
-    flatting_idx_shape_buf = [self.batch_size, self.global_block_num,\
-                              out_num_point, nblocks_perp_buf]
-    flatting_idx_shape_buf = [self.bsgbn * out_num_point, nblocks_perp_buf]
 
-    valid_bn = tf.shape(valid_bididx_dsampled_all)[0]
+    #***************************************************************************
+    # check if there is any invalid blocks
+    tmp = tf.less( self.nb_enoughp_per_gb, self._nblocks[self.scale])
+    is_any_invalid_blocks = tf.reduce_any(tmp)
     #***************************************************************************
     # get valid block sampling g_index to implement valid_bididx_dsampled_all
+    valid_bn = tf.shape(valid_bididx_dsampled_all)[0]
     cumsum_np_perb = tf.cumsum(npoint_per_block)
     cumsum_np_perb_sampled = tf.gather(cumsum_np_perb, valid_bididx_dsampled_all)
     np_perb_sampled = tf.gather(npoint_per_block, valid_bididx_dsampled_all)
@@ -1239,7 +1210,48 @@ class BlockGroupSampling():
 
     # rm the points belong to invalid block
     pidx_bididx_bid_validb = tf.gather(pidx_bididx_bid_unsampled, vbs_index)
+    import pdb; pdb.set_trace()  # XXX BREAKPOINT
+    return pidx_bididx_bid_validb
 
+
+
+  def get_flatten_index(self, pidx_bididx_bid_validb):
+    '''
+    pidx_bididx_bid_unsampled: [self.ngp_valid_sum, 3]
+      (1) To keep the flatten idx for later abandoned points,  _npoint_per_blocks
+      sampling is not performed yet.
+      Becasue _nblocks samplings can only be performed later, so this is also not
+      performed yet.
+      (2) pidx_bididx_bid_unsampled is sorted by bididx, and bididx is augmented by
+      global block id
+      (3) gpidx is not augmented by global block id.
+
+    npoint_per_block: [unique_block_num]
+    valid_bididx_dsampled_all: [valid block num]
+
+    Return
+    flatting_idx: [batch_size, global_block_num, num_point_last_scale, _flat_num]
+                  [self.bsgbn * num_point_last_scale]
+        Note: the value is the global block id augmented block index:
+              the block index in  all batches
+    # flatten_idx: the block index for each grouped point
+    '''
+    if self.scale == 0:
+      # no need to get faltten idx
+      return None, None
+    #***************************************************************************
+    if self.scale==1:
+      out_num_point = self._npoint_per_blocks[self.scale-1]
+    else:
+      out_num_point = self._nblocks[self.scale-1]
+    nblocks_perp_buf = np.prod(self._nblocks_per_point[self.scale])
+    self._flat_num = nblocks_perp_buf
+    assert nblocks_perp_buf >= self._flat_num
+    flatting_idx_shape_buf = [self.batch_size, self.global_block_num,\
+                              out_num_point, nblocks_perp_buf]
+    flatting_idx_shape_buf = [self.bsgbn * out_num_point, nblocks_perp_buf]
+
+    ##***************************************************************************
     #***************************************************************************
     # augment pidx with global block id
     global_block_id = pidx_bididx_bid_validb[:,2] / self.start_bid_step
@@ -1772,7 +1784,7 @@ def main(filenames, dset_metas):
   #sg_settings = get_sg_settings('32768_1024_64')
   sg_settings = get_sg_settings('A')
 
-  batch_size = 1
+  batch_size = 3
   if len(sys.argv) > 1:
     main_flag = sys.argv[1]
     if len(sys.argv) > 2:
