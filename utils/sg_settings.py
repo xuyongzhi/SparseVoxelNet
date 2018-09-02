@@ -61,10 +61,8 @@ def get_sg_settings(sgflag):
   sg_settings = {}
   sg_settings['width'] =  [[6.5,6.5,6.5], [0.5,0.5,0.5], [1.7,1.7,1.7]]
   sg_settings['stride'] = [[7.0,7,7],     [0.3,0.3,0.3], [1.2,1.2,1.2]]
-  sg_settings['nblock'] =  [1,            2048,  256  ]
-  #sg_settings['nblock'] =  [1,            1024,  64  ]
-  sg_settings['npoint_per_block'] = [32768, 128, 128]
-  #sg_settings['nblock'] =  [1,            1024,  64  ]
+  sg_settings['nblock'] =  [1,            1024,  64  ]
+  sg_settings['npoint_per_block'] = [32768, 32, 32]
   sg_settings['np_perb_min_include'] = [1000, 1, 1]
   sg_settings_all[sg_flag(sg_settings)] = sg_settings
   sg_settings_all['A'] = sg_settings
