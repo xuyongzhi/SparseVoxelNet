@@ -1814,8 +1814,8 @@ def main(filenames, dset_metas, main_flag, batch_size = 2, cycles = 1):
 def main_1by1_file(filenames, dset_metas, main_flag, batch_size):
   num_file = len(filenames)
   for i in range(0, num_file, batch_size):
-    if i<926:
-      continue
+    #if i<3630:
+    #  continue
     print('\n\nfile id: {} to {}\n'.format(i, i+batch_size))
     fnls_i = filenames[i:i+batch_size]
     print(fnls_i)
@@ -1839,7 +1839,7 @@ if __name__ == '__main__':
   dset_metas = get_dset_shape_idxs(raw_tfrecord_path)
 
 
-  batch_size = 10
+  batch_size = 50
   if len(sys.argv) > 1:
     main_flag = sys.argv[1]
     if len(sys.argv) > 2:

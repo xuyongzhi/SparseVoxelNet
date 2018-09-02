@@ -687,7 +687,9 @@ def main_gen_ply(dataset_name, tf_path):
   scene = 'Pm6F8kyY3z2_region3'
   #scene = '17DRP5sb8fy_region0'
   #scene = 'ac26ZMwG7aT_region9'
+
   scene = 'YFuZgdQ5vWj_region19'  # all void
+  scene = 'VFuaQ6m2Qom_region38'  # all void
 
   name_base = 'data/{}*.tfrecord'.format(scene)
   fn_glob = os.path.join(tf_path, name_base)
@@ -699,6 +701,7 @@ def main_gen_ply(dataset_name, tf_path):
 def gen_ply_onef(dataset_name, tf_path, filename, scene):
   from utils.ply_util import create_ply_dset
   is_rm_void_labels = True
+  is_rm_void_labels = False
 
   ply_dir = os.path.join(tf_path, 'plys/ply_'+scene)
   if not os.path.exists(ply_dir):
@@ -772,9 +775,10 @@ if __name__ == '__main__':
   tfrecord_path = os.path.join(dset_path, 'raw_tfrecord')
 
   #main_write(dataset_name, rawh5_glob, tfrecord_path, num_point[dataset_name], block_size[dataset_name])
-  #main_merge_tfrecord(dataset_name, tfrecord_path)
 
-  main_gen_ply(dataset_name, tfrecord_path)
+  main_merge_tfrecord(dataset_name, tfrecord_path)
+
+  #main_gen_ply(dataset_name, tfrecord_path)
 
   #get_dataset_summary(dataset_name, tfrecord_path)
   #get_dset_shape_idxs(tfrecord_path)

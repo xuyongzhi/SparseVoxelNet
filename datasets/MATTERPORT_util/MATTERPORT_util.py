@@ -24,7 +24,7 @@ MATTERPORT_Meta['label26'] = {}
 MATTERPORT_Meta['unlabelled_categories'] = [0,41]
 MATTERPORT_Meta['easy_categories'] = []
 
-MATTERPORT_Meta['bad_files'] = ['YFuZgdQ5vWj_region19'] # all void
+MATTERPORT_Meta['bad_files'] = ['YFuZgdQ5vWj_region19', 'VFuaQ6m2Qom_region38', 'VFuaQ6m2Qom_region40'] # all void
 
 with open(mpcat40_fn,'r') as f:
     reader = csv.reader(f,delimiter='\t')
