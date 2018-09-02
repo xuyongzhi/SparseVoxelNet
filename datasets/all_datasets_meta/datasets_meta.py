@@ -25,6 +25,7 @@ class DatasetsMeta():
     g_unlabelled_categories = {}
     g_easy_categories = {}
     g_label2color = {}
+    g_bad_files = {}
 
     for i in range(len(DATASETS)):
         DS_i = DATASETS[i]
@@ -34,6 +35,11 @@ class DatasetsMeta():
         g_label2color[DS_i] = DS_Meta_i['label2color']
         g_easy_categories[DS_i] = DS_Meta_i['easy_categories']
         g_unlabelled_categories[DS_i] = DS_Meta_i['unlabelled_categories']
+        if 'bad_files' in DS_Meta_i:
+          g_bad_files[DS_i] = DS_Meta_i['bad_files']
+        else:
+          g_bad_files[DS_i] = []
+
     ##---------------------------------------------------------------------------
 
     #---------------------------------------------------------------------------
@@ -64,6 +70,8 @@ class DatasetsMeta():
             self.class2color[cls] = self.label2color[i]
         self.num_classes = len(self.label2class)
         #self.num_classes = len(self.g_label2class) - len(self.g_unlabelled_categories[self.datasource_name])
+
+        self.bad_files = self.g_bad_files[datasource_name]
 
     def get_train_test_file_list(self, data_dir, is_training):
       if self.datasource_name == "MODELNET40":

@@ -24,6 +24,8 @@ MATTERPORT_Meta['label26'] = {}
 MATTERPORT_Meta['unlabelled_categories'] = [0,41]
 MATTERPORT_Meta['easy_categories'] = []
 
+MATTERPORT_Meta['bad_files'] = ['YFuZgdQ5vWj_region19'] # all void
+
 with open(mpcat40_fn,'r') as f:
     reader = csv.reader(f,delimiter='\t')
     for i,line in enumerate(reader):
@@ -102,5 +104,6 @@ def benchmark():
   #for item in tte_names:
   #  print('{} {}'.format(item, len(tte_names[item])))
   return tte_names
+
 
 

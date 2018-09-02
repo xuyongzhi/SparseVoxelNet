@@ -687,6 +687,8 @@ def main_gen_ply(dataset_name, tf_path):
   scene = 'Pm6F8kyY3z2_region3'
   #scene = '17DRP5sb8fy_region0'
   #scene = 'ac26ZMwG7aT_region9'
+  scene = 'YFuZgdQ5vWj_region19'  # all void
+
   name_base = 'data/{}*.tfrecord'.format(scene)
   fn_glob = os.path.join(tf_path, name_base)
   filenames = glob.glob(fn_glob)
@@ -772,7 +774,7 @@ if __name__ == '__main__':
   #main_write(dataset_name, rawh5_glob, tfrecord_path, num_point[dataset_name], block_size[dataset_name])
   #main_merge_tfrecord(dataset_name, tfrecord_path)
 
-  #main_gen_ply(dataset_name, tfrecord_path)
+  main_gen_ply(dataset_name, tfrecord_path)
 
   #get_dataset_summary(dataset_name, tfrecord_path)
   #get_dset_shape_idxs(tfrecord_path)

@@ -1756,28 +1756,16 @@ def gen_plys(DATASET_NAME, frame, points, grouped_bot_cen_top,
 
 
 
-def main(filenames, dset_metas):
+def main(filenames, dset_metas, main_flag, batch_size = 2, cycles = 1):
   from utils.sg_settings import get_sg_settings
   #sg_settings = get_sg_settings('32768_1024_64')
   sg_settings = get_sg_settings('A')
 
-  batch_size = 3
-  if len(sys.argv) > 1:
-    main_flag = sys.argv[1]
-    if len(sys.argv) > 2:
-      batch_size = int(sys.argv[2])
-      print('batch_size {}'.format(batch_size))
-  else:
-    main_flag = 'g'
-    #main_flag = 'G'
-    #main_flag = 'eg'
-    #main_flag = 'e'
-  print(main_flag)
 
-  file_num = 12311
+  #file_num = len(filenames)
   num_epoch = 1
-  cycles = (file_num // batch_size) * num_epoch
-  cycles = 20
+  #cycles = (file_num // batch_size) * num_epoch
+  #cycles = 100
 
   if 'e' in main_flag:
     xyzs_E, grouped_xyzs_E, others_E, shuffle_E = \
@@ -1787,6 +1775,8 @@ def main(filenames, dset_metas):
       main_input_pipeline(DATASET_NAME, filenames, sg_settings, dset_metas, batch_size, cycles, num_epoch)
   if 'G' in main_flag:
     main_gpu(DATASET_NAME, filenames, sg_settings, dset_metas, batch_size, cycles, num_epoch)
+
+  num_gb = xyzs.shape[0]
 
   if main_flag=='eg' and shuffle==False and shuffle_E==False:
     assert xyzs.shape[0] == xyzs_E.shape[0], "Make batch_size=batch_size in main "
@@ -1818,6 +1808,19 @@ def main(filenames, dset_metas):
         else:
           print('time %d, sclae %s, grouped_xyzs of g and e is same'%(b, s))
 
+  return num_gb
+
+
+def main_1by1_file(filenames, dset_metas, main_flag, batch_size):
+  num_file = len(filenames)
+  for i in range(0, num_file, batch_size):
+    if i<926:
+      continue
+    print('\n\nfile id: {} to {}\n'.format(i, i+batch_size))
+    fnls_i = filenames[i:i+batch_size]
+    print(fnls_i)
+    num_gb = main(fnls_i, dset_metas, main_flag, batch_size=batch_size, cycles=1)
+    assert num_gb == batch_size
 
 if __name__ == '__main__':
   import random
@@ -1835,7 +1838,22 @@ if __name__ == '__main__':
 
   dset_metas = get_dset_shape_idxs(raw_tfrecord_path)
 
-  main(filenames, dset_metas)
+
+  batch_size = 10
+  if len(sys.argv) > 1:
+    main_flag = sys.argv[1]
+    if len(sys.argv) > 2:
+      batch_size = int(sys.argv[2])
+      print('batch_size {}'.format(batch_size))
+  else:
+    main_flag = 'g'
+    #main_flag = 'G'
+    #main_flag = 'eg'
+    #main_flag = 'e'
+  print(main_flag)
+
+  #main_1by1_file(filenames, dset_metas, main_flag, batch_size)
+  main(filenames, dset_metas, main_flag, batch_size, cycles = len(filenames)//batch_size)
   #get_data_summary_from_tfrecord(filenames, raw_tfrecord_path)
 
 
