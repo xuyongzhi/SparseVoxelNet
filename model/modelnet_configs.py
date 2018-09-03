@@ -26,7 +26,7 @@ DEFAULTS['precpu_sg'] = True
 #DEFAULTS['sg_flag'] = '2048_800_40'
 #DEFAULTS['sg_flag'] = '2048'
 DEFAULTS['sg_flag'] = '32768_1024_64'
-DEFAULTS['sg_flag'] = '32768'
+#DEFAULTS['sg_flag'] = '32768'
 
 DEFAULTS['only_eval'] = 0
 DEFAULTS['eval_views'] = 1
@@ -47,9 +47,9 @@ DEFAULTS['lr_decay_epochs'] = 20
 DEFAULTS['lr_warmup'] = 0
 DEFAULTS['batch_norm_decay0'] = 0.7
 
-DEFAULTS['model_flag'] = 'V'
-DEFAULTS['resnet_size'] = '1A20'
-#DEFAULTS['resnet_size'] = '3A20'
+DEFAULTS['model_flag'] = 'm'
+#DEFAULTS['resnet_size'] = '1A20'
+DEFAULTS['resnet_size'] = '3A20'
 DEFAULTS['feed_data'] = 'xyzs'
 DEFAULTS['use_xyz'] = 1
 DEFAULTS['aug_types'] = 'N' # 'rpsfj-360_0_0'
@@ -163,6 +163,7 @@ def all_block_paras_bottle_regu_MODELNET():
   block_strides = {}
   block_paddings = {}   # only used when strides == 1
   block_filters = {}
+  flatten_filters = {}
 
   rs = '1A20'
   num_filters0s[rs] = 32
@@ -180,7 +181,7 @@ def all_block_paras_bottle_regu_MODELNET():
   block_strides[rs]  = [[],           [1,1],      [1,1,1]]
   block_paddings[rs] = [[],           ['v','v'],  ['v','v','s']]
 
-  return num_filters0s, block_sizes, block_filters, block_kernels, block_strides, block_paddings
+  return num_filters0s, block_sizes, block_filters, block_kernels, block_strides, block_paddings, flatten_filters
 
 def all_block_paras_bottle_regu_MATTERPORT():
   num_filters0s = {}
@@ -189,6 +190,7 @@ def all_block_paras_bottle_regu_MATTERPORT():
   block_strides = {}
   block_paddings = {}   # only used when strides == 1
   block_filters = {}
+  flatten_filters = {}
 
   rs = '1A20'
   num_filters0s[rs] = 32
@@ -197,8 +199,18 @@ def all_block_paras_bottle_regu_MATTERPORT():
   block_kernels[rs]  = [[],        ]
   block_strides[rs]  = [[],        ]
   block_paddings[rs] = [[],        ]
+  flatten_filters[rs]= [[64,64]]
 
-  return num_filters0s, block_sizes, block_filters, block_kernels, block_strides, block_paddings
+  rs = '3A20'
+  num_filters0s[rs] = 32
+  block_sizes[rs]    = [[2,1, 1],     [1,1],      [1,1,1]]
+  block_filters[rs]  = [[32,64,125],  [128,256],  [256,512,1024]]
+  block_kernels[rs]  = [[],           [3,3],      [3,3,1]]
+  block_strides[rs]  = [[],           [1,1],      [1,1,1]]
+  block_paddings[rs] = [[],           ['v','v'],  ['v','v','s']]
+  flatten_filters[rs]= [[64,64],     [256,256,128],  [512,256]]
+
+  return num_filters0s, block_sizes, block_filters, block_kernels, block_strides, block_paddings, flatten_filters
 
 def get_block_paras_bottle_regu(resnet_size, model_flag):
   if DATASET_NAME == 'MODELNET40':
@@ -206,7 +218,7 @@ def get_block_paras_bottle_regu(resnet_size, model_flag):
   elif DATASET_NAME == 'MATTERPORT':
     all_block_paras = all_block_paras_bottle_regu_MATTERPORT
 
-  num_filters0s, block_sizes, block_filters, block_kernels, block_strides, block_paddings = all_block_paras()
+  num_filters0s, block_sizes, block_filters, block_kernels, block_strides, block_paddings, flatten_filters = all_block_paras()
 
   if 'V' not in model_flag:
     for i in range(len(block_sizes[resnet_size])):
@@ -235,6 +247,7 @@ def get_block_paras_bottle_regu(resnet_size, model_flag):
   block_params['filters'] = block_filters[resnet_size]
   block_params['padding_s1'] = block_paddings[resnet_size]
   block_params['block_sizes'] = block_sizes[resnet_size]
+  block_params['flatten_filters'] = flatten_filters[resnet_size]
   return block_params
 
 

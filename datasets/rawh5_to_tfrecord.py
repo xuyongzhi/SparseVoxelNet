@@ -168,15 +168,18 @@ def parse_pl_record(tfrecord_serialized, is_training, dset_metas=None, bsg=None,
     if bsg!=None:
       xyz = tf.expand_dims(points[:,0:3], 0)
       ds = {}
-      grouped_pindex, vox_index, grouped_bot_cen_top, \
-        empty_mask, bot_cen_top, nblock_valid, others = \
+      grouped_pindex, vox_index, grouped_bot_cen_top, empty_mask, bot_cen_top, \
+        flatting_idx, flat_valid_mask, nblock_valid, others = \
                         bsg.grouping_multi_scale(xyz)
+
+      assert bsg.batch_size == 1
+      bsi = 0
+      points, labels = gather_labels_for_each_gb(points, labels, grouped_pindex[0][bsi])
 
       num_scale = len(grouped_bot_cen_top)
       global_block_num = grouped_pindex[0].shape[1]
       check_g = tf.assert_equal(global_block_num, 1)
       with tf.control_dependencies([check_g]):
-        bsi = 0
         for s in range(num_scale+1):
           if len(empty_mask) <= s:
             continue
@@ -191,6 +194,8 @@ def parse_pl_record(tfrecord_serialized, is_training, dset_metas=None, bsg=None,
           features['grouped_pindex_%d'%(s)] = grouped_pindex[s][bsi]
           features['grouped_bot_cen_top_%d'%(s)] = grouped_bot_cen_top[s][bsi]
           features['bot_cen_top_%d'%(s)] = bot_cen_top[s][bsi]
+          features['flatting_idx_%d'%(s)] = flatting_idx[s]
+          features['flat_valid_mask_%d'%(s)] = flat_valid_mask[s]
           #for k in range(len(others[s]['name'])):
           #  name = others[s]['name'][k]+'_%d'%(s)
           #  if name not in features:
@@ -206,6 +211,16 @@ def parse_pl_record(tfrecord_serialized, is_training, dset_metas=None, bsg=None,
 
     return features, labels
 
+def gather_labels_for_each_gb(points, labels, grouped_pindex0):
+  grouped_pindex0 = tf.squeeze(grouped_pindex0, 1)
+  shape0 = [e.value for e in grouped_pindex0.shape]
+  points_gbs = tf.gather(points, grouped_pindex0)
+  labels_gbs = tf.gather(labels, grouped_pindex0)
+  points_gbs = tf.squeeze(points_gbs, 0)
+  labels_gbs = tf.squeeze(labels_gbs, 0)
+  #points_gbs = tf.reshape(points_gbs, [shape0[0]*shape0[1], -1])
+  #labels_gbs = tf.reshape(labels_gbs, [shape0[0]*shape0[1], -1])
+  return points_gbs, labels_gbs
 
 
 class RawH5_To_Tfrecord():

@@ -283,7 +283,12 @@ bnd optimizer block_config\n'
                    pre_indent=''):
       if not self.IsShowModel: return
       self.add_activation_size(inputs)
-      conv_str = 'conv2d' if len(inputs.shape)==4 else 'conv3d'
+      if len(inputs.shape)==4 :
+        conv_str = 'conv2d'
+      elif len(inputs.shape)==3:
+        conv_str = 'conv1d'
+      elif len(inputs.shape)==5:
+        conv_str = 'conv3d'
       layer_name = pre_indent+'/'.join(var_scope.split('/')[2:])
       self.log( tensor_info(inputs, '%s (%d,%d,%s)'%
                     (conv_str, kernels, strides, padding_s1), layer_name,
@@ -345,6 +350,14 @@ bnd optimizer block_config\n'
 
     assert self.data_format == 'channels_last'
     outputs = conv_fn(
+        inputs=inputs, filters=filters, kernel_size=kernels, strides=strides,
+        padding=padding, use_bias=self.use_bias,
+        kernel_initializer=KERNEL_INI,
+        data_format=self.data_format)
+    return outputs
+
+  def conv1d(self, inputs, filters, kernels, strides, padding):
+    outputs = tf.layers.conv1d(
         inputs=inputs, filters=filters, kernel_size=kernels, strides=strides,
         padding=padding, use_bias=self.use_bias,
         kernel_initializer=KERNEL_INI,
@@ -513,7 +526,7 @@ bnd optimizer block_config\n'
     if half_layer: return inputs
     inputs = self.batch_norm(inputs, training, tf.nn.relu)
 
-    with tf.variable_scope('conv1'):
+    with tf.variable_scope('c1'):
       if self.check_kernel_waste(inputs, kernels):
         kernels = 1
       inputs = self.conv2d3d(inputs, filters, kernels, 1, 's')
@@ -806,6 +819,11 @@ bnd optimizer block_config\n'
     return tf.identity(inputs, name)
 
 
+  def feature_back_propagate(self, inputs):
+    outputs = tf.layers.conv2d(inputs, 128, 1, 1, 'v')
+    import pdb; pdb.set_trace()  # XXX BREAKPOINT
+    return outputs
+
 def mytile(tensor, axis, eval_views):
   org_shape = tensor.shape.as_list()
   tensor = tf.expand_dims(tensor, axis)
@@ -926,6 +944,9 @@ class Model(ResConvOps):
 
     self._preprocess_configs()
 
+    if self.task == 'segmentation':
+      self.end_points = []
+
   def _preprocess_configs(self):
     if '_' in self.model_flag:
         self.model_flag, num_neighbors = modelf_nein.split('_')
@@ -936,6 +957,8 @@ class Model(ResConvOps):
                 'xyz_elements', 'datasets_meta']:
       setattr(self, key, self.data_net_configs[key])
 
+    tasks = {'MODELNET40': 'recognition', 'MATTERPORT': 'segmentation'}
+    self.task = tasks[self.dataset_name]
     self.global_numpoint = self.dset_shape_idxs['shape']['points'][0]
     self.net_num_scale = len(self.data_net_configs['block_params']['filters'])
     self.sg_num_scale = len(self.data_net_configs['sg_settings']['width'])
@@ -1023,7 +1046,7 @@ class Model(ResConvOps):
     #  inputs_dic1['points']  = tf.gather(inputs_dic1['points'] , self.feed_data_idxs, axis=-1)
 
     items = ['grouped_pindex','grouped_bot_cen_top', 'empty_mask', 'bot_cen_top',
-             'vox_index']
+             'vox_index', 'flatting_idx', 'flat_valid_mask']
     for item in items:
       inputs_dic1[item] = []
       for s in range(0, sg_num_scale+1):
@@ -1063,17 +1086,20 @@ class Model(ResConvOps):
 
     #*************************************************************
     # get inputs for each global block
-    grouped_pindex_global = tf.expand_dims(
-                                  tf.squeeze(dsb['grouped_pindex'][0], 2), -1)
-    shape0 = [e.value for e in grouped_pindex_global.shape]
+    # This may be already done in parse_pl_record
+    if points.shape[1].value != dsb['grouped_pindex'][0].shape[-1].value:
+      import pdb; pdb.set_trace()  # XXX BREAKPOINT
+      grouped_pindex_global = tf.expand_dims(
+                                    tf.squeeze(dsb['grouped_pindex'][0], 2), -1)
+      shape0 = [e.value for e in grouped_pindex_global.shape]
+      tmp0 = tf.reshape(tf.range(0, self.batch_size, 1), [-1, 1, 1, 1])
+      tmp0 = tf.tile(tmp0, [1] + shape0[1:])
+      tmp1 = tf.concat([tmp0, grouped_pindex_global], -1)
+      points = tf.gather_nd(points, tmp1)
+      points = tf.reshape(points, [bsgbn, points.shape[2].value,
+                                  points.shape[3].value])
     if self.feed_data_idxs!='ALL':
       points = tf.gather(points, self.feed_data_idxs, axis=-1)
-    tmp0 = tf.reshape(tf.range(0, self.batch_size, 1), [-1, 1, 1, 1])
-    tmp0 = tf.tile(tmp0, [1] + shape0[1:])
-    tmp1 = tf.concat([tmp0, grouped_pindex_global], -1)
-    points = tf.gather_nd(points, tmp1)
-    points = tf.reshape(points, [bsgbn, points.shape[2].value,
-                                 points.shape[3].value])
 
     #*************************************************************
     # rm global scale
@@ -1089,6 +1115,9 @@ class Model(ResConvOps):
     is_show_inputs = False
     # merge batch size dim and global block dim
     for item in dsb:
+      if item in ['flatting_idx', 'flat_valid_mask']:
+        # no need, global block auged already
+        continue
       num_scale = len(dsb[item])
       for s in range(num_scale):
         if dsb[item][s] == []: # one scale only: pointnet
@@ -1099,6 +1128,7 @@ class Model(ResConvOps):
         if is_show_inputs:
           print('{}:{}'.format(item, shape_i1))
 
+    #*************************************************************
     dsb['points'] = points
 
     #sg_t_batch = (tf.timestamp() - t0)*1000
@@ -1136,6 +1166,8 @@ class Model(ResConvOps):
             inputs_dic['empty_mask'],
             inputs_dic['bot_cen_top'],
             inputs_dic['vox_index'],
+            inputs_dic['flatting_idx'],
+            inputs_dic['flat_valid_mask'],
             is_training)
     else:
       raise NotImplementedError
@@ -1180,8 +1212,9 @@ class Model(ResConvOps):
     #tf.summary.scalar('t_batch', (tf.timestamp() - t00)*1000 )
     return outputs
 
-  def _call(self, inputs, grouped_xyz_ms, grouped_pindex_ms, empty_mask_ms,
-            bot_cen_top_ms, vox_index_ms, is_training, eval_views=-1):
+  def _call(self, inputs, grouped_xyz_ms, grouped_pindex_ms, empty_mask_ms, \
+            bot_cen_top_ms, vox_index_ms, flatting_idx, flat_valid_mask, \
+            is_training, eval_views=-1):
     '''
     inputs: (12, 4096, 3)
     grouped_xyz_ms: [(12, 1, 4096, 3), (12, 1024, 32, 3), (12, 48, 48, 3)]
@@ -1209,11 +1242,11 @@ class Model(ResConvOps):
     #***************************************************************************
     tf.add_to_collection('raw_inputs', inputs)
     if self.IsShowModel: self.log('')
+    self.log_tensor_p(inputs, 'raw_inputs', '\nOriginal')
     self.is_training = is_training
 
     with self._model_variable_scope():
       l_points = []                       # size = l_points+1
-      l_points.append( inputs )
       l_xyz = inputs[...,0:3]
 
       #l_xyz, b_bottom_centers_mm = pc_normalize(l_xyz, b_bottom_centers_mm)
@@ -1240,35 +1273,36 @@ class Model(ResConvOps):
                             new_points, grouped_xyz_ms[k], grouped_pindex_ms[k],
                             empty_mask_ms[k], bot_cen_top_ms[k], vox_index_ms[k] )
 
+          # Last output of point encoder: Only apply the BN and ReLU for model that does pre_activation in each
+          # building/bottleneck block, eg resnet V2.
+          if k==self.net_num_scale-1 and self.block_style != 'PointNet' and self.pre_activation:
+              new_points = self.batch_norm(new_points, is_training, tf.nn.relu)
+
           if k == 0:
-              l_points[0] = root_point_features
+              #l_points[0].append(self.ave_grouped_features(root_point_features))
+              l_points.append(None)  # used by charles
           l_points.append(new_points)
           if self.IsShowModel: self.log(
             '*****************************************************************')
-      # Only apply the BN and ReLU for model that does pre_activation in each
-      # building/bottleneck block, eg resnet V2.
-      if self.block_style != 'PointNet':
-        if self.pre_activation:
-          inputs = self.batch_norm(inputs, is_training, tf.nn.relu)
 
-      # ----------------------
-      inputs = new_points
-      axis = [2] if self.data_format == 'channels_first' else [1]
-      if self.get_feature_shape(inputs)!=1:
-        inputs = tf.reduce_mean(inputs, axis)
-        if self.IsShowModel: self.log( tensor_info(inputs, 'reduce_mean', 'final') )
-      else:
-        inputs = tf.squeeze(inputs, 1)
-      inputs = tf.identity(inputs, 'final_reduce_mean')
+      # use reduce_mean to reduce feature shape to 1 if not already
+      if self.get_feature_shape(new_points)!=1:
+        axis = [2] if self.data_format == 'channels_first' else [1]
+        new_points = tf.reduce_mean(new_points, axis, keepdims=True)
+        if self.IsShowModel: self.log( tensor_info(new_points, 'reduce_mean', 'final') )
 
       ##########################################################################
       if self.dataset_name == 'MODELNET40':
-        inputs = self.classifier(inputs, is_training)
+        new_points = tf.squeeze(new_points, 1)
+        new_points = self.classifier(new_points, is_training,\
+                                     dense_features=[512, 256])
       if self.dataset_name == 'MATTERPORT':
-        raise NotImplementedError
+        new_points = self.segmentation(l_points, flatting_idx, flat_valid_mask, is_training)
+        new_points = self.classifier(new_points, is_training,\
+                                     dense_features=[])
       ##########################################################################
       if self.IsShowModel:
-        self.log( tensor_info(inputs, 'dense', 'final1') +'\n\n' )
+        self.log( tensor_info(new_points, 'dense', 'final1') +'\n\n' )
         self.show_layers_num_summary()
 
         total_w_num, total_w_bytes, train_w_shapes = self.train_w_bytes()
@@ -1280,25 +1314,90 @@ class Model(ResConvOps):
         self.log('------------------------------------------------------------\n\n')
         self.log_model_summary()
 
-      return inputs
+      return new_points
 
-  def classifier(self, inputs, is_training):
+  def classifier(self, inputs, is_training, dense_features=[]):
+    inputs = tf.identity(inputs, 'final_reduce_mean')
+
+    with tf.variable_scope('classifier'):
       #                     Fully connect layers
       out_drop_rate=self.data_net_configs['drop_imo']['output']
-      inputs = tf.layers.dense(inputs, 512, None, True, KERNEL_INI )
-      if self.IsShowModel: self.log( tensor_info(inputs, 'dense', 'dense0'))
-      inputs = self.batch_norm(inputs, is_training, tf.nn.relu)
-      inputs = tf.layers.dropout(inputs, out_drop_rate, training=is_training)
-
-      inputs = tf.layers.dense(inputs, 256, None, True, KERNEL_INI )
-      if self.IsShowModel: self.log( tensor_info(inputs, 'dense', 'dense1'))
-      inputs = self.batch_norm(inputs, is_training, tf.nn.relu)
-      inputs = tf.layers.dropout(inputs, out_drop_rate, training=is_training)
+      for k,features in enumerate(dense_features):
+        inputs = tf.layers.dense(inputs, features, None, True, KERNEL_INI )
+        if self.IsShowModel: self.log( tensor_info(inputs, 'dense%d'%(k), 'dense0'))
+        inputs = self.batch_norm(inputs, is_training, tf.nn.relu)
+        inputs = tf.layers.dropout(inputs, out_drop_rate, training=is_training)
 
       inputs = tf.layers.dense(inputs, self.num_classes, None, True, KERNEL_INI )
       inputs = tf.identity(inputs, 'final_dense')
-      return inputs
+    return inputs
 
+
+  def segmentation(self, l_points, flatting_idx, flat_valid_mask, is_training):
+    for s0 in  range(self.net_num_scale):
+      s = self.net_num_scale -  s0 - 1
+      flatten_filters = self.block_params['flatten_filters'][s]
+      if self.IsShowModel:
+        self.log('******************* scale %d Feature Propagate *******************'%(s))
+      with tf.variable_scope('/Seg%d'%(s)):
+        if s == self.net_num_scale-1:
+          # the last scale
+          assert l_points[s+1].shape[1].value == 1
+          flatten_points = tf.tile(l_points[s+1], [1, self.sg_settings['nblock'][s],1 ])
+        else:
+          flatten_points = self.flatting(l_points[s+1], flatting_idx[s], flat_valid_mask[s])
+          pass
+        if s==0:
+          new_points = flatten_points
+          self.log_tensor_p(new_points, 'points0 is None', 'use flatten only')
+        else:
+          new_points = tf.concat([l_points[s], flatten_points], 2)
+          self.log_tensor_p(new_points, '%d+%d'%(l_points[s].shape[-1].value, flatten_points.shape[-1].value) ,'concat')
+        for k,f in enumerate(flatten_filters):
+          with tf.variable_scope('c%d'%(k)):
+            new_points = self.conv1d(new_points, f, 1, 1, 'valid')
+            self.log_tensor_c(new_points, 1, 1, 'v', tf.get_variable_scope().name)
+            new_points = self.batch_norm(new_points, is_training, tf.nn.relu)
+        l_points[s] = new_points
+    return l_points[0]
+
+  def flatting(self, points_upscale, flatting_idx, flat_valid_mask):
+    with tf.variable_scope('flatting'):
+      shape0 = [e.value for e in points_upscale.shape]
+      shape1 = [e.value for e in flatting_idx.shape]
+
+      batch_idx = tf.reshape(tf.range(self.batch_size), [-1,1,1,1])
+      batch_idx = tf.tile(batch_idx, [1,shape1[1], shape1[2],1])
+      flatting_idx_auged = tf.concat([batch_idx, tf.expand_dims(flatting_idx,-1)], -1)
+      flatten_points = tf.gather_nd(points_upscale, flatting_idx_auged)
+      flat_valid_mask = tf.cast(flat_valid_mask, tf.float32)
+      flatten_points *= tf.expand_dims(flat_valid_mask, -1)
+      flatten_points = tf.reduce_sum(flatten_points, 2)
+      valid_flat_num = tf.reduce_sum(flat_valid_mask, 2, keepdims=True)
+      flatten_points /= valid_flat_num
+
+      #bi = tf.constant(0, tf.int32)
+      #cond = lambda bi, flatten_points: tf.less(bi, self.batch_size)
+      #flatten_points = tf.zeros([0, shape1[1], shape0[2]])
+      #def body(bi, flatten_points):
+      #  flatten_points_i = tf.gather(points_upscale[bi], flatting_idx[bi])
+      #  mask_i = tf.cast(tf.expand_dims(flat_valid_mask[bi],2), tf.float32)
+      #  flatten_points_i = flatten_points_i * mask_i
+      #  valid_flat_num = tf.reduce_sum(mask_i, 1)
+      #  flatten_points_i = tf.reduce_sum(flatten_points_i, 1)
+      #  flatten_points_i = flatten_points_i / valid_flat_num
+      #  flatten_points_i = tf.expand_dims(flatten_points_i,0)
+      #  flatten_points = tf.concat([flatten_points, flatten_points_i], 0)
+      #  return bi, flatten_points
+      #bi, flatten_points = tf.while_loop(cond, body, [bi, flatten_points],
+      #                        shape_invariants=[bi.get_shape(), \
+      #                              tf.TensorShape([None, shape1[1], shape0[2]])])
+      #flatten_points.set_shape([self.batch_size, shape1[1], shape0[2]])
+      self.log_tensor_p(flatten_points, 'from {}'.format(shape0), 'flatting')
+      return flatten_points
+
+  def ave_grouped_features(self, gruped_features):
+    raise NotImplementedError
 
   @staticmethod
   def grouping_online(points, grouped_pindex):

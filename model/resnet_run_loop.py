@@ -229,6 +229,7 @@ def resnet_model_fn(model_flag, features, labels, mode, model_class,
   """
 
   assert data_format == 'channels_last'
+  dataset_name = data_net_configs['dataset_name']
   model = model_class(model_flag, resnet_size, data_format, resnet_version=resnet_version,
                       dtype=dtype, data_net_configs=data_net_configs)
 
@@ -247,8 +248,10 @@ def resnet_model_fn(model_flag, features, labels, mode, model_class,
   if IsCheckNet:
     add_check(predictions)
 
-  if len(logits.shape)==3: # eval multi views
-    eval_views = logits.shape[1].value
+  eval_views = data_net_configs['eval_views']
+  if eval_views>1: # eval multi views
+    eval_views = logits.shape[1].valu
+    import pdb; pdb.set_trace()  # XXX BREAKPOINT
     logits = tf.reduce_min(logits, 1)
   else:
     eval_views = 1
@@ -264,8 +267,9 @@ def resnet_model_fn(model_flag, features, labels, mode, model_class,
 
   # Calculate loss, which includes softmax cross entropy and L2 regularization.
   dset_shape_idxs = data_net_configs['dset_shape_idxs']
-  assert len(labels.shape) == len(logits.shape), "network error"
-  labels = labels[:, dset_shape_idxs['indices']['labels']['label_category'][0]]
+  category_idx = dset_shape_idxs['indices']['labels']['label_category'][0]
+  labels = labels[..., category_idx]
+  assert len(labels.shape) == len(logits.shape)-1, "network error"
   if data_net_configs['loss_lw_gama'] < 0:
     weights = 1
   else:

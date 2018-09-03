@@ -65,7 +65,6 @@ def get_sg_settings(sgflag):
   sg_settings['npoint_per_block'] = [32768, 32, 32]
   sg_settings['np_perb_min_include'] = [1000, 1, 1]
   sg_settings_all[sg_flag(sg_settings)] = sg_settings
-  sg_settings_all['A'] = sg_settings
 
   #-----------------------------------------------------------------------------
   # matterport: 32768

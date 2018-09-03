@@ -140,6 +140,7 @@ class BlockGroupSampling():
     assert self._widths.shape[1] == self._strides.shape[1] == 3
     self._empty_point_index = 'first' # -1(GPU only) or 'first'
     self._vox_sizes = sg_settings['vox_size']
+    self._flat_num = 8
 
     self._npoint_last_scale = [None]
     if self._num_scale>1:
@@ -265,7 +266,8 @@ class BlockGroupSampling():
 
         ds = {}
         ds['grouped_pindex'], ds['vox_index'], ds['grouped_bot_cen_top'], \
-        ds['grouped_empty_mask'], ds['out_bot_cen_top'], ds['nb_enough_p'], others = \
+          ds['grouped_empty_mask'], ds['out_bot_cen_top'], ds['nb_enough_p'],\
+          ds['flatting_idx'], ds['flat_valid_mask'], others = \
           self.grouping(s, in_bot_cen_top)
 
         if s == 0:
@@ -313,10 +315,12 @@ class BlockGroupSampling():
       with tf.control_dependencies([write_record]):
         ds_ms['grouped_pindex'][0] = tf.identity(ds_ms['grouped_pindex'][0])
         return ds_ms['grouped_pindex'], ds_ms['vox_index'], ds_ms['grouped_bot_cen_top'],\
-          ds_ms['grouped_empty_mask'], ds_ms['out_bot_cen_top'], ds_ms['nb_enough_p'], others_ms
+          ds_ms['grouped_empty_mask'], ds_ms['out_bot_cen_top'], ds_ms['flatting_idx'],\
+          ds_ms['flat_valid_mask'], ds_ms['nb_enough_p'], others_ms
     else:
       return ds_ms['grouped_pindex'], ds_ms['vox_index'], ds_ms['grouped_bot_cen_top'],\
-          ds_ms['grouped_empty_mask'], ds_ms['out_bot_cen_top'], ds_ms['nb_enough_p'], others_ms
+          ds_ms['grouped_empty_mask'], ds_ms['out_bot_cen_top'], ds_ms['flatting_idx'],\
+          ds_ms['flat_valid_mask'], ds_ms['nb_enough_p'], others_ms
 
 
   def gen_global_voxelization(self, last_scale_bot_cen_top, gb_bot_cen_top, nb_enough_p):
@@ -364,7 +368,7 @@ class BlockGroupSampling():
     grouped_pindex, grouped_empty_mask = \
           self.get_grouped_pindex( pidx_bididx_pidxperb_vbvp)
 
-    if self._check_optional:
+    if self._check_optional and False:
       flatting_idx = self.check_grouping_flatting_mapping(grouped_pindex, flatting_idx, flat_valid_mask)
 
     grouped_bot_cen_top = self.gather_grouped(grouped_pindex, bot_cen_top)
@@ -417,7 +421,8 @@ class BlockGroupSampling():
     #if self.scale == 2:
     #  test_voxelization(self._vox_sizes[self.scale], grouped_bot_cen_top, vox_index)
 
-    return grouped_pindex, vox_index, grouped_bot_cen_top, grouped_empty_mask, out_bot_cen_top, nb_enoughp_per_gb, others
+    return grouped_pindex, vox_index, grouped_bot_cen_top, grouped_empty_mask, \
+        out_bot_cen_top, nb_enoughp_per_gb, flatting_idx, flat_valid_mask, others
 
 
   def check_flat_by_scope(self, flatting_idx, flat_valid_mask, out_bot_cen_top, bot_cen_top):
@@ -983,6 +988,7 @@ class BlockGroupSampling():
     pidx_per_block = tf.expand_dims( tmp2 - tmp1,  1)
     return pidx_per_block
 
+
   def get_bid_point_index(self, bid_pindex):
     '''
     Get "block id index: and "point index within block".
@@ -1213,14 +1219,13 @@ class BlockGroupSampling():
     '''
     if self.scale == 0:
       # no need to get faltten idx
-      return None, None, pidx_bididx_bid_validb[:,1:2]
+      return tf.zeros([0,0], tf.int32), tf.zeros([0,0], tf.int32), pidx_bididx_bid_validb[:,1:2]
     #***************************************************************************
     if self.scale==1:
       out_num_point = self._npoint_per_blocks[self.scale-1]
     else:
       out_num_point = self._nblocks[self.scale-1]
     nblocks_perp_buf = np.prod(self._nblocks_per_point[self.scale])
-    self._flat_num = nblocks_perp_buf
     assert nblocks_perp_buf >= self._flat_num
     flatting_idx_shape_buf = [self.batch_size, self.global_block_num,\
                               out_num_point, nblocks_perp_buf]
@@ -1335,6 +1340,8 @@ class BlockGroupSampling():
   def check_grouping_flatting_mapping(self, grouped_pindex, flatting_idx, flat_valid_mask):
     if self.scale==0:
       return flatting_idx
+    nblocks_perp_buf = np.prod(self._nblocks_per_point[self.scale])
+    assert self._flat_num == nblocks_perp_buf, "Set flat_num as blocks_buf to check grouping flatting mapping"
     #print(self.scale)
     gp_shape = [e.value for e in grouped_pindex.shape]
     fi_shape = [e.value for e in flatting_idx.shape]
@@ -1378,10 +1385,10 @@ class BlockGroupSampling():
     err_num = tf.reduce_sum(1- tmp1 )
     #if err_num>0 or self.scale==1:
     #  err_indices = tf.where(tf.equal(tmp1, 0))[0:10,0]
-    #  #import pdb; pdb.set_trace()  # XXX BREAKPOINT
+    #  import pdb; pdb.set_trace()  # XXX BREAKPOINT
     #  pass
     check_flat = tf.assert_equal( err_num, 0, \
-                    message="flatten error")
+                    message="flatten error scale {}".format(self.scale))
     with tf.control_dependencies([check_flat]):
       flatting_idx = tf.identity(flatting_idx)
     if not self._close_all_checking_info:
@@ -1467,6 +1474,7 @@ class BlockGroupSampling():
     tmp_sum = tf.reduce_sum(grouped_xyz * valid_mask, 1)
     grouped_mean = tmp_sum / valid_num
     return grouped_mean
+
 
 
 def main_input_pipeline(DATASET_NAME, filenames, sg_settings, dset_metas, batch_size, cycles=1, num_epoch=1):
@@ -1621,7 +1629,7 @@ def pre_sampling_grouping(points, sg_settings, log_path):
 
     dsb = {}
     dsb['grouped_pindex'], dsb['vox_index'], dsb['grouped_xyz'], dsb['empty_mask'],\
-      dsb['bot_cen_top'], nb_enough_p, others =\
+      dsb['bot_cen_top'], dsb['flatting_idx'], dsb['flat_valid_mask'], nb_enough_p, others =\
       bsg.grouping_multi_scale(points[...,0:3])
 
     #*************************************************************
@@ -1684,7 +1692,8 @@ def main_eager(DATASET_NAME, filenames, sg_settings, dset_metas, batch_size, cyc
     features_next, label_next = get_next
     points_next = features_next['points'][:,:,0:3]
 
-    grouped_pindex, vox_index, grouped_bot_cen_top, empty_mask, out_bot_cen_top, nb_enoughp_ave, others = \
+    grouped_pindex, vox_index, grouped_bot_cen_top, empty_mask, out_bot_cen_top,\
+      flatting_idx, flat_valid_mask, nb_enoughp_ave, others = \
       bsg.grouping_multi_scale(points_next[:,:,0:3])
 
     samplings_i = bsg.samplings
@@ -1758,9 +1767,7 @@ def gen_plys(DATASET_NAME, frame, points, grouped_bot_cen_top,
 
 def main(filenames, dset_metas, main_flag, batch_size = 2, cycles = 1):
   from utils.sg_settings import get_sg_settings
-  #sg_settings = get_sg_settings('32768_1024_64')
-  sg_settings = get_sg_settings('A')
-
+  sg_settings = get_sg_settings('32768_1024_64')
 
   #file_num = len(filenames)
   num_epoch = 1
@@ -1829,17 +1836,17 @@ if __name__ == '__main__':
   DATASET_NAME = 'MATTERPORT'
   raw_tfrecord_path = '/home/z/Research/SparseVoxelNet/data/{}_H5TF/raw_tfrecord'.format(DATASET_NAME)
   data_path = os.path.join(raw_tfrecord_path, 'data')
-  #data_path = os.path.join(raw_tfrecord_path, 'merged_data')
+  data_path = os.path.join(raw_tfrecord_path, 'merged_data')
   tmp = '*'
   #tmp = 'Vvot9Ly1tCj_region24*'
   filenames = glob.glob(os.path.join(data_path, tmp+'.tfrecord'))
-  #random.shuffle(filenames)
+  random.shuffle(filenames)
   assert len(filenames) >= 1, data_path
 
   dset_metas = get_dset_shape_idxs(raw_tfrecord_path)
 
 
-  batch_size = 50
+  batch_size = 5
   if len(sys.argv) > 1:
     main_flag = sys.argv[1]
     if len(sys.argv) > 2:
@@ -1853,7 +1860,9 @@ if __name__ == '__main__':
   print(main_flag)
 
   #main_1by1_file(filenames, dset_metas, main_flag, batch_size)
-  main(filenames, dset_metas, main_flag, batch_size, cycles = len(filenames)//batch_size)
+  cycles = len(filenames)//batch_size
+  cycles = 100
+  main(filenames, dset_metas, main_flag, batch_size, cycles)
   #get_data_summary_from_tfrecord(filenames, raw_tfrecord_path)
 
 
