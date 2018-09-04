@@ -174,7 +174,7 @@ def parse_pl_record(tfrecord_serialized, is_training, dset_metas=None, bsg=None,
 
       assert bsg.batch_size == 1
       bsi = 0
-      points, labels = gather_labels_for_each_gb(points, labels, grouped_pindex[0][bsi])
+      #points, labels = gather_labels_for_each_gb(points, labels, grouped_pindex[0][bsi])
 
       num_scale = len(grouped_bot_cen_top)
       global_block_num = grouped_pindex[0].shape[1]
@@ -212,14 +212,18 @@ def parse_pl_record(tfrecord_serialized, is_training, dset_metas=None, bsg=None,
     return features, labels
 
 def gather_labels_for_each_gb(points, labels, grouped_pindex0):
-  grouped_pindex0 = tf.squeeze(grouped_pindex0, 1)
+  #grouped_pindex0 = tf.squeeze(grouped_pindex0, 1)
+
   shape0 = [e.value for e in grouped_pindex0.shape]
   points_gbs = tf.gather(points, grouped_pindex0)
   labels_gbs = tf.gather(labels, grouped_pindex0)
   points_gbs = tf.squeeze(points_gbs, 0)
   labels_gbs = tf.squeeze(labels_gbs, 0)
-  #points_gbs = tf.reshape(points_gbs, [shape0[0]*shape0[1], -1])
-  #labels_gbs = tf.reshape(labels_gbs, [shape0[0]*shape0[1], -1])
+
+  # reshape all the gbs in a batch to one dim
+  # need to reshape it back after input pipeline
+  #points_gbs = tf.reshape(points_gbs, [-1, points.shape[-1].value])
+  #labels_gbs = tf.reshape(labels_gbs, [-1, labels_gbs.shape[-1].value])
   return points_gbs, labels_gbs
 
 
