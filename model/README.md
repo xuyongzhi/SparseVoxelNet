@@ -6,6 +6,8 @@
 - [x] Block_bottom_center is incorrect in the piano.
 - [ ] In feature propagation, some points may get no flatting index
 - [ ] In feature propagation, scale0 orginael feature is None
+- [ ] Move the last global scope to include larger scope, instead of strictly more by stride.
+- [ ] Select global blocks random is bot good, -> choose by num point
 
 # Key small items to be developed
 - [x] add learning rate warm up

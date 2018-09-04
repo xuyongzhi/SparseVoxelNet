@@ -1825,11 +1825,10 @@ def gen_plys(DATASET_NAME, frame, points, grouped_bot_cen_top,
                   extra='random_same_color')
 
 
-
 def main(filenames, dset_metas, main_flag, batch_size = 2, cycles = 1):
   from utils.sg_settings import get_sg_settings
-  sg_settings = get_sg_settings('32768_1024_64')
-  #sg_settings = get_sg_settings('8192')
+  #sg_settings = get_sg_settings('32768_1024_64')
+  sg_settings = get_sg_settings('8192')
   #sg_settings = get_sg_settings('8192_1024_64')
 
   #file_num = len(filenames)
@@ -1924,11 +1923,11 @@ if __name__ == '__main__':
 
   if main_flag:
     tf.enable_eager_execution()
-  main_1by1_file(filenames, dset_metas, main_flag, batch_size)
+  #main_1by1_file(filenames, dset_metas, main_flag, batch_size)
 
   #cycles = len(filenames)//batch_size
-  #cycles = 100
-  #main(filenames, dset_metas, main_flag, batch_size, cycles)
+  cycles = 100
+  main(filenames, dset_metas, main_flag, batch_size, cycles)
 
   #get_data_summary_from_tfrecord(filenames, raw_tfrecord_path)
 

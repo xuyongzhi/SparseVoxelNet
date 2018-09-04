@@ -174,7 +174,7 @@ def parse_pl_record(tfrecord_serialized, is_training, dset_metas=None, bsg=None,
 
       assert bsg.batch_size == 1
       bsi = 0
-      #points, labels = gather_labels_for_each_gb(points, labels, grouped_pindex[0][bsi])
+      points, labels = gather_labels_for_each_gb(points, labels, grouped_pindex[0][bsi])
 
       num_scale = len(grouped_bot_cen_top)
       global_block_num = grouped_pindex[0].shape[1]
