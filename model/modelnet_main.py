@@ -56,7 +56,12 @@ _SHUFFLE_BUFFER = shuffle_buffers[DATASET_NAME]
 def get_filenames_1(is_training, data_dir):
   """Return filenames for dataset."""
   data_dir = os.path.join(data_dir, 'data')
-  return datasets_meta.get_train_test_file_list(data_dir, is_training)
+  if is_training:
+    fnls = glob.glob(data_dir+'/17DRP5sb8fy*')
+  else:
+    fnls = glob.glob(data_dir+'/1LXtFkjw3qL_region0*')
+  return fnls
+  #return datasets_meta.get_train_test_file_list(data_dir, is_training)
 
 def get_filenames(is_training, data_dir):
   """Return filenames for dataset."""
@@ -79,7 +84,7 @@ def input_fn(is_training, data_dir, batch_size, data_net_configs=None, num_epoch
   Returns:
     A dataset that can be used for iteration.
   """
-  filenames = get_filenames(is_training, data_dir)
+  filenames = get_filenames_1(is_training, data_dir)
   assert len(filenames)>0, (data_dir)
   dataset = tf.data.Dataset.from_tensor_slices(filenames)
   if is_training:

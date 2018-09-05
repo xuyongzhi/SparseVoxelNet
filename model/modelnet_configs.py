@@ -28,7 +28,7 @@ DEFAULTS['precpu_sg'] = True
 #DEFAULTS['sg_flag'] = '32768_1_1024_64'
 DEFAULTS['sg_flag'] = '8192_6'
 
-DEFAULTS['resnet_size'] = '1A20'
+DEFAULTS['resnet_size'] = '1A17'
 #DEFAULTS['resnet_size'] = '3A20'
 
 DEFAULTS['only_eval'] = 0
@@ -194,15 +194,16 @@ def all_block_paras_bottle_regu_MATTERPORT():
   flatten_filters = {}
   dense_filters = {}
 
-  rs = '1A20'
+
+  rs = '1A17'
   num_filters0s[rs] = 32
-  block_sizes[rs]    = [[1, 1,    1,  1,    1]  ]
-  block_filters[rs]  = [[64,128, 256, 512, 1024]]
+  block_sizes[rs]    = [[1,  1,    1,  1,   1]  ]
+  block_filters[rs]  = [[64, 128, 256, 512, 1024]]
   block_kernels[rs]  = [[],        ]
   block_strides[rs]  = [[],        ]
   block_paddings[rs] = [[],        ]
   flatten_filters[rs]= [[512]]
-  dense_filters[rs]  = {'bottle_last_scale':   [256, 128],
+  dense_filters[rs]  = {'bottle_last_scale':   [512, 256],
                         'final_dense_with_dp': [256, 128]}
 
   rs = '3A20'

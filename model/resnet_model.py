@@ -143,8 +143,10 @@ def conv3d_fixed_padding(inputs, filters, kernel_size, strides, padding, data_fo
 class ResConvOps(object):
   ''' Basic convolution operations '''
   _block_layers_num = 0
+  _conv1d_num = 0
   _conv2d_num = 0
   _conv3d_num = 0
+  _dense_num = 0
   _inception_block_layer = 0
   IsShowModel = False
   _epoch = 0
@@ -305,8 +307,8 @@ bnd optimizer block_config\n'
                            batch_size=self.batch_size))
 
   def show_layers_num_summary(self):
-    self.log('block layers num:{}\nconv2d num:{}\nconv3d num:{}\n'.format(
-                  self._block_layers_num, self._conv2d_num, self._conv3d_num))
+    self.log('block layers num:{}\nconv2d num:{}\nconv3d num:{}\nconv1d num:{}\ndense num:{}'.format(
+          self._block_layers_num, self._conv2d_num, self._conv3d_num, self._conv1d_num, self._dense_num))
     if self._inception_block_layer > 0:
       self.log('inception block layer:{}\n'.format(self._inception_block_layer))
 
@@ -357,6 +359,7 @@ bnd optimizer block_config\n'
     return outputs
 
   def conv1d(self, inputs, filters, kernels, strides, padding):
+    self._conv1d_num += 1
     outputs = tf.layers.conv1d(
         inputs=inputs, filters=filters, kernel_size=kernels, strides=strides,
         padding=padding, use_bias=self.use_bias,
@@ -1333,6 +1336,7 @@ class Model(ResConvOps):
         inputs = tf.layers.dropout(inputs, out_drop_rate, training=is_training)
 
       inputs = tf.layers.dense(inputs, self.num_classes, None, True, KERNEL_INI )
+      self._dense_num += len(dense_features) + 1
       inputs = tf.identity(inputs, 'final_dense')
     return inputs
 
