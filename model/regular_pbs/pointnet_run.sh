@@ -2,7 +2,7 @@
 
 num_gpus=2
 gpu_id=0
-batch_size=32
+batch_size=6
 train_epochs=81
 
 learning_rate0=0.001
@@ -28,7 +28,7 @@ shortcut='MC'
 residual=0
 
 resnet_size='1A20'
-sg_flag='2048'
+sg_flag='8192_6'
 model_flag='m'
 
 

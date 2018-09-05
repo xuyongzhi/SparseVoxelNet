@@ -1,7 +1,7 @@
 #!/bin/bash
 #PBS -q gpu
-#PBS -l walltime=40:00:00
-#PBS -l mem=12GB
+#PBS -l walltime=20:00:00
+#PBS -l mem=24GB
 #PBS -l jobfs=0GB
 #PBS -l ngpus=2
 #PBS -l ncpus=6
@@ -19,5 +19,4 @@ module list
  
 
 #------------------------------------------------------------------------
-./run_modelnet_1.sh
-
+./pointnet_run.sh
