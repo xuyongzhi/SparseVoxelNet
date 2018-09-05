@@ -10,7 +10,6 @@ import numpy as np
   learning rate
   aug types
 '''
-
 import os, sys
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT_DIR = os.path.dirname(BASE_DIR)
@@ -26,11 +25,11 @@ DEFAULTS['precpu_sg'] = True
 #DEFAULTS['sg_flag'] = '2048_800_40'
 #DEFAULTS['sg_flag'] = '2048'
 #DEFAULTS['sg_flag'] = '32768_1_1024_64'
-#DEFAULTS['sg_flag'] = '8192_6'
-DEFAULTS['sg_flag'] = '8192_2_1024_64'
+DEFAULTS['sg_flag'] = '8192_6'
+#DEFAULTS['sg_flag'] = '8192_2_1024_64'
 
-#DEFAULTS['resnet_size'] = '1A17'
-DEFAULTS['resnet_size'] = '3A20'
+DEFAULTS['resnet_size'] = '1A17'
+#DEFAULTS['resnet_size'] = '3A20'
 
 DEFAULTS['only_eval'] = 0
 DEFAULTS['eval_views'] = 1
@@ -56,7 +55,7 @@ DEFAULTS['feed_data'] = 'xyzs'
 DEFAULTS['use_xyz'] = 1
 DEFAULTS['aug_types'] = 'N' # 'rpsfj-360_0_0'
 DEFAULTS['drop_imo'] = '0_0_5'
-DEFAULTS['batch_size'] = 4
+DEFAULTS['batch_size'] = 6
 DEFAULTS['num_gpus'] = 2
 DEFAULTS['gpu_id'] = 0
 DEFAULTS['train_epochs'] = 31

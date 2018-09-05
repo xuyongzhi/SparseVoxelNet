@@ -47,7 +47,7 @@ _NUM_IMAGES = {
 }
 
 _NUM_TRAIN_FILES = 10
-shuffle_buffers = {'MATTERPORT': 1000, 'MODELNET40':1000}
+shuffle_buffers = {'MATTERPORT': 100, 'MODELNET40':1000}
 _SHUFFLE_BUFFER = shuffle_buffers[DATASET_NAME]
 
 ###############################################################################

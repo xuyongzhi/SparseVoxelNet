@@ -512,18 +512,14 @@ def read_dataset_summary(data_dir):
 
 
 def pc_normalize(points, dset_metas):
-  assert len(points.shape) == 2
-  #has_normal = points.shape[-1].value > 3
   tmp = dset_metas['indices']['points']['xyz']
   assert tmp == [0,1,2]
-  points_xyz = points[:, tmp[0]:tmp[-1]+1]
-  #if has_normal:
-  #  points_normal = points[:,3:6]
+  points_xyz = points[..., tmp[0]:tmp[-1]+1]
   centroid = tf.reduce_mean(points_xyz, axis=0)
   points_xyz -= centroid
   m = tf.reduce_max(tf.sqrt(tf.reduce_sum(tf.pow(points_xyz, 2),axis=1)))
   points_xyz = points_xyz / m
-  points_normed = tf.concat([points_xyz, points[:,3:]], -1)
+  points_normed = tf.concat([points_xyz, points[...,3:]], -1)
   return points_normed
 
 

@@ -1138,6 +1138,7 @@ class Model(ResConvOps):
       num_scale = len(dsb[item])
       if item in ['flatting_idx', 'flat_valid_mask']:
         for s in range(num_scale):
+          if dsb[item][s]==[]: continue
           shape0 = [e.value for e in dsb[item][s].shape]
           assert len(shape0) == 3
           if shape0[0] != self.batch_size:

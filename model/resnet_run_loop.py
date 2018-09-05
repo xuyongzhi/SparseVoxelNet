@@ -93,7 +93,7 @@ def process_record_dataset(dataset, is_training, batch_size, shuffle_buffer,
   dset_shapes = data_net_configs['dset_shape_idxs']
   dataset = dataset.apply(
       tf.contrib.data.map_and_batch(
-          lambda value: parse_record_fn(value, is_training, dset_shapes, bsg),
+          lambda value: parse_record_fn(value, is_training, dset_shapes, bsg, is_normalize_pcl=False),
           batch_size=batch_size,
           num_parallel_batches=1,
           drop_remainder=True if num_gpus>1 else True))
@@ -424,8 +424,8 @@ def add_check(predictions):
     predictions['voxel_indices_%d'%(i)] = voxel_indices_COLC[i]
 
 def check_net(classifier, input_fn_eval, dataset_name, data_net_configs):
-  N0 = 0
-  N = 2
+  k_start = 0
+  N = 6
   res_dir = '/tmp/check_net'
   gen_inputs = True
   gen_new_xyz = False
@@ -451,8 +451,8 @@ def check_net(classifier, input_fn_eval, dataset_name, data_net_configs):
     if gen_grouped_xyz or gen_grouped_xyz_subblock:
       check_items.append('grouped_xyz_%d'%(i))
 
-  for j,pred in enumerate(pred_results):
-    if j < N0:
+  for j, pred in enumerate(pred_results):
+    if j < k_start:
       continue
     # gen block box   *****************************************************
     if 'block_bottom_center_0' in pred:
@@ -475,13 +475,12 @@ def check_net(classifier, input_fn_eval, dataset_name, data_net_configs):
           ply_fn = '{}/edge_{}.ply'.format(dir_k, k)
           draw_points_and_voxel_indices(ply_fn, grouped_xyz[k], grouped_voxel_indices[k])
 
+    ############################################################################
     checks = {}
     for item in check_items:
       if item not in pred:
         continue
       checks[item] = pred[item]
-      if item=='inputs':
-        assert checks['inputs'].shape[-1]==3
       # gen_grouped_xyz_subblock *******************************************
       if 'grouped' in item and gen_grouped_xyz_subblock:
         data = checks[item]
@@ -500,8 +499,12 @@ def check_net(classifier, input_fn_eval, dataset_name, data_net_configs):
         create_ply_dset(dataset_name, checks[item], ply_fn,  extra = 'random_same_color')
 
 
-    if j==N+N0-1:
+    if j==N+k_start-1:
+      print('no more')
       break
+  print('ply finished')
+  import pdb; pdb.set_trace()  # XXX BREAKPOINT
+  pass
 
 def resnet_main(
     flags_obj, model_function, input_function, dataset_name, data_net_configs):
