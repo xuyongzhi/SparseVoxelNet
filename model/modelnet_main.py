@@ -59,19 +59,27 @@ def get_filenames_1(is_training, data_dir):
   if is_training:
     fnls = glob.glob(data_dir+'/17DRP5sb8fy*')
   else:
-    fnls = glob.glob(data_dir+'/1LXtFkjw3qL_region0*')
+    fnls = glob.glob(data_dir+'/1LXtFkjw3qL*')
   return fnls
   #return datasets_meta.get_train_test_file_list(data_dir, is_training)
 
 def get_filenames(is_training, data_dir):
   """Return filenames for dataset."""
+  return get_filenames_1(is_training, data_dir)
   data_dir = os.path.join(data_dir, 'merged_data')
   if is_training:
     pre = 'train_'
   else:
     pre = 'test_'
-  return glob.glob(os.path.join(data_dir, pre+'*.tfrecord'))
+  fnls = glob.glob(os.path.join(data_dir, pre+'*.tfrecord'))
+  return fnls
 
+def get_global_block_num(fnls):
+  c = 0
+  for fn in fnls:
+    for record in tf.python_io.tf_record_iterator(fn):
+      c += 1
+  return c
 def input_fn(is_training, data_dir, batch_size, data_net_configs=None, num_epochs=1):
   """Input function which provides batches for train or eval.
 
@@ -84,7 +92,7 @@ def input_fn(is_training, data_dir, batch_size, data_net_configs=None, num_epoch
   Returns:
     A dataset that can be used for iteration.
   """
-  filenames = get_filenames_1(is_training, data_dir)
+  filenames = get_filenames(is_training, data_dir)
   assert len(filenames)>0, (data_dir)
   dataset = tf.data.Dataset.from_tensor_slices(filenames)
   if is_training:
@@ -333,7 +341,9 @@ def define_net_configs(flags_obj):
   _DATA_PARAS['model_dir'] = model_dir
   flags_obj.model_dir = model_dir
 
-  flags_obj.steps_per_epoch = _NUM_IMAGES['train'] / flags_obj.batch_size
+
+  gbn_train = get_global_block_num(get_filenames(True, _DATA_PARAS['data_dir']))
+  flags.DEFINE_float('steps_per_epoch', gbn_train/flags_obj.batch_size,'')
   flags_obj.max_train_steps = int(flags_obj.train_epochs * flags_obj.steps_per_epoch)
 
   # read summary
@@ -490,8 +500,7 @@ def define_modelnet_flags():
                           num_gpus=DEFAULTS['num_gpus'],
                           data_format=DEFAULTS['data_format'] )
   flags.DEFINE_integer('gpu_id',DEFAULTS['gpu_id'],'')
-  flags.DEFINE_float('steps_per_epoch',
-                     _NUM_IMAGES['train']/DEFAULTS['batch_size'],'')
+
   #get_data_meta_from_hdf5(data_dir)
   get_data_meta(data_dir)
   #get_data_shapes_from_tfrecord(data_dir)

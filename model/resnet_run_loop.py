@@ -39,7 +39,7 @@ from official.utils.misc import model_helpers
 # pylint: enable=g-bad-import-order
 
 # must be False when num_gpus>1
-IsCheckNet = False
+IsCheckNet = True
 
 ################################################################################
 # Functions for input processing.
@@ -429,17 +429,17 @@ def check_net(classifier, input_fn_eval, dataset_name, data_net_configs):
   res_dir = '/tmp/check_net'
   gen_inputs = True
   gen_new_xyz = False
-  gen_grouped_xyz = True
+  gen_grouped_xyz = False
   if gen_grouped_xyz:
     gen_box_to_grouped = True
-  gen_grouped_xyz_subblock = True
-  gen_voxel_indices = True
+  gen_grouped_xyz_subblock = False
+  gen_voxel_indices = False
   max_subblock_num = 10
 
   if not os.path.exists(res_dir):
     os.makedirs(res_dir)
   from ply_util import create_ply_dset, draw_points_and_voxel_indices,\
-                       draw_blocks_by_bottom_center
+                       draw_blocks_by_bot_cen_top
   pred_results = classifier.predict(input_fn=input_fn_eval)
   check_items = []
   if gen_inputs:
@@ -459,7 +459,7 @@ def check_net(classifier, input_fn_eval, dataset_name, data_net_configs):
       for v in range(cascade_num):
         block_bottom_center = pred['block_bottom_center_%d'%(v)]
         ply_fn = '{}/{}_block_{}.ply'.format(res_dir, j, v)
-        draw_blocks_by_bottom_center(ply_fn, block_bottom_center)
+        draw_blocks_by_bot_cen_top(ply_fn, block_bottom_center)
 
     # gen voxel edges *****************************************************
     if 'voxel_indices_0' in pred:
