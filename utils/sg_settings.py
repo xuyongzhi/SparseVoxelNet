@@ -42,7 +42,7 @@ def update_sg_str(sg_settings):
   return sg_settings
 
 def sg_flag(sg_settings_):
-  tmp = np.concatenate( [sg_settings_['npoint_per_block'][0:1], sg_settings_['nblock'][1:]],0 )
+  tmp = np.concatenate( [sg_settings_['npoint_per_block'][0:1], sg_settings_['nblock']],0 )
   return '_'.join([str(int(e)) for e in tmp])
 
 def get_sg_settings(sgflag):
@@ -72,11 +72,11 @@ def get_sg_settings(sgflag):
   #-----------------------------------------------------------------------------
   # matterport: 8192
   sg_settings = {}
-  sg_settings['width'] = [[4.0,4.0,4.0],]
-  sg_settings['stride'] =  [[3.0,3.0,3.0],]
-  sg_settings['nblock'] =  [8,             ]
+  sg_settings['width'] = [[3.0,3.0,3.0],]
+  sg_settings['stride'] =  [[2.0,2.0,2.0],]
+  sg_settings['nblock'] =  [6,             ]
   sg_settings['npoint_per_block'] = [8192, ]
-  sg_settings['np_perb_min_include'] = [1000, ]
+  sg_settings['np_perb_min_include'] = [3000, ]
   sg_settings_all[sg_flag(sg_settings)] = sg_settings
 
   #-----------------------------------------------------------------------------

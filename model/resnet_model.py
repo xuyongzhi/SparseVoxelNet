@@ -1057,7 +1057,12 @@ class Model(ResConvOps):
           inputs_dic1[item].append(value)
         #else:
         #  inputs_dic1[item].append([])
-    return self.pre_pro_inputs(inputs_dic1, inputs_dic['points'])
+    points = inputs_dic['points']
+    ps = [e.value for e in points.shape]
+    if len(ps) == 4:
+      # include global block dim
+      points = tf.reshape(points, [-1, ps[2], ps[3]])
+    return self.pre_pro_inputs(inputs_dic1, points)
 
   def pre_sampling_grouping(self, inputs_dic):
     # get the indices for grouping and sampling on line
@@ -1080,6 +1085,8 @@ class Model(ResConvOps):
     del dsb['grouped_bot_cen_top']
 
     shape0 = [e.value for e in dsb['grouped_pindex'][0].shape]
+    assert len(shape0) == 4
+    assert len(points.shape) == 3
     batch_size = shape0[0]
     global_block_num = shape0[1]
     bsgbn = batch_size * global_block_num
@@ -1279,8 +1286,7 @@ class Model(ResConvOps):
               new_points = self.batch_norm(new_points, is_training, tf.nn.relu)
 
           if k == 0:
-              #l_points[0].append(self.ave_grouped_features(root_point_features))
-              l_points.append(None)  # used by charles
+              l_points.append(self.ave_grouped_features(root_point_features))
           l_points.append(new_points)
           if self.IsShowModel: self.log(
             '*****************************************************************')
@@ -1295,11 +1301,11 @@ class Model(ResConvOps):
       if self.dataset_name == 'MODELNET40':
         new_points = tf.squeeze(new_points, 1)
         new_points = self.classifier(new_points, is_training,\
-                                     dense_features=[512, 256])
+                          dense_features = self.block_params['dense_filters']['final_dense_with_dp'])
       if self.dataset_name == 'MATTERPORT':
         new_points = self.segmentation(l_points, flatting_idx, flat_valid_mask, is_training)
         new_points = self.classifier(new_points, is_training,\
-                                     dense_features=[])
+                          dense_features = self.block_params['dense_filters']['final_dense_with_dp'])
       ##########################################################################
       if self.IsShowModel:
         self.log( tensor_info(new_points, 'dense', 'final1') +'\n\n' )
@@ -1317,8 +1323,6 @@ class Model(ResConvOps):
       return new_points
 
   def classifier(self, inputs, is_training, dense_features=[]):
-    inputs = tf.identity(inputs, 'final_reduce_mean')
-
     with tf.variable_scope('classifier'):
       #                     Fully connect layers
       out_drop_rate=self.data_net_configs['drop_imo']['output']
@@ -1334,6 +1338,16 @@ class Model(ResConvOps):
 
 
   def segmentation(self, l_points, flatting_idx, flat_valid_mask, is_training):
+    if self.IsShowModel:
+      self.log('--------------- bottle_last_scale ---------------')
+    with tf.variable_scope('/Bottle'):
+      end_points = l_points[-1]
+      for k,f in enumerate(self.block_params['dense_filters']['bottle_last_scale']):
+        end_points = self.conv1d(end_points, f, 1, 1, 'valid')
+        self.log_tensor_c(end_points, 1, 1, 'v', tf.get_variable_scope().name)
+        end_points = self.batch_norm(end_points, is_training, tf.nn.relu)
+      l_points[-1] = end_points
+
     for s0 in  range(self.net_num_scale):
       s = self.net_num_scale -  s0 - 1
       flatten_filters = self.block_params['flatten_filters'][s]
@@ -1343,16 +1357,20 @@ class Model(ResConvOps):
         if s == self.net_num_scale-1:
           # the last scale
           assert l_points[s+1].shape[1].value == 1
-          flatten_points = tf.tile(l_points[s+1], [1, self.sg_settings['nblock'][s],1 ])
+          if s==0:
+            nb = self.sg_settings['npoint_per_block'][s]
+          else:
+            nb = self.sg_settings['nblock'][s]
+          flatten_points = tf.tile(l_points[s+1], [1, nb,1 ])
         else:
           flatten_points = self.flatting(l_points[s+1], flatting_idx[s], flat_valid_mask[s])
-          pass
-        if s==0:
+        if l_points[s]==None:
           new_points = flatten_points
           self.log_tensor_p(new_points, 'points0 is None', 'use flatten only')
         else:
           new_points = tf.concat([l_points[s], flatten_points], 2)
           self.log_tensor_p(new_points, '%d+%d'%(l_points[s].shape[-1].value, flatten_points.shape[-1].value) ,'concat')
+
         for k,f in enumerate(flatten_filters):
           with tf.variable_scope('c%d'%(k)):
             new_points = self.conv1d(new_points, f, 1, 1, 'valid')
@@ -1396,8 +1414,12 @@ class Model(ResConvOps):
       self.log_tensor_p(flatten_points, 'from {}'.format(shape0), 'flatting')
       return flatten_points
 
-  def ave_grouped_features(self, gruped_features):
-    raise NotImplementedError
+  def ave_grouped_features(self, grouped_features):
+    shape0 = [e.value for e in grouped_features.shape ]
+    if shape0[1] == 1:
+      return tf.squeeze(grouped_features, 1)
+    else:
+      return None
 
   @staticmethod
   def grouping_online(points, grouped_pindex):

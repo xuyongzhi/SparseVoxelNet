@@ -268,6 +268,9 @@ def resnet_model_fn(model_flag, features, labels, mode, model_class,
   # Calculate loss, which includes softmax cross entropy and L2 regularization.
   dset_shape_idxs = data_net_configs['dset_shape_idxs']
   category_idx = dset_shape_idxs['indices']['labels']['label_category'][0]
+  labels_shape = labels.shape
+  if len(labels_shape) == 4:
+    labels = tf.reshape(labels, [-1, labels_shape[2], labels_shape[3]])
   labels = labels[..., category_idx]
   assert len(labels.shape) == len(logits.shape)-1, "network error"
   if data_net_configs['loss_lw_gama'] < 0:
