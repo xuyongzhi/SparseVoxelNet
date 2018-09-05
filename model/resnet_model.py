@@ -838,15 +838,15 @@ def mytile(tensor, axis, eval_views):
   return tensor
 
 
-def my_reduce_mean(grouped_xyz):
+def my_reduce_mean(grouped_center):
   '''
   reduce mean exclusive of 0.
-  grouped_xyz mayu include 0 that should not be included by mean
-  grouped_xyz: (b,n1.n2,3)
+  grouped_center mayu include 0 that should not be included by mean
+  grouped_center: (b,n1.n2,3)
   mean_xyz:(b,n1,3)
   '''
-  sum_xyz = tf.reduce_sum(grouped_xyz, -2)
-  tmp = tf.reduce_mean(grouped_xyz,-1)
+  sum_xyz = tf.reduce_sum(grouped_center, -2)
+  tmp = tf.reduce_mean(grouped_center,-1)
   tmp = tf.cast(tf.not_equal(tmp, 0),tf.float32)
   valid_num = tf.reduce_sum(tmp, -1)
   valid_num = tf.expand_dims(valid_num, -1)
@@ -1043,10 +1043,6 @@ class Model(ResConvOps):
   def sg_in_inputpipeline(self, inputs_dic, sg_num_scale):
     # scale 0 is global scale!
     inputs_dic1 = {}
-    #inputs_dic1['points'] = tf.squeeze(inputs_dic['grouped_xyz_0'], 1)
-
-    #if self.feed_data_idxs!='ALL':
-    #  inputs_dic1['points']  = tf.gather(inputs_dic1['points'] , self.feed_data_idxs, axis=-1)
 
     items = ['grouped_pindex','grouped_bot_cen_top', 'empty_mask', 'bot_cen_top',
              'vox_index', 'flatting_idx', 'flat_valid_mask']
@@ -1055,16 +1051,16 @@ class Model(ResConvOps):
       for s in range(0, sg_num_scale+1):
         if item+'_%d'%(s) in inputs_dic:
           value = inputs_dic[item+'_%d'%(s)]
-          #shape = value.shape
-          #value = tf.reshape(value, [-1, shape[2], shape[3]])
           inputs_dic1[item].append(value)
-        #else:
-        #  inputs_dic1[item].append([])
+
     points = inputs_dic['points']
     ps = [e.value for e in points.shape]
     if len(ps) == 4:
-      # include global block dim
-      points = tf.reshape(points, [-1, ps[2], ps[3]])
+      assert self.batch_size == ps[0]
+      self.batch_size = ps[0] * ps[1]
+      # include global block dim, fuse to batch dim
+      points = tf.reshape(points, [self.batch_size, ps[2], ps[3]])
+
     return self.pre_pro_inputs(inputs_dic1, points)
 
   def pre_sampling_grouping(self, inputs_dic):
@@ -1080,19 +1076,12 @@ class Model(ResConvOps):
     return self.pre_pro_inputs(dsb, points)
 
   def pre_pro_inputs(self, dsb, points):
-
+    assert self.net_num_scale  == len(dsb['grouped_bot_cen_top'])
     dsb['grouped_center'] = []
     for s in range(len(dsb['grouped_bot_cen_top'])):
       dsb['grouped_center'].append([])
       dsb['grouped_center'][s] = dsb['grouped_bot_cen_top'][s][...,3:6]
     del dsb['grouped_bot_cen_top']
-
-    shape0 = [e.value for e in dsb['grouped_pindex'][0].shape]
-    assert len(shape0) == 4
-    assert len(points.shape) == 3
-    batch_size = shape0[0]
-    global_block_num = shape0[1]
-    bsgbn = batch_size * global_block_num
 
     #*************************************************************
     # get inputs for each global block
@@ -1112,40 +1101,60 @@ class Model(ResConvOps):
       points = tf.gather(points, self.feed_data_idxs, axis=-1)
 
     #*************************************************************
+    is_show = False
+    def show_shapes(state=''):
+      print('\n\n{}\n'.format(state))
+      for item in dsb:
+        item_shapes = []
+        if item == 'points':
+          item_ls = [dsb[item]]
+        else:
+          item_ls = dsb[item]
+        for s in item_ls:
+          if s!=[]:
+            item_shapes.append([e.value for e in s.shape])
+          else:
+            item_shapes.append([])
+        print("{}: {}".format(item, item_shapes))
+    if is_show: show_shapes('orginal')
+
     # rm global scale
     for item in dsb:
-      del dsb[item][0]
+      if self.net_num_scale == 1 and item in ['grouped_center', 'bot_cen_top']:
+        dsb[item][0] = tf.expand_dims(tf.squeeze(dsb[item][0], 1), 2)
+      else:
+        del dsb[item][0]
+
       if len(dsb[item]) < self.net_num_scale:
         if len(dsb[item]) == 0:  # one scale only: pointnet
           dsb[item].append([])
         else:
           dsb[item].append(tf.zeros([0]*len(dsb[item][0].shape), dsb[item][0].dtype))
 
+    if is_show: show_shapes('after deleting global scale')
     #*************************************************************
-    is_show_inputs = False
     # merge batch size dim and global block dim
     for item in dsb:
-      if item in ['flatting_idx', 'flat_valid_mask']:
-        # no need, global block auged already
-        continue
       num_scale = len(dsb[item])
-      for s in range(num_scale):
-        if dsb[item][s] == []: # one scale only: pointnet
-          continue
-        shape_i = [e.value for e in dsb[item][s].shape]
-        dsb[item][s] = tf.reshape(dsb[item][s], [bsgbn] + shape_i[2:])
-        shape_i1 = [e.value for e in dsb[item][s].shape]
-        if is_show_inputs:
-          print('{}:{}'.format(item, shape_i1))
+      if item in ['flatting_idx', 'flat_valid_mask']:
+        for s in range(num_scale):
+          shape0 = [e.value for e in dsb[item][s].shape]
+          assert len(shape0) == 3
+          if shape0[0] != self.batch_size:
+            dsb[item][s] = tf.reshape(dsb[item][s], [self.batch_size, -1, shape0[-1]])
+
+      else:
+        for s in range(num_scale):
+          if dsb[item][s] == []: # one scale only: pointnet
+            continue
+          shape_i = [e.value for e in dsb[item][s].shape]
+          dsb[item][s] = tf.reshape(dsb[item][s], [self.batch_size] + shape_i[2:])
+          shape_i1 = [e.value for e in dsb[item][s].shape]
 
     #*************************************************************
     dsb['points'] = points
 
-    #sg_t_batch = (tf.timestamp() - t0)*1000
-    #tf.summary.scalar('sg_t_batch', sg_t_batch)
-    #sg_t_frame = sg_t_batch / tf.cast(self.batch_size,tf.float64)
-    #tf.summary.scalar('sg_t_frame', sg_t_frame)
-
+    if is_show: show_shapes('after merging batch and global block dims')
     return dsb
 
   def __call__(self, inputs_dic, is_training):
@@ -1222,12 +1231,12 @@ class Model(ResConvOps):
     #tf.summary.scalar('t_batch', (tf.timestamp() - t00)*1000 )
     return outputs
 
-  def _call(self, inputs, grouped_xyz_ms, grouped_pindex_ms, empty_mask_ms, \
+  def _call(self, inputs, grouped_center_ms, grouped_pindex_ms, empty_mask_ms, \
             bot_cen_top_ms, vox_index_ms, flatting_idx, flat_valid_mask, \
             is_training, eval_views=-1):
     '''
     inputs: (12, 4096, 3)
-    grouped_xyz_ms: [(12, 1, 4096, 3), (12, 1024, 32, 3), (12, 48, 48, 3)]
+    grouped_center_ms: [(12, 1, 4096, 3), (12, 1024, 32, 3), (12, 48, 48, 3)]
     grouped_pindex_ms: [(12, 1, 4096), (12, 1024, 32), (12, 48, 48)]
     empty_mask_ms: [(12, 1, 4096), (12, 1024, 32), (12, 48, 48), (12, 1, 48)]
     bot_cen_top_ms: [(12, 1, 9), (12, 1024, 9), (12, 48, 9)]
@@ -1237,8 +1246,8 @@ class Model(ResConvOps):
     # check input shapes
     assert len(inputs.shape) == 3
     for s in range(self.sg_num_scale):
-      if grouped_xyz_ms[s]!=[]:
-        assert len(grouped_xyz_ms[s].shape) == 4
+      if grouped_center_ms[s]!=[]:
+        assert len(grouped_center_ms[s].shape) == 4
       if grouped_pindex_ms[s]!=[]:
         assert len(grouped_pindex_ms[s].shape) == 3
       if empty_mask_ms[s]!=[]:
@@ -1275,13 +1284,9 @@ class Model(ResConvOps):
       ##########################################################################
       #                       Point encoder
       for k in range(self.net_num_scale):
-          if self.block_style == 'PointNet':
-            l_xyz, new_points, root_point_features = self.pointnet2_module(k, l_xyz,
-                          new_points, sg_bidxmap_k, bot_cen_top_mm )
-          else:
-            new_points, root_point_features = self.res_sa_module(k,
-                            new_points, grouped_xyz_ms[k], grouped_pindex_ms[k],
-                            empty_mask_ms[k], bot_cen_top_ms[k], vox_index_ms[k] )
+          new_points, root_point_features = self.res_sa_module(k,
+                        new_points, grouped_center_ms[k], grouped_pindex_ms[k],
+                        empty_mask_ms[k], bot_cen_top_ms[k], vox_index_ms[k] )
 
           # Last output of point encoder: Only apply the BN and ReLU for model that does pre_activation in each
           # building/bottleneck block, eg resnet V2.
@@ -1436,29 +1441,28 @@ class Model(ResConvOps):
       grouped_points = tf.gather_nd(points, grouped_pindex)
       return grouped_points
 
-  def cat_xyz_elements(self, scale, grouped_xyz,
-                       bot_cen_top, grouped_points):
+  def cat_xyz_elements(self, scale, grouped_center, bot_cen_top, grouped_points):
     if self.mean_grouping_position and (not self.voxel3d):
-      sub_block_mid = tf.reduce_mean(grouped_xyz, 2, keepdims=True)
+      sub_block_mid = tf.reduce_mean(grouped_center, 2, keepdims=True)
     else:
       sub_block_mid = tf.expand_dims(bot_cen_top[:,:,3:6], 2)
     global_block_mid = tf.reduce_mean( sub_block_mid,1, keepdims=True, name = 'global_block_mid' )
-    grouped_xyz_submid = grouped_xyz - sub_block_mid
-    grouped_xyz_glomid = grouped_xyz - global_block_mid
+    grouped_center_submid = grouped_center - sub_block_mid
+    grouped_center_glomid = grouped_center - global_block_mid
 
-    grouped_xyz_feed = []
+    grouped_center_feed = []
     if 'raw' in self.xyz_elements:
-        grouped_xyz_feed.append( grouped_xyz )
+        grouped_center_feed.append( grouped_center )
     if 'sub_mid' in self.xyz_elements:
-        grouped_xyz_feed.append( grouped_xyz_submid )
+        grouped_center_feed.append( grouped_center_submid )
     if 'global_mid' in self.xyz_elements:
-        grouped_xyz_feed.append( grouped_xyz_glomid )
-    grouped_xyz_feed = tf.concat( grouped_xyz_feed, -1 )
+        grouped_center_feed.append( grouped_center_glomid )
+    grouped_center_feed = tf.concat( grouped_center_feed, -1 )
 
     if scale==0:
         # xyz must be at the first in feed_data_elements !!!!
         tf.add_to_collection('raw_inputs_COLC', grouped_points)
-        grouped_points = tf.concat( [grouped_xyz_feed, grouped_points[...,3:]],-1 )
+        grouped_points = tf.concat( [grouped_center_feed, grouped_points[...,3:]],-1 )
 
         #if len(indrop_keep_mask.get_shape()) != 0:
         #    if InDropMethod == 'set1st':
@@ -1475,20 +1479,20 @@ class Model(ResConvOps):
 
     else:
       if self.use_xyz and (not scale==self.net_num_scale-1):
-          grouped_points = tf.concat([grouped_points, grouped_xyz_feed],axis=-1)
+          grouped_points = tf.concat([grouped_points, grouped_center_feed],axis=-1)
           self.log_tensor_p(grouped_points, 'use xyz', 'cas%d'%(scale))
     return grouped_points
 
 
-  def res_sa_module(self, scale, points, grouped_xyz,
+  def res_sa_module(self, scale, points, grouped_center,
                       grouped_pindex,  empty_mask, bot_cen_top, vox_index ):
     with tf.variable_scope('scale_%d'%(scale)):
       if scale < self.net_num_scale-1:
         grouped_points = Model.grouping_online(points, grouped_pindex)
-        grouped_points = self.cat_xyz_elements(scale, grouped_xyz,
-                                            bot_cen_top, grouped_points)
       else:
         grouped_points = tf.expand_dims(points, 1)
+      grouped_points = self.cat_xyz_elements(scale, grouped_center,
+                                            bot_cen_top, grouped_points)
 
       if scale == 0:
         grouped_points = self.initial_layer(grouped_points)
@@ -1577,134 +1581,8 @@ class Model(ResConvOps):
         self.block_num_count += 1
       return inputs
 
-  def pointnet2_module(self, scale, xyz, points, bidmap, bot_cen_top_mm):
-    with tf.variable_scope('sa_%d'%(scale)):
-      if self.IsShowModel:
-        self.log('-------------------  scale %d  ---------------------'%(scale))
-      if self.net_num_scale > 1+scale:
-        new_xyz, grouped_xyz_feed, inputs, valid_mask = self.grouping(scale, xyz,
-                          points, bidmap, bot_cen_top_mm)
-        assert len(inputs.shape)==4
-      else:
-        inputs = tf.expand_dims(xyz, 1)
-        new_xyz = None
 
-      filters = self.block_params['filters'][scale]
-      with tf.variable_scope('c%d'%(scale)):
-        for i,filter in enumerate(filters):
-          with tf.variable_scope('l%d'%(i)):
-            inputs = self.conv2d3d(inputs, filter, 1, 1, 'v')
-            self.log_tensor_c(inputs, 1, 1, 'v', tf.get_variable_scope().name)
-            inputs = self.batch_norm(inputs, self.is_training, tf.nn.relu)
-
-      # use max pooling to reduce map size
-      outputs = tf.reduce_max(inputs, axis=[2] if self.data_format=='channels_last' else 3)
-      self.log_tensor_p(outputs, 'max', 'cas%d'%(scale))
-
-      return new_xyz, outputs, None
-
-  def grouping(self, scale, xyz, points, bidmap, bot_cen_top_mm):
-    if self.data_format == 'channels_first':
-      points = tf.transpose(points, [0, 2, 1])
-
-    assert self.net_num_scale <= self.flatten_bm_extract_idx.shape[0]-1  # include global here (Note: net_num_scale does not include global in block_pre_util )
-    assert self.sub_block_step_candis.size >= self.net_num_scale-1
-    #if scale==0:
-    #    indrop_keep_mask = tf.get_default_graph().get_tensor_by_name('indrop_keep_mask:0') # indrop_keep_mask:0
-
-    assert len(xyz.shape) == 3
-    if not ( len(xyz.shape) == len(points.shape) == len(bidmap.shape) == \
-            len(bot_cen_top_mm.shape) == 3 ):
-      assert False, "grouping"
-
-    if bidmap==None:
-        grouped_xyz = tf.expand_dims( xyz, 1 )
-        grouped_points = tf.expand_dims( points, 1 )
-        new_xyz = None
-        valid_mask = None
-    else:
-        batch_size = self.batch_size
-        batch_idx = tf.reshape( tf.range(batch_size),[batch_size,1,1,1] )
-        nsubblock = bidmap.get_shape()[1].value
-        npoint_subblock = bidmap.get_shape()[2].value
-        batch_idx_ = tf.tile( batch_idx,[1,nsubblock,npoint_subblock,1] )
-        bidmap = tf.expand_dims( bidmap,axis=-1, name='bidmap' )
-        bidmap_concat = tf.concat( [batch_idx_,bidmap],axis=-1, name='bidmap_concat' )  # gpu_0/sa_layer0/bidmap_concat:0
-        # The value for invalid item in bidmap is -17.
-        # On GPU, the responding grouped_xyz and grouped_points is 0.
-        # NOT WORK on CPU !!!
-
-        # invalid indices comes from merge_blocks_while_fix_bmap
-        # set point_indices_f for invalid points as
-        # NETCONFIG['redundant_points_in_block'] ( shoud be set < -500)
-        valid_mask = tf.greater( bidmap, tf.constant(-500,tf.int32), 'valid_mask' ) # gpu_0/sa_layer0/valid_mask:0
-
-        grouped_xyz = tf.gather_nd(xyz, bidmap_concat, name='grouped_xyz')  # gpu_0/sa_layer0/grouped_xyz:0
-        grouped_points = tf.gather_nd(points,bidmap_concat, name='group_points')
-        #if scale==0 and  len(indrop_keep_mask.get_shape()) != 0:
-        #    grouped_indrop_keep_mask = tf.gather_nd( indrop_keep_mask, bidmap_concat, name='grouped_indrop_keep_mask' )  # gpu_0/sa_layer0/grouped_indrop_keep_mask:0
-
-    # new_xyz is the "voxel center" or "mean position of points in the voxel"
-    if self.mean_grouping_position and (not self.voxel3d):
-        new_xyz = my_reduce_mean(grouped_xyz)
-    else:
-        new_xyz = bot_cen_top_mm[:,:,3:6] * tf.constant( 0.001, tf.float32 )
-    tf.add_to_collection('grouped_xyz_COLC', grouped_xyz)
-    tf.add_to_collection('new_xyz_COLC', new_xyz)
-    tf.add_to_collection('bot_cen_top_COLC', bot_cen_top_mm * tf.constant( 0.001, tf.float32 ))
-    # the mid can be mean or block center, decided by configs['mean_grouping_position']
-    sub_block_mid = tf.expand_dims( new_xyz,-2, name = 'sub_block_mid' )   # gpu_1/sa_layer0/sub_block_mid
-    global_block_mid = tf.reduce_mean( sub_block_mid,1, keepdims=True, name = 'global_block_mid' )
-    grouped_xyz_submid = grouped_xyz - sub_block_mid
-    grouped_xyz_glomid = grouped_xyz - global_block_mid
-
-    grouped_xyz_feed = []
-    if 'raw' in self.xyz_elements:
-        grouped_xyz_feed.append( grouped_xyz )
-    if 'sub_mid' in self.xyz_elements:
-        grouped_xyz_feed.append( grouped_xyz_submid )
-    if 'global_mid' in self.xyz_elements:
-        grouped_xyz_feed.append( grouped_xyz_glomid )
-    grouped_xyz_feed = tf.concat( grouped_xyz_feed, -1 )
-
-    if scale==0:
-        # xyz must be at the first in feed_data_elements !!!!
-        tf.add_to_collection('raw_inputs_COLC', grouped_points)
-        grouped_points = tf.concat( [grouped_xyz_feed, grouped_points[...,3:]],-1 )
-
-        #if len(indrop_keep_mask.get_shape()) != 0:
-        #    if InDropMethod == 'set1st':
-        #        # set all the dropped item as the first item
-        #        tmp1 = tf.multiply( grouped_points, grouped_indrop_keep_mask )
-        #        points_1st = grouped_points[:,:,0:1,:]
-        #        points_1st = tf.tile( points_1st, [1,1,grouped_points.shape[2],1] )
-        #        indrop_mask_inverse = 1 - grouped_indrop_keep_mask
-        #        tmp2 = indrop_mask_inverse * points_1st
-        #        grouped_points = tf.add( tmp1, tmp2, name='grouped_points_droped' ) # gpu_0/sa_layer0/grouped_points_droped
-        #        #tf.add_to_collection( 'check', grouped_points )
-        #    elif InDropMethod == 'set0':
-        #        valid_mask = tf.logical_and( valid_mask, tf.equal(grouped_indrop_keep_mask,0), name='valid_mask_droped' )   # gpu_1/sa_layer0/valid_mask_droped
-
-    else:
-      if self.use_xyz and (not scale==self.net_num_scale-1):
-          grouped_points = tf.concat([grouped_points, grouped_xyz_feed],axis=-1)
-          self.log_tensor_p(grouped_points, 'use xyz', 'cas%d'%(scale))
-
-    if self.IsShowModel:
-      sc = 'grouping %d'%(scale)
-      self.log('')
-      #self.log_tensor_p(xyz, 'xyz', sc)
-      #self.log_tensor_p(new_xyz, 'new_xyz', sc)
-      #self.log_tensor_p(grouped_xyz, 'grouped_xyz', sc)
-      self.log_tensor_p(grouped_points, 'grouped_points', sc)
-      #self.log('')
-
-    new_points = grouped_points
-    if self.data_format == 'channels_first':
-      new_points = tf.transpose(new_points, [0, 3, 1, 2])
-    return new_xyz, grouped_xyz, new_points, valid_mask
-
-  def grouped_points_to_voxel_points (self, scale, new_points, empty_mask, bot_cen_top, grouped_xyz):
+  def grouped_points_to_voxel_points (self, scale, new_points, empty_mask, bot_cen_top, grouped_center):
     import pdb; pdb.set_trace()  # XXX BREAKPOINT
     IS_merge_blocks_while_fix_bmap = True
 
@@ -1727,7 +1605,7 @@ class Model(ResConvOps):
     #                      Otherwise, the stride at each cascade may also be changed.
     min_point_bottom_xyz_mm = voxel_bottom_xyz_mm
     min_point_bottom_xyz_mm = tf.expand_dims( min_point_bottom_xyz_mm, -2, name='min_point_bottom_xyz_mm' ) # gpu_0/sa_layer1/min_point_bottom_xyz_mm:0
-    grouped_bottom_xyz_mm = grouped_xyz * c1000 - step_last * c500  # gpu_0/sa_layer1/sub_1:0
+    grouped_bottom_xyz_mm = grouped_center * c1000 - step_last * c500  # gpu_0/sa_layer1/sub_1:0
         # For ExtraGlobal layer, the step_last may be cropped, thus the point_indices_f is smaller.
     point_indices_f = (grouped_bottom_xyz_mm - min_point_bottom_xyz_mm) / (stride_last*c1000)  # gpu_0/sa_layer3/div:0
     point_indices_f = tf.identity( point_indices_f, name='point_indices_f' )    # gpu_0/sa_layer4/point_indices_f:0

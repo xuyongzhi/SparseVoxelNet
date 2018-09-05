@@ -9,6 +9,7 @@
 - [ ] Move the last global scope to include larger scope, instead of strictly more by stride.
 - [ ] Select global blocks random is bot good, -> choose by num point
 - [ ] Speed up sg for globla block, especially when only global scale
+- [ ] Try replace grouped_center by mean
 
 # Key small items to be developed
 - [x] add learning rate warm up
