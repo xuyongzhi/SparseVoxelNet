@@ -1084,6 +1084,8 @@ class Model(ResConvOps):
       dsb['grouped_center'][s] = dsb['grouped_bot_cen_top'][s][...,3:6]
     del dsb['grouped_bot_cen_top']
 
+    if self.feed_data_idxs!='ALL':
+      points = tf.gather(points, self.feed_data_idxs, axis=-1)
     #*************************************************************
     is_show = False
     def show_shapes(state=''):
