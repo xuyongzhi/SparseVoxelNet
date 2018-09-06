@@ -969,6 +969,7 @@ class Model(ResConvOps):
     self.num_classes = self.datasets_meta.num_classes
 
     self.data_idxs = self.dset_shape_idxs['indices']
+    assert self.data_idxs['points']['xyz'] == [0,1,2]
     for e in self.feed_data:
       assert e in self.data_idxs['points']
     IsAllInputs = len(self.data_idxs['points']) == len(self.feed_data)
@@ -1082,23 +1083,6 @@ class Model(ResConvOps):
       dsb['grouped_center'].append([])
       dsb['grouped_center'][s] = dsb['grouped_bot_cen_top'][s][...,3:6]
     del dsb['grouped_bot_cen_top']
-
-    #*************************************************************
-    # get inputs for each global block
-    # This may be already done in parse_pl_record
-    if points.shape[1].value != dsb['grouped_pindex'][0].shape[-1].value:
-      import pdb; pdb.set_trace()  # XXX BREAKPOINT
-      grouped_pindex_global = tf.expand_dims(
-                                    tf.squeeze(dsb['grouped_pindex'][0], 2), -1)
-      shape0 = [e.value for e in grouped_pindex_global.shape]
-      tmp0 = tf.reshape(tf.range(0, self.batch_size, 1), [-1, 1, 1, 1])
-      tmp0 = tf.tile(tmp0, [1] + shape0[1:])
-      tmp1 = tf.concat([tmp0, grouped_pindex_global], -1)
-      points = tf.gather_nd(points, tmp1)
-      points = tf.reshape(points, [bsgbn, points.shape[2].value,
-                                  points.shape[3].value])
-    if self.feed_data_idxs!='ALL':
-      points = tf.gather(points, self.feed_data_idxs, axis=-1)
 
     #*************************************************************
     is_show = False
@@ -1442,28 +1426,60 @@ class Model(ResConvOps):
       grouped_points = tf.gather_nd(points, grouped_pindex)
       return grouped_points
 
-  def cat_xyz_elements(self, scale, grouped_center, bot_cen_top, grouped_points):
-    if self.mean_grouping_position and (not self.voxel3d):
-      sub_block_mid = tf.reduce_mean(grouped_center, 2, keepdims=True)
-    else:
-      sub_block_mid = tf.expand_dims(bot_cen_top[:,:,3:6], 2)
-    global_block_mid = tf.reduce_mean( sub_block_mid,1, keepdims=True, name = 'global_block_mid' )
-    grouped_center_submid = grouped_center - sub_block_mid
-    grouped_center_glomid = grouped_center - global_block_mid
 
-    grouped_center_feed = []
+  def cat_xyz_elements(self, scale, grouped_center, bot_cen_top, grouped_points):
+    shape0 = [e.value for e in  grouped_center.shape]
+    shape1 = [e.value for e in  bot_cen_top.shape]
+    shape2 = [e.value for e in  grouped_points.shape]
+
+    assert len(shape0) == len(shape2) == 4
+    assert len(shape1) == 3
+    assert shape0[0] == shape1[0] == shape2[0] == self.batch_size
+    if shape0[1] > 0:
+      assert shape0[1] == shape1[1] == shape2[1] # block num
+
+    #if scale == 0:
+    #  grouped_center = grouped_points[:,:,:,0:3] # actually should be shape
+
+    #  use last scale block center as point position of current scale
+    grouped_xyz = grouped_center
+
+    #if self.mean_grouping_position and (not self.voxel3d):
+    if self.mean_grouping_position:
+      # use mean os centroid, relevant with resolution
+      sub_block_mid = tf.reduce_mean(grouped_xyz, 2, keepdims=True)
+    else:
+      # use current block scale center as centroid, indepent of resolution
+      sub_block_mid = tf.expand_dims(bot_cen_top[:,:,3:6], 2)
+
+    #***************************************************************************
+    # normalize xyz per sub block to [-1, 1]
+    grouped_xyz_sb_normed = grouped_xyz - sub_block_mid
+    sub_block_max = tf.reduce_max(tf.abs(grouped_xyz_sb_normed), [2,3], keepdims=True)
+    #grouped_xyz_sb_normed /= sub_block_max
+
+    #***************************************************************************
+    # normalize xyz per global block to [-1, 1]
+    if scale>0:
+      global_block_mid = tf.reduce_mean( sub_block_mid,1, keepdims=True )
+      grouped_xyz_gb_normed = grouped_xyz - global_block_mid
+      global_block_max = tf.reduce_max(tf.abs(grouped_xyz_gb_normed), [1,2,3], keepdims=True)
+      #grouped_xyz_gb_normed /= global_block_max
+
+    grouped_xyz_feed = []
     if 'raw' in self.xyz_elements:
-        grouped_center_feed.append( grouped_center )
+        grouped_xyz_feed.append( grouped_xyz )
     if 'sub_mid' in self.xyz_elements:
-        grouped_center_feed.append( grouped_center_submid )
+        grouped_xyz_feed.append( grouped_xyz_sb_normed )
     if 'global_mid' in self.xyz_elements:
-        grouped_center_feed.append( grouped_center_glomid )
-    grouped_center_feed = tf.concat( grouped_center_feed, -1 )
+        assert scale>0, "s and g is same, use s"
+        grouped_xyz_feed.append( grouped_xyz_gb_normed )
+    grouped_xyz_feed = tf.concat( grouped_xyz_feed, -1 )
 
     if scale==0:
         # xyz must be at the first in feed_data_elements !!!!
         tf.add_to_collection('raw_inputs_COLC', grouped_points)
-        grouped_points = tf.concat( [grouped_center_feed, grouped_points[...,3:]],-1 )
+        grouped_points = tf.concat( [grouped_xyz_feed, grouped_points[...,3:]],-1 )
 
         #if len(indrop_keep_mask.get_shape()) != 0:
         #    if InDropMethod == 'set1st':
@@ -1480,7 +1496,7 @@ class Model(ResConvOps):
 
     else:
       if self.use_xyz and (not scale==self.net_num_scale-1):
-          grouped_points = tf.concat([grouped_points, grouped_center_feed],axis=-1)
+          grouped_points = tf.concat([grouped_points, grouped_xyz_feed],axis=-1)
           self.log_tensor_p(grouped_points, 'use xyz', 'cas%d'%(scale))
     return grouped_points
 

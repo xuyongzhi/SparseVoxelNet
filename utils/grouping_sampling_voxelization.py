@@ -194,8 +194,9 @@ class BlockGroupSampling():
     xyz_min = tf.reduce_min(xyz, 1)
     xyz_mean = (xyz_max + xyz_min) / 2
     self.xyz_scope = xyz_max - xyz_min
-    #if DEBUG:
-    #  print('raw xyz scope:{}'.format(self.xyz_scope))
+    if DEBUG:
+      xyz = tf.Print(xyz, [self.xyz_scope], message="\n\nxyz scope: ")
+      #print('raw xyz scope:{}'.format(self.xyz_scope))
 
     # align to 0.1
     bot = 0.1 * tf.floor(xyz_min / 0.1)
@@ -213,6 +214,9 @@ class BlockGroupSampling():
             # batch_size, global_block_num, num_point, 9
     self.global_block_num = self.global_bot_cen_top.shape[1].value
     self.global_bot_bot_bot = tf.tile(self.global_bot_cen_top[...,0:3], [1,1,1,3])
+
+    if DEBUG:
+      self.global_bot_cen_top = tf.Print(self.global_bot_cen_top, [self.global_bot_cen_top], message="\n\n global_bot_cen_top: ")
     #print('xyz: {}'.format(xyz[:,0:3,:]))
     #print('\bscale global   global_bot_cen_top:\n{}'.format(self.global_bot_cen_top))
 
@@ -1572,9 +1576,8 @@ def main_input_pipeline(DATASET_NAME, filenames, sg_settings, dset_metas, batch_
     features_next, label_next = get_next
 
 
-    if sg_settings['gen_ply']:
-      raw_points_next = features_next['raw_points']
-      raw_labels_next = features_next['raw_labels']
+    raw_points_next = features_next['raw_points']
+    raw_labels_next = features_next['raw_labels']
 
     points_next = features_next['points']
     grouped_pindex_next = []
@@ -1582,6 +1585,7 @@ def main_input_pipeline(DATASET_NAME, filenames, sg_settings, dset_metas, batch_
     grouped_bot_cen_top = []
     empty_mask_next = []
     bot_cen_top_next = []
+    nblock_valid_next = []
     others_next = []
 
     num_scale = bsg._num_scale
@@ -1591,6 +1595,7 @@ def main_input_pipeline(DATASET_NAME, filenames, sg_settings, dset_metas, batch_
       grouped_bot_cen_top.append(features_next['grouped_bot_cen_top_%d'%(s)])
       empty_mask_next.append(features_next['empty_mask_%d'%(s)])
       bot_cen_top_next.append(features_next['bot_cen_top_%d'%(s)])
+      nblock_valid_next.append(features_next['nblock_valid_%d'%(s)])
 
       others_next.append({})
       for name0 in features_next:
@@ -1611,17 +1616,20 @@ def main_input_pipeline(DATASET_NAME, filenames, sg_settings, dset_metas, batch_
         #others = sess.run(others_next)
 
         t0 = time.time()
-        raw_points, raw_labels, points, labels, grouped_pindex, vox_index, grouped_bot_cen_top, empty_masks, bot_cen_tops, others = \
-          sess.run([raw_points_next, raw_labels_next, points_next, label_next, grouped_pindex_next, vox_index_next, grouped_bot_cen_top, empty_mask_next, bot_cen_top_next, others_next] )
+        raw_points, raw_labels, points, labels, grouped_pindex, vox_index,\
+          grouped_bot_cen_top, empty_masks, bot_cen_tops, nblock_valid, others = \
+          sess.run([raw_points_next, raw_labels_next, points_next, label_next, grouped_pindex_next, vox_index_next,\
+                    grouped_bot_cen_top, empty_mask_next, bot_cen_top_next, nblock_valid_next, others_next] )
 
         t_batch = time.time()-t0
         xyzs = points[:,:,0:3]
         print("\n\n{} t_batch:{} t_frame:{}\n".format(i, t_batch*1000, t_batch/batch_size*1000))
 
-
-        gen_plys_scale0(DATASET_NAME, raw_points, raw_labels, points, labels, dset_metas)
-        gen_plys_sg(DATASET_NAME, grouped_bot_cen_top, bot_cen_tops)
-        import pdb; pdb.set_trace()  # XXX BREAKPOINT
+        if sg_settings['gen_ply']:
+          gen_plys_scale0(DATASET_NAME, raw_points, raw_labels, points, labels, dset_metas, nblock_valid[0])
+          gen_plys_sg(DATASET_NAME, grouped_bot_cen_top, bot_cen_tops, nblock_valid[0])
+          import pdb; pdb.set_trace()  # XXX BREAKPOINT
+          pass
 
   return xyzs, grouped_bot_cen_top, others, bsg._shuffle
 
@@ -1787,7 +1795,7 @@ def main_eager(DATASET_NAME, filenames, sg_settings, dset_metas, batch_size, cyc
   return points, grouped_bot_cen_top, others, bsg._shuffle
 
 
-def gen_plys_scale0(DATASET_NAME, raw_points, raw_labels, points, labels, dset_metas):
+def gen_plys_scale0(DATASET_NAME, raw_points, raw_labels, points, labels, dset_metas, nblock_valid0):
   raw_shape = raw_points.shape
   p_shape = points.shape
   assert len(raw_shape) == 3
@@ -1795,11 +1803,15 @@ def gen_plys_scale0(DATASET_NAME, raw_points, raw_labels, points, labels, dset_m
   batch_size = raw_shape[0]
   global_block_num = p_shape[1]
 
+  points_idxs = dset_metas['indices']['points']
+  xyz_color_idxs = points_idxs['xyz'] + points_idxs['color']
+
   categry_idx = dset_metas['indices']['labels']['label_category'][0]
   for bi in range(batch_size):
     path = '/tmp/batch%d_plys'%(bi)
     ply_fn = path+'/raw_points.ply'
-    create_ply_dset(DATASET_NAME, raw_points[bi,:,0:3], ply_fn,
+    xyz_color = np.take(raw_points[bi], xyz_color_idxs, axis=1)
+    create_ply_dset(DATASET_NAME, xyz_color, ply_fn,
                     extra='random_same_color')
 
     ply_fn = path+'/raw_points_labeled.ply'
@@ -1807,16 +1819,18 @@ def gen_plys_scale0(DATASET_NAME, raw_points, raw_labels, points, labels, dset_m
                     extra='random_same_color')
 
     for gi in range(global_block_num):
-      ply_fn = path+'/gb%d_points.ply'%(gi)
-      create_ply_dset(DATASET_NAME, points[bi,gi,:,0:3], ply_fn,
+      valid_flag = '_v' if gi < nblock_valid0[bi,0,0] else '_inv'
+      ply_fn = path+'/gb%d%s_points.ply'%(gi, valid_flag)
+      xyz_color = np.take(points[bi, gi], xyz_color_idxs, axis=1)
+      create_ply_dset(DATASET_NAME, xyz_color, ply_fn,
                     extra='random_same_color')
 
-      ply_fn = path+'/gb%d_points_labeled.ply'%(gi)
+      ply_fn = path+'/gb%d%s_points_labeled.ply'%(gi, valid_flag)
       create_ply_dset(DATASET_NAME, points[bi,gi,:,0:3], ply_fn, labels[bi,gi,:,categry_idx],
                     extra='random_same_color')
 
 
-def gen_plys_sg(DATASET_NAME, grouped_bot_cen_top, bot_cen_tops):
+def gen_plys_sg(DATASET_NAME, grouped_bot_cen_top, bot_cen_tops, nblock_valid0):
   num_scale = len(grouped_bot_cen_top)
   shape0 = grouped_bot_cen_top[0].shape
   batch_size = shape0[0]
@@ -1829,16 +1843,14 @@ def gen_plys_sg(DATASET_NAME, grouped_bot_cen_top, bot_cen_tops):
         continue
       path_s = path_bi + '/scale_%d'%(s)
       for gi in range(global_block_num):
-
-        ply_fn = '%s/gb%d_blocks.ply'%(path_s, gi)
+        valid_flag = '_v' if gi < nblock_valid0[bi,0,0] else '_inv'
+        ply_fn = '%s/gb%d%s_blocks.ply'%(path_s, gi, valid_flag)
         draw_blocks_by_bot_cen_top(ply_fn, bot_cen_tops[s][bi, gi], random_crop=0)
 
-        ply_fn = '%s/gb%d_blocks_center.ply'%(path_s, gi)
+        ply_fn = '%s/gb%d%s_blocks_center.ply'%(path_s, gi, valid_flag)
         create_ply_dset(DATASET_NAME, bot_cen_tops[s][bi,gi,:,3:6], ply_fn,
                         extra='random_same_color')
         pass
-  import pdb; pdb.set_trace()  # XXX BREAKPOINT
-  pass
 
 
 def gen_plys(DATASET_NAME, frame, points, grouped_bot_cen_top,
@@ -1881,8 +1893,8 @@ def gen_plys(DATASET_NAME, frame, points, grouped_bot_cen_top,
 def main(filenames, dset_metas, main_flag, batch_size = 2, cycles = 1):
   from utils.sg_settings import get_sg_settings
   #sg_settings = get_sg_settings('32768_1024_64')
-  #sg_settings = get_sg_settings('8192_6')
-  sg_settings = get_sg_settings('8192_2_1024_64')
+  sg_settings = get_sg_settings('8192_4')
+  #sg_settings = get_sg_settings('8192_2_1024_64')
 
   #file_num = len(filenames)
   num_epoch = 1
@@ -1954,14 +1966,15 @@ if __name__ == '__main__':
   data_path = os.path.join(raw_tfrecord_path, 'data')
   #data_path = os.path.join(raw_tfrecord_path, 'merged_data')
   tmp = '*'
-  tmp = '17DRP5sb8fy*'
+  tmp = '17DRP5sb8fy_region0'
+  #tmp = '17DRP5sb8fy_*'
   filenames = glob.glob(os.path.join(data_path, tmp+'.tfrecord'))
   random.shuffle(filenames)
   assert len(filenames) >= 1, data_path
 
   dset_metas = get_dset_shape_idxs(raw_tfrecord_path)
 
-  batch_size = 3
+  batch_size = 1
   if len(sys.argv) > 1:
     main_flag = sys.argv[1]
     if len(sys.argv) > 2:

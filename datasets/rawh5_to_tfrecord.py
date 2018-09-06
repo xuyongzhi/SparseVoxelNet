@@ -103,7 +103,7 @@ def rm_some_labels(points, labels, valid_num_point, dset_metas):
     return points, labels
 
 def parse_pl_record(tfrecord_serialized, is_training, dset_metas=None, bsg=None,\
-                    is_normalize_pcl=False, is_rm_void_labels=True, gen_ply=False):
+                    is_rm_void_labels=True, gen_ply=False):
     from aug_data_tf import aug_main, aug_views
     assert dset_metas!=None, "current vertion data do not have shape info"
     #if dset_metas!=None:
@@ -182,36 +182,33 @@ def parse_pl_record(tfrecord_serialized, is_training, dset_metas=None, bsg=None,
       points, labels = gather_labels_for_each_gb(points, labels, grouped_pindex[0][bsi])
 
       num_scale = len(grouped_bot_cen_top)
-      global_block_num = grouped_pindex[0].shape[1]
-      check_g = tf.assert_equal(global_block_num, 1)
-      with tf.control_dependencies([check_g]):
-        for s in range(num_scale+1):
-          if len(empty_mask) <= s:
-            continue
-          features['empty_mask_%d'%(s)] = tf.cast(empty_mask[s][bsi], tf.int8)
-          if vox_index[s].shape[0].value == 0:
-            features['vox_index_%d'%(s)] = tf.zeros([0]*4, tf.int32)
-          else:
-            features['vox_index_%d'%(s)] = vox_index[s][bsi]
-          if s==num_scale:
-            continue
+      global_block_num = grouped_pindex[0].shape[2]
+      for s in range(num_scale+1):
+        if len(empty_mask) <= s:
+          continue
+        features['empty_mask_%d'%(s)] = tf.cast(empty_mask[s][bsi], tf.int8)
+        if vox_index[s].shape[0].value == 0:
+          features['vox_index_%d'%(s)] = tf.zeros([0]*4, tf.int32)
+        else:
+          features['vox_index_%d'%(s)] = vox_index[s][bsi]
+        if s==num_scale:
+          continue
 
-          features['grouped_pindex_%d'%(s)] = grouped_pindex[s][bsi]
-          features['grouped_bot_cen_top_%d'%(s)] = grouped_bot_cen_top[s][bsi]
-          features['bot_cen_top_%d'%(s)] = bot_cen_top[s][bsi]
-          features['flatting_idx_%d'%(s)] = flatting_idx[s]
-          features['flat_valid_mask_%d'%(s)] = flat_valid_mask[s]
-          #for k in range(len(others[s]['name'])):
-          #  name = others[s]['name'][k]+'_%d'%(s)
-          #  if name not in features:
-          #    features[name] = []
-          #  features[name].append( others[s]['value'][k][bsi] )
+        features['grouped_pindex_%d'%(s)] = grouped_pindex[s][bsi]
+        features['grouped_bot_cen_top_%d'%(s)] = grouped_bot_cen_top[s][bsi]
+        features['bot_cen_top_%d'%(s)] = bot_cen_top[s][bsi]
+        features['flatting_idx_%d'%(s)] = flatting_idx[s]
+        features['flat_valid_mask_%d'%(s)] = flat_valid_mask[s]
+
+        if gen_ply:
+          features['nblock_valid_%d'%(s)] = nblock_valid[s]
+        #for k in range(len(others[s]['name'])):
+        #  name = others[s]['name'][k]+'_%d'%(s)
+        #  if name not in features:
+        #    features[name] = []
+        #  features[name].append( others[s]['value'][k][bsi] )
 
     # ------------------------------------------------
-    # normalize points after sg
-    if is_normalize_pcl:
-      raise NotImplementedError
-      points = pc_normalize(points, dset_metas)
     features['points'] = points
     features['valid_num_point'] = valid_num_point
 
@@ -515,18 +512,6 @@ def read_dataset_summary(data_dir):
     return dataset_summary
   dataset_summary = pickle.load(open(summary_path, 'r'))
   return dataset_summary
-
-
-def pc_normalize(points, dset_metas):
-  tmp = dset_metas['indices']['points']['xyz']
-  assert tmp == [0,1,2]
-  points_xyz = points[..., tmp[0]:tmp[-1]+1]
-  centroid = tf.reduce_mean(points_xyz, axis=0)
-  points_xyz -= centroid
-  m = tf.reduce_max(tf.sqrt(tf.reduce_sum(tf.pow(points_xyz, 2),axis=1)))
-  points_xyz = points_xyz / m
-  points_normed = tf.concat([points_xyz, points[...,3:]], -1)
-  return points_normed
 
 
 def get_label_num_weights(dataset_summary, loss_lw_gama):

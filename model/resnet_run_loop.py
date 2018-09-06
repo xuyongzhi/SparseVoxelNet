@@ -39,7 +39,7 @@ from official.utils.misc import model_helpers
 # pylint: enable=g-bad-import-order
 
 # must be False when num_gpus>1
-IsCheckNet = True
+IsCheckNet = False
 
 ################################################################################
 # Functions for input processing.
@@ -93,7 +93,7 @@ def process_record_dataset(dataset, is_training, batch_size, shuffle_buffer,
   dset_shapes = data_net_configs['dset_shape_idxs']
   dataset = dataset.apply(
       tf.contrib.data.map_and_batch(
-          lambda value: parse_record_fn(value, is_training, dset_shapes, bsg, is_normalize_pcl=False),
+          lambda value: parse_record_fn(value, is_training, dset_shapes, bsg),
           batch_size=batch_size,
           num_parallel_batches=1,
           drop_remainder=True if num_gpus>1 else True))

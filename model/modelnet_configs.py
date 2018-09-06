@@ -25,7 +25,7 @@ DEFAULTS['precpu_sg'] = True
 #DEFAULTS['sg_flag'] = '2048_800_40'
 #DEFAULTS['sg_flag'] = '2048'
 #DEFAULTS['sg_flag'] = '32768_1_1024_64'
-DEFAULTS['sg_flag'] = '8192_6'
+DEFAULTS['sg_flag'] = '8192_4'
 #DEFAULTS['sg_flag'] = '8192_2_1024_64'
 
 DEFAULTS['resnet_size'] = '1A17'
@@ -33,6 +33,7 @@ DEFAULTS['resnet_size'] = '1A17'
 
 DEFAULTS['only_eval'] = 0
 DEFAULTS['eval_views'] = 1
+DEFAULTS['epochs_between_evals'] = 5
 
 DEFAULTS['residual'] = 0
 DEFAULTS['shortcut'] = 'MC' #C, MC, AC, MZ, AZ
@@ -55,10 +56,10 @@ DEFAULTS['feed_data'] = 'xyzs'
 DEFAULTS['use_xyz'] = 1
 DEFAULTS['aug_types'] = 'N' # 'rpsfj-360_0_0'
 DEFAULTS['drop_imo'] = '0_0_5'
-DEFAULTS['batch_size'] = 6
-DEFAULTS['num_gpus'] = 2
-DEFAULTS['gpu_id'] = 0
-DEFAULTS['train_epochs'] = 31
+DEFAULTS['batch_size'] = 1
+DEFAULTS['num_gpus'] = 1
+DEFAULTS['gpu_id'] = 1
+DEFAULTS['train_epochs'] = 401
 DEFAULTS['data_format'] = 'channels_last'
 
 DEFAULTS['weight_decay'] = 0.0  # res official is 1e-4, charles is 0.0
