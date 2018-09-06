@@ -235,7 +235,7 @@ def create_ply( xyz0, ply_fn, label=None, label2color=None, force_color=None, bo
 
 
 def create_ply_dset( dataset_name, xyz, ply_fn, label=None, cut_threshold=[1,1,1], extra='' ):
-    if extra == 'random_same_color' and label==None:
+    if extra == 'random_same_color' and type(label)==type(None):
       label = np.ones(xyz.shape[0:-1]) * np.random.randint(
         len(DatasetsMeta.g_label2class[dataset_name]))
       label = label.astype(np.int32)

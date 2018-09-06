@@ -103,7 +103,7 @@ def rm_some_labels(points, labels, valid_num_point, dset_metas):
     return points, labels
 
 def parse_pl_record(tfrecord_serialized, is_training, dset_metas=None, bsg=None,\
-                    is_normalize_pcl=False, is_rm_void_labels=True):
+                    is_normalize_pcl=False, is_rm_void_labels=True, gen_ply=False):
     from aug_data_tf import aug_main, aug_views
     assert dset_metas!=None, "current vertion data do not have shape info"
     #if dset_metas!=None:
@@ -174,6 +174,11 @@ def parse_pl_record(tfrecord_serialized, is_training, dset_metas=None, bsg=None,
 
       assert bsg.batch_size == 1
       bsi = 0
+
+      if gen_ply:
+        features['raw_points'] = points
+        features['raw_labels'] = labels
+
       points, labels = gather_labels_for_each_gb(points, labels, grouped_pindex[0][bsi])
 
       num_scale = len(grouped_bot_cen_top)
@@ -205,6 +210,7 @@ def parse_pl_record(tfrecord_serialized, is_training, dset_metas=None, bsg=None,
     # ------------------------------------------------
     # normalize points after sg
     if is_normalize_pcl:
+      raise NotImplementedError
       points = pc_normalize(points, dset_metas)
     features['points'] = points
     features['valid_num_point'] = valid_num_point

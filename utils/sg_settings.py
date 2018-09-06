@@ -129,7 +129,7 @@ def get_sg_settings(sgflag):
 
   sg_settings['flag'] = 'SG_'+sg_flag(sg_settings)
   sg_settings['num_sg_scale'] = len(sg_settings['width'])
-  sg_settings['gen_ply'] = False
+  sg_settings['gen_ply'] = True
   sg_settings['record'] = False
 
 

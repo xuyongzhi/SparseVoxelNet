@@ -1563,7 +1563,7 @@ def main_input_pipeline(DATASET_NAME, filenames, sg_settings, dset_metas, batch_
     dataset = dataset.prefetch(buffer_size=batch_size)
     dataset = dataset.apply(
       tf.contrib.data.map_and_batch(
-        lambda value: parse_pl_record(value, is_training, dset_metas, bsg),
+        lambda value: parse_pl_record(value, is_training, dset_metas, bsg, gen_ply=True),
         batch_size=batch_size,
         num_parallel_batches=1,
         drop_remainder=True))
@@ -1571,10 +1571,15 @@ def main_input_pipeline(DATASET_NAME, filenames, sg_settings, dset_metas, batch_
     get_next = dataset.make_one_shot_iterator().get_next()
     features_next, label_next = get_next
 
+
+    if sg_settings['gen_ply']:
+      raw_points_next = features_next['raw_points']
+      raw_labels_next = features_next['raw_labels']
+
     points_next = features_next['points']
     grouped_pindex_next = []
     vox_index_next = []
-    grouped_xyz_next = []
+    grouped_bot_cen_top = []
     empty_mask_next = []
     bot_cen_top_next = []
     others_next = []
@@ -1583,7 +1588,7 @@ def main_input_pipeline(DATASET_NAME, filenames, sg_settings, dset_metas, batch_
     for s in range(num_scale):
       grouped_pindex_next.append(features_next['grouped_pindex_%d'%(s)])
       vox_index_next.append(features_next['vox_index_%d'%(s)])
-      grouped_xyz_next.append(features_next['grouped_bot_cen_top_%d'%(s)])
+      grouped_bot_cen_top.append(features_next['grouped_bot_cen_top_%d'%(s)])
       empty_mask_next.append(features_next['empty_mask_%d'%(s)])
       bot_cen_top_next.append(features_next['bot_cen_top_%d'%(s)])
 
@@ -1606,25 +1611,19 @@ def main_input_pipeline(DATASET_NAME, filenames, sg_settings, dset_metas, batch_
         #others = sess.run(others_next)
 
         t0 = time.time()
-        points, grouped_pindex, vox_index, grouped_xyzs, empty_masks, bot_cen_tops, others = \
-          sess.run([points_next, grouped_pindex_next, vox_index_next, grouped_xyz_next, empty_mask_next, bot_cen_top_next, others_next] )
+        raw_points, raw_labels, points, labels, grouped_pindex, vox_index, grouped_bot_cen_top, empty_masks, bot_cen_tops, others = \
+          sess.run([raw_points_next, raw_labels_next, points_next, label_next, grouped_pindex_next, vox_index_next, grouped_bot_cen_top, empty_mask_next, bot_cen_top_next, others_next] )
+
         t_batch = time.time()-t0
         xyzs = points[:,:,0:3]
         print("\n\n{} t_batch:{} t_frame:{}\n".format(i, t_batch*1000, t_batch/batch_size*1000))
 
 
-        #for frame in range(batch_size):
-        #  for s in range(num_scale):
-        #    others[s]['empty_mask'] = empty_masks[s]
-        #    if bsg._gen_ply:
-        #      valid_flag = ''
-        #      if not bsg._shuffle:
-        #        valid_flag += '_NoShuffle'
-        #      bids_sampling = others[s]['bids_sampling_%d'%(s)][frame,0]
-        #      gen_plys(DATASET_NAME, frame, points[frame], grouped_xyzs[s][frame], bot_cen_tops[s][frame],\
-        #                bids_sampling, valid_flag, 'S%d'%(s))
+        gen_plys_scale0(DATASET_NAME, raw_points, raw_labels, points, labels, dset_metas)
+        gen_plys_sg(DATASET_NAME, grouped_bot_cen_top, bot_cen_tops)
+        import pdb; pdb.set_trace()  # XXX BREAKPOINT
 
-  return xyzs, grouped_xyzs, others, bsg._shuffle
+  return xyzs, grouped_bot_cen_top, others, bsg._shuffle
 
 
 def main_gpu(DATASET_NAME, filenames, sg_settings, dset_metas, batch_size, cycles=1, num_epoch=10):
@@ -1774,18 +1773,72 @@ def main_eager(DATASET_NAME, filenames, sg_settings, dset_metas, batch_size, cyc
       others[item][s] = others[item][s].numpy()
 
   # gen ply
-  if bsg._gen_ply:
-    valid_flag = ''
-    if not bsg._shuffle:
-      valid_flag += '_NoShuffle'
-    for f in range(batch_size):
-      for s in range(num_scale):
-        global_block_num = grouped_bot_cen_top[s].shape[1]
-        for g in range(global_block_num):
-          gen_plys(DATASET_NAME, f, points[f], grouped_bot_cen_top[s][f,g],
-                  out_bot_cen_top[s][f,g], valid_flag, '_ES%sGb%d'%(s,g))
+  #if bsg._gen_ply:
+  #  valid_flag = ''
+  #  if not bsg._shuffle:
+  #    valid_flag += '_NoShuffle'
+  #  for f in range(batch_size):
+  #    for s in range(num_scale):
+  #      global_block_num = grouped_bot_cen_top[s].shape[1]
+  #      for g in range(global_block_num):
+  #        gen_plys(DATASET_NAME, f, points[f], grouped_bot_cen_top[s][f,g],
+  #                out_bot_cen_top[s][f,g], valid_flag, '_ES%sGb%d'%(s,g))
 
   return points, grouped_bot_cen_top, others, bsg._shuffle
+
+
+def gen_plys_scale0(DATASET_NAME, raw_points, raw_labels, points, labels, dset_metas):
+  raw_shape = raw_points.shape
+  p_shape = points.shape
+  assert len(raw_shape) == 3
+  assert len(p_shape) == 4
+  batch_size = raw_shape[0]
+  global_block_num = p_shape[1]
+
+  categry_idx = dset_metas['indices']['labels']['label_category'][0]
+  for bi in range(batch_size):
+    path = '/tmp/batch%d_plys'%(bi)
+    ply_fn = path+'/raw_points.ply'
+    create_ply_dset(DATASET_NAME, raw_points[bi,:,0:3], ply_fn,
+                    extra='random_same_color')
+
+    ply_fn = path+'/raw_points_labeled.ply'
+    create_ply_dset(DATASET_NAME, raw_points[bi,:,0:3], ply_fn, raw_labels[bi,:, categry_idx],
+                    extra='random_same_color')
+
+    for gi in range(global_block_num):
+      ply_fn = path+'/gb%d_points.ply'%(gi)
+      create_ply_dset(DATASET_NAME, points[bi,gi,:,0:3], ply_fn,
+                    extra='random_same_color')
+
+      ply_fn = path+'/gb%d_points_labeled.ply'%(gi)
+      create_ply_dset(DATASET_NAME, points[bi,gi,:,0:3], ply_fn, labels[bi,gi,:,categry_idx],
+                    extra='random_same_color')
+
+
+def gen_plys_sg(DATASET_NAME, grouped_bot_cen_top, bot_cen_tops):
+  num_scale = len(grouped_bot_cen_top)
+  shape0 = grouped_bot_cen_top[0].shape
+  batch_size = shape0[0]
+  global_block_num = shape0[2]
+
+  for bi in range(batch_size):
+    path_bi = '/tmp/batch%d_plys'%(bi)
+    for s in range(num_scale):
+      if s==0:
+        continue
+      path_s = path_bi + '/scale_%d'%(s)
+      for gi in range(global_block_num):
+
+        ply_fn = '%s/gb%d_blocks.ply'%(path_s, gi)
+        draw_blocks_by_bot_cen_top(ply_fn, bot_cen_tops[s][bi, gi], random_crop=0)
+
+        ply_fn = '%s/gb%d_blocks_center.ply'%(path_s, gi)
+        create_ply_dset(DATASET_NAME, bot_cen_tops[s][bi,gi,:,3:6], ply_fn,
+                        extra='random_same_color')
+        pass
+  import pdb; pdb.set_trace()  # XXX BREAKPOINT
+  pass
 
 
 def gen_plys(DATASET_NAME, frame, points, grouped_bot_cen_top,
@@ -1795,7 +1848,7 @@ def gen_plys(DATASET_NAME, frame, points, grouped_bot_cen_top,
 
   xyz_shape = grouped_xyz.shape
   out_shape = out_bot_cen_top.shape
-  assert len(xyz_shape) == 3
+  #assert len(xyz_shape) == 2
   assert len(out_shape) == 2
 
 
@@ -1828,8 +1881,8 @@ def gen_plys(DATASET_NAME, frame, points, grouped_bot_cen_top,
 def main(filenames, dset_metas, main_flag, batch_size = 2, cycles = 1):
   from utils.sg_settings import get_sg_settings
   #sg_settings = get_sg_settings('32768_1024_64')
-  sg_settings = get_sg_settings('8192')
-  #sg_settings = get_sg_settings('8192_1024_64')
+  #sg_settings = get_sg_settings('8192_6')
+  sg_settings = get_sg_settings('8192_2_1024_64')
 
   #file_num = len(filenames)
   num_epoch = 1
@@ -1837,11 +1890,11 @@ def main(filenames, dset_metas, main_flag, batch_size = 2, cycles = 1):
   #cycles = 100
 
   if 'e' in main_flag:
-    xyzs_E, grouped_xyzs_E, others_E, shuffle_E = \
+    xyzs_E, grouped_bot_cen_top_E, others_E, shuffle_E = \
       main_eager(DATASET_NAME, filenames, sg_settings, dset_metas, batch_size, cycles)
     num_gb = xyzs_E.shape[0]
   if 'g' in main_flag:
-    xyzs, grouped_xyzs, others, shuffle = \
+    xyzs, grouped_bot_cen_top, others, shuffle = \
       main_input_pipeline(DATASET_NAME, filenames, sg_settings, dset_metas, batch_size, cycles, num_epoch)
     num_gb = xyzs.shape[0]
   if 'G' in main_flag:
@@ -1855,7 +1908,7 @@ def main(filenames, dset_metas, main_flag, batch_size = 2, cycles = 1):
       assert (xyzs_E[b] == xyzs[b]).all(), 'time %d xyz different'%(b)
       print('time %d xyzs of g and e is same'%(b))
 
-      num_scale = len(grouped_xyzs)
+      num_scale = len(grouped_bot_cen_top)
       for s in xrange(num_scale):
         for name in others_E[s]:
           check = (others_E[s][name][b] == others[s][name][b]).all()
@@ -1869,14 +1922,14 @@ def main(filenames, dset_metas, main_flag, batch_size = 2, cycles = 1):
           else:
             print('time %d scale %d others - %s of g and e is same'%(b, s, name))
 
-        diff = grouped_xyzs_E[s][b] - grouped_xyzs[s][b]
+        diff = grouped_bot_cen_top_E[s][b] - grouped_bot_cen_top[s][b]
         diff = np.sum(diff, -1)
         nerr = np.sum(diff != 0)
         if nerr!=0:
           print("time %d, scale %d, grouped_xyz nerr=%d"%(b, s, nerr))
           import pdb; pdb.set_trace()  # XXX BREAKPOINT
         else:
-          print('time %d, sclae %s, grouped_xyzs of g and e is same'%(b, s))
+          print('time %d, sclae %s, grouped_bot_cen_top of g and e is same'%(b, s))
 
   return num_gb
 
@@ -1901,14 +1954,14 @@ if __name__ == '__main__':
   data_path = os.path.join(raw_tfrecord_path, 'data')
   #data_path = os.path.join(raw_tfrecord_path, 'merged_data')
   tmp = '*'
-  #tmp = 'Vvot9Ly1tCj_region24*'
+  tmp = '17DRP5sb8fy*'
   filenames = glob.glob(os.path.join(data_path, tmp+'.tfrecord'))
   random.shuffle(filenames)
   assert len(filenames) >= 1, data_path
 
   dset_metas = get_dset_shape_idxs(raw_tfrecord_path)
 
-  batch_size = 20
+  batch_size = 3
   if len(sys.argv) > 1:
     main_flag = sys.argv[1]
     if len(sys.argv) > 2:
@@ -1926,7 +1979,7 @@ if __name__ == '__main__':
   #main_1by1_file(filenames, dset_metas, main_flag, batch_size)
 
   #cycles = len(filenames)//batch_size
-  cycles = 100
+  cycles = 1
   main(filenames, dset_metas, main_flag, batch_size, cycles)
 
   #get_data_summary_from_tfrecord(filenames, raw_tfrecord_path)
