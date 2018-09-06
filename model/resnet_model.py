@@ -1429,7 +1429,7 @@ class Model(ResConvOps):
       return grouped_points
 
 
-  def cat_xyz_elements(self, scale, grouped_center, bot_cen_top, grouped_points):
+  def normalize_xyz(self, scale, grouped_center, bot_cen_top, grouped_points):
     shape0 = [e.value for e in  grouped_center.shape]
     shape1 = [e.value for e in  bot_cen_top.shape]
     shape2 = [e.value for e in  grouped_points.shape]
@@ -1440,8 +1440,8 @@ class Model(ResConvOps):
     if shape0[1] > 0:
       assert shape0[1] == shape1[1] == shape2[1] # block num
 
-    #if scale == 0:
-    #  grouped_center = grouped_points[:,:,:,0:3] # actually should be shape
+    if scale == 0:
+      grouped_center = grouped_points[:,:,:,0:3] # actually should be shape
 
     #  use last scale block center as point position of current scale
     grouped_xyz = grouped_center
@@ -1510,7 +1510,7 @@ class Model(ResConvOps):
         grouped_points = Model.grouping_online(points, grouped_pindex)
       else:
         grouped_points = tf.expand_dims(points, 1)
-      grouped_points = self.cat_xyz_elements(scale, grouped_center,
+      grouped_points = self.normalize_xyz(scale, grouped_center,
                                             bot_cen_top, grouped_points)
 
       if scale == 0:

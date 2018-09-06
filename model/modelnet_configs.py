@@ -52,7 +52,7 @@ DEFAULTS['lr_warmup'] = 0
 DEFAULTS['batch_norm_decay0'] = 0.7
 
 DEFAULTS['model_flag'] = 'm'
-DEFAULTS['feed_data'] = 'xyzs_nxnynz'
+DEFAULTS['feed_data'] = 'xyzs-nxnynz'
 DEFAULTS['use_xyz'] = 1
 DEFAULTS['aug_types'] = 'N' # 'rpsfj-360_0_0'
 DEFAULTS['drop_imo'] = '0_0_5'
