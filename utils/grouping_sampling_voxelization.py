@@ -137,7 +137,6 @@ class BlockGroupSampling():
     self._npoint_per_blocks = sg_settings['npoint_per_block']
     # cut all the block with too few points
     self._np_perb_min_includes = sg_settings['np_perb_min_include']
-    assert self._widths.shape[1] == self._strides.shape[1] == 3
     self._empty_point_index = 'first' # -1(GPU only) or 'first'
     self._vox_sizes = sg_settings['vox_size']
 
@@ -189,7 +188,7 @@ class BlockGroupSampling():
     self._gen_ply = sg_settings['gen_ply']
 
 
-  def update_global_bot_cen_top_for_global(self, xyz):
+  def update_global_bot_cen_top_for_global(self, xyz, auto_adjust_gb_stride=True):
     xyz_max = tf.reduce_max(xyz, 1)
     xyz_min = tf.reduce_min(xyz, 1)
     xyz_mean = (xyz_max + xyz_min) / 2
@@ -199,16 +198,76 @@ class BlockGroupSampling():
       #print('raw xyz scope:{}'.format(self.xyz_scope))
 
     # align to 0.1
-    bot = 0.1 * tf.floor(xyz_min / 0.1)
-    top0 = 0.1 * tf.ceil(xyz_max / 0.1)
+    bot0 =  tf.floor(xyz_min / 0.01) / 100
+    top0 =  tf.ceil(xyz_max / 0.01) / 100
+    scope0 = top0 - bot0
 
-    # align to width and stride
-    tmp = ((top0-bot) - self._widths[0]) / self._strides[0]
-    tmp = tf.maximum(tf.ceil(tmp),0)
-    top = tmp * self._strides[0] + self._widths[0] + bot
-    cen = (bot + top) / 2
-    global_bot_cen_top = tf.concat([bot, cen, top], -1)
+    def adjust_stride_gb(scope0_bi):
+      bn_min = (scope0_bi - self._widths[0]) / self._widths[0] + 1
+      bn_min_fixed = tf.ceil(bn_min)
+      bn_min_fixed_err = bn_min_fixed - bn_min
+      bn_min_3d = tf.reduce_prod(bn_min_fixed)
+      #print('bn_min:{}'.format(bn_min))
+      #print('bn_min_fixed:{}'.format(bn_min_fixed))
+      #print('bn_min_fixed_err:{}'.format(bn_min_fixed_err))
+      #print('bn_min_3d:{}'.format(bn_min_3d))
+      #print('_nblock0:{}'.format(self._nblocks[0]))
 
+      #self._nblocks[0] = 19
+
+      # the aim is the reduce strides (increae bn) as much as possible, if
+      # condition of still making bn_3d < self._nblocks[0]
+      order = tf.contrib.framework.argsort(-bn_min_fixed_err)
+      bn = bn_min_fixed
+      eye3 = tf.eye(3)
+      i = tf.constant(0, tf.int32)
+      def body(i, bn):
+        j = order[i]
+        i += 1
+        i = i * tf.cast(tf.less(i,3), tf.int32)
+        bn += tf.gather(eye3,j)
+        return i, bn
+      cond = lambda i,bn: tf.less(tf.reduce_prod(bn), self._nblocks[0])
+      i, bn = tf.while_loop(cond, body, [i, bn])
+      #print('bn:{}  {}'.format(bn, tf.reduce_prod(bn)))
+
+      strides0 = (scope0_bi - self._widths[0]) / (bn-1-1e-5)
+      strides0 = tf.minimum(strides0, self._widths[0])
+      gb_stride = tf.expand_dims(tf.ceil(strides0 / 0.01) / 100, 0)
+      bn = tf.cast(bn, tf.int32)
+      gb_nblocks_per_points =  tf.cast(tf.ceil( self._widths[0]/self._strides[0] - MAX_FLOAT_DRIFT), tf.int32)
+      gb_nblocks_per_point = tf.expand_dims(tf.minimum(gb_nblocks_per_points, bn), 0)
+      #print('strides0:{}'.format(strides0))
+      return gb_stride, gb_nblocks_per_point
+
+    if auto_adjust_gb_stride:
+      gb_stride = []
+      gb_nblocks_per_point = []
+      for bi in range(self.batch_size):
+        gb_stride_i, gb_nblocks_per_point_i = adjust_stride_gb(scope0[bi])
+        gb_stride.append(gb_stride_i)
+        gb_nblocks_per_point.append(gb_nblocks_per_point_i)
+      self._gb_stride = tf.concat(gb_stride, 0)
+      assert self.batch_size==1, "self._gb_stride and self._gb_nblocks_per_point are not readly for batch_size>1"
+      self._gb_nblocks_per_point = tf.concat(gb_nblocks_per_point, 0)
+
+      self._gb_stride = tf.squeeze(self._gb_stride, 0)
+      self._gb_nblocks_per_point = tf.squeeze(self._gb_nblocks_per_point, 0)
+
+      # these should be not used
+      if self.batch_size>1:
+        self._strides[0] =  [None]
+        self._nblocks_per_point[0] = [None]
+        raise NotImplementedError
+
+      self._strides[0] =  self._gb_stride
+      self._nblocks_per_point[0] = self._gb_nblocks_per_point
+
+    scope1 = self._widths[0] + self._strides[0] * \
+                            (tf.cast(self._nblocks_per_point[0], tf.float32)-1)
+    top1 = scope1  + bot0
+    cen1 = (bot0 + top1) / 2
+    global_bot_cen_top = tf.concat([bot0, cen1, top1], -1)
     self.global_bot_cen_top = tf.reshape(global_bot_cen_top,
                                 [self.batch_size, 1, 1, 9])
             # batch_size, global_block_num, num_point, 9
@@ -731,17 +790,23 @@ class BlockGroupSampling():
     # self._nblocks_per_point. But still use self._nblocks_per_point, so that
     # only set the points to lower block index.
     low_b_index_fixed = tf.cast(tf.ceil(low_b_index - MAX_FLOAT_DRIFT), tf.int32)    # include
+    low_b_index_fixed = tf.maximum(low_b_index_fixed, 0)
 
     #***************************************************************************
     #(1.2) the block number for each point should be equal
     # If not, still make it equal to get point index per block.
     # Then rm the grouped points out of block scope.
 
-    self.nblock_perp_3d = np.prod(self._nblocks_per_point[self.scale])
+    if self.scale==0:
+      self.nblock_perp_3d = tf.reduce_prod(self._nblocks_per_point[self.scale])
+    else:
+      self.nblock_perp_3d = np.prod(self._nblocks_per_point[self.scale])
+
     self.npoint_grouped_buf = self.nblock_perp_3d * self.num_point0
 
     pairs_3d0 = permutation_combination_3D(self._nblocks_per_point[self.scale])
-    assert self.nblock_perp_3d == pairs_3d0.shape[0].value
+    if self.scale>0:
+      assert self.nblock_perp_3d == pairs_3d0.shape[0].value
     pairs_3d = tf.tile( tf.reshape(pairs_3d0, [1,1,1,self.nblock_perp_3d,3]),
                 [self.batch_size, self.global_block_num, self.num_point0, 1, 1])
 
@@ -846,7 +911,7 @@ class BlockGroupSampling():
     self.ngp_valid_sum = tf.shape(bindex_pindex_valid)[0]
     self.ngp_valid_ave_per_gb = self.ngp_valid_sum / (self.bsgbn)
     self.ngp_valid_rate = tf.cast( self.ngp_valid_sum, tf.float32) / \
-                      tf.cast( tf.reduce_prod(gp_valid_mask.shape), tf.float32)
+                      tf.cast( tf.reduce_prod(tf.shape(gp_valid_mask)), tf.float32)
     return bindex_pindex_valid
 
 
@@ -1143,10 +1208,9 @@ class BlockGroupSampling():
     #(3.1) gather grouped point index
 
     grouped_pindex_emptyneg_buf = tf.sparse_to_dense(
-                            bidspidx_pidxperb_pidx_VBVP[:,0:2],
-                            (self._nblocks[self.scale] * self.bsgbn,
-                              self._npoint_per_blocks[self.scale]),
-                            bidspidx_pidxperb_pidx_VBVP[:,2], default_value=-1)
+            bidspidx_pidxperb_pidx_VBVP[:,0:2],
+            [self._nblocks[self.scale] * self.bsgbn, self._npoint_per_blocks[self.scale]],
+            bidspidx_pidxperb_pidx_VBVP[:,2], default_value=-1)
 
     #(3.2) Upsampling: duplicate blocks when not enough blocks are provided
     is_any_empty_blocks = tf.reduce_any( tf.less(self.nb_enoughp_per_gb, self._nblocks[self.scale]) )
@@ -1758,7 +1822,7 @@ def main_eager(DATASET_NAME, filenames, sg_settings, dset_metas, batch_size, cyc
   for n in range(cycles):
     get_next = iterator.get_next()
     features_next, label_next = get_next
-    points_next = features_next['points'][:,:,0:3]
+    points_next = features_next['points']
 
     grouped_pindex, vox_index, grouped_bot_cen_top, empty_mask, out_bot_cen_top,\
       flatting_idx, flat_valid_mask, nb_enoughp_ave, others = \
@@ -1772,13 +1836,27 @@ def main_eager(DATASET_NAME, filenames, sg_settings, dset_metas, batch_size, cyc
         samplings_np_ms[s][name] = samplings_i[s][name].numpy()
     bsg.show_samplings_np_multi_scale(samplings_np_ms)
 
-  points = points_next.numpy()
+
+  raw_points = points_next.numpy()
   num_scale = len(grouped_pindex)
   for s in range(num_scale):
+    nb_enoughp_ave[s] = nb_enoughp_ave[s].numpy()
+    grouped_pindex[s] = grouped_pindex[s].numpy()
     grouped_bot_cen_top[s] = grouped_bot_cen_top[s].numpy()
     out_bot_cen_top[s] = out_bot_cen_top[s].numpy()
     for item in others:
       others[item][s] = others[item][s].numpy()
+
+  points = tf.gather(raw_points, grouped_pindex[0], axis=1)
+  points = tf.squeeze(points,[1,2]).numpy()
+  raw_labels = label_next.numpy()
+  labels = tf.gather(raw_labels, grouped_pindex[0], axis=1)
+  labels = tf.squeeze(labels,[1,2]).numpy()
+
+  if sg_settings['gen_ply']:
+    gen_plys_scale0(DATASET_NAME, raw_points, raw_labels, points, labels, dset_metas, nb_enoughp_ave[0])
+    gen_plys_sg(DATASET_NAME, grouped_bot_cen_top, out_bot_cen_top, nb_enoughp_ave[0])
+    pass
 
   # gen ply
   #if bsg._gen_ply:
@@ -1819,7 +1897,11 @@ def gen_plys_scale0(DATASET_NAME, raw_points, raw_labels, points, labels, dset_m
                     extra='random_same_color')
 
     for gi in range(global_block_num):
-      valid_flag = '_v' if gi < nblock_valid0[bi,0,0] else '_inv'
+      if nblock_valid0.ndim == 2:
+        nbv = nblock_valid0[bi,0]
+      else:
+        nbv = nblock_valid0[bi,0,0]
+      valid_flag = '_v' if gi < nbv else '_inv'
       ply_fn = path+'/gb%d%s_points.ply'%(gi, valid_flag)
       xyz_color = np.take(points[bi, gi], xyz_color_idxs, axis=1)
       create_ply_dset(DATASET_NAME, xyz_color, ply_fn,
@@ -1893,7 +1975,7 @@ def gen_plys(DATASET_NAME, frame, points, grouped_bot_cen_top,
 def main(filenames, dset_metas, main_flag, batch_size = 2, cycles = 1):
   from utils.sg_settings import get_sg_settings
   #sg_settings = get_sg_settings('32768_1024_64')
-  sg_settings = get_sg_settings('8192_4')
+  sg_settings = get_sg_settings('20480_4')
   #sg_settings = get_sg_settings('8192_2_1024_64')
 
   #file_num = len(filenames)

@@ -75,8 +75,8 @@ def get_sg_settings(sgflag):
   sg_settings['width']  =  [[4.3,4.3,4.3],]
   sg_settings['stride'] =  [[2.0,2.0,2.0],]
   sg_settings['nblock'] =  [4,             ]
-  sg_settings['npoint_per_block'] = [8192, ]
-  sg_settings['np_perb_min_include'] = [2000, ]
+  sg_settings['npoint_per_block'] = [20480, ]
+  sg_settings['np_perb_min_include'] = [4000, ]
   sg_settings_all[sg_flag(sg_settings)] = sg_settings
 
   #-----------------------------------------------------------------------------
@@ -121,19 +121,24 @@ def get_sg_settings(sgflag):
   sg_settings = sg_settings_all[sgflag]
 
   for item in sg_settings:
-    sg_settings[item] = np.array(sg_settings[item])
-    if item in ['width', 'stride']:
-      sg_settings[item] = sg_settings[item].astype(np.float32)
-    else:
-      sg_settings[item] = sg_settings[item].astype(np.int32)
+    if not isinstance(sg_settings[item][0], list):
+      continue
+    for s in range(len(sg_settings[item])):
+      sg_settings[item][s] = np.array(sg_settings[item][s])
+      if item in ['width', 'stride']:
+        sg_settings[item][s] = sg_settings[item][s].astype(np.float32)
+      else:
+        sg_settings[item][s] = sg_settings[item][s].astype(np.int32)
 
   sg_settings['flag'] = 'SG_'+sg_flag(sg_settings)
   sg_settings['num_sg_scale'] = len(sg_settings['width'])
   sg_settings['gen_ply'] = True
   sg_settings['record'] = False
 
-
-  sg_settings['nblocks_per_point'] = np.ceil(sg_settings['width']/sg_settings['stride']-MAX_FLOAT_DRIFT).astype(np.int32)
+  sg_settings['nblocks_per_point'] = []
+  for s in range(len(sg_settings['width'])):
+    sg_settings['nblocks_per_point'].append([])
+    sg_settings['nblocks_per_point'][s] = np.ceil(sg_settings['width'][s]/sg_settings['stride'][s]-MAX_FLOAT_DRIFT).astype(np.int32)
   sg_settings = check_sg_setting_for_vox(sg_settings)
   sg_settings = update_sg_str(sg_settings)
 

@@ -57,9 +57,11 @@ def get_filenames_1(is_training, data_dir):
   """Return filenames for dataset."""
   data_dir = os.path.join(data_dir, 'data')
   if is_training:
-    fnls = glob.glob(data_dir+'/17DRP5sb8fy_region0*')
+    fnls = glob.glob(data_dir+'/17DRP5sb8fy_*')
+    #fnls = glob.glob(data_dir+'/17DRP5sb8fy_region0*')
   else:
     fnls = glob.glob(data_dir+'/1LXtFkjw3qL_region0*')
+  print('found {} files, train:{}'.format(len(fnls), is_training))
   return fnls
   #return datasets_meta.get_train_test_file_list(data_dir, is_training)
 
@@ -72,7 +74,7 @@ def get_filenames(is_training, data_dir):
   else:
     pre = 'test_'
   fnls = glob.glob(os.path.join(data_dir, pre+'*.tfrecord'))
-  print('found {} files, train:{}'.format(len(fnls, is_training)))
+  print('found {} files, train:{}'.format(len(fnls), is_training))
   return fnls
 
 def get_global_block_num(fnls):
