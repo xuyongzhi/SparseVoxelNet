@@ -11,6 +11,7 @@
 - [ ] Speed up sg for globla block, especially when only global scale
 - [ ] Try replace grouped_center by mean
 - [x] Optimize global block splitation
+- [ ] Use tf.estimator.train_and_evaluate
 
 # Key small items to be developed
 - [x] add learning rate warm up

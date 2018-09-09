@@ -83,6 +83,7 @@ def process_record_dataset(dataset, is_training, batch_size, shuffle_buffer,
 
   if data_net_configs!=None and data_net_configs['precpu_sg']:
     from utils.grouping_sampling_voxelization import BlockGroupSampling
+    #print(tf.get_default_graph())
     bsg = BlockGroupSampling(data_net_configs['sg_settings'])
   else:
     bsg = None
@@ -424,8 +425,8 @@ def add_check(predictions):
     predictions['voxel_indices_%d'%(i)] = voxel_indices_COLC[i]
 
 def check_net(classifier, input_fn_eval, dataset_name, data_net_configs):
-  k_start = 0
-  N = 6
+  k_start = 2
+  N = 0
   res_dir = '/tmp/check_net'
   gen_inputs = True
   gen_new_xyz = False
@@ -452,6 +453,9 @@ def check_net(classifier, input_fn_eval, dataset_name, data_net_configs):
       check_items.append('grouped_xyz_%d'%(i))
 
   for j, pred in enumerate(pred_results):
+    #if j==0:
+    #  inputs = pred['inputs']
+    #  import pdb; pdb.set_trace()  # XXX BREAKPOINT
     if j < k_start:
       continue
     # gen block box   *****************************************************
@@ -499,7 +503,7 @@ def check_net(classifier, input_fn_eval, dataset_name, data_net_configs):
         create_ply_dset(dataset_name, checks[item], ply_fn,  extra = 'random_same_color')
 
 
-    if j==N+k_start-1:
+    if j>=N+k_start-1:
       print('no more')
       break
   print('ply finished')
@@ -627,7 +631,6 @@ def resnet_main(
       classifier.train(input_fn=input_fn_train, hooks=train_hooks,
                       max_steps=flags_obj.max_train_steps)
       train_t = (time.time()-t0)/flags_obj.epochs_between_evals
-
 
       #Temporally used before metric in training is not supported in distribution
       tf.logging.info('Starting to evaluate train data.')

@@ -256,8 +256,8 @@ class BlockGroupSampling():
       #print('gb_stride:{}  overlap_rate:{}'.format(gb_stride, overlap_rate))
 
       bn = tf.cast(bn, tf.int32)
-      gb_nblocks_per_points =  tf.cast(tf.ceil( self._widths[0]/self._strides[0] - MAX_FLOAT_DRIFT), tf.int32)
-      gb_nblocks_per_point = tf.expand_dims(tf.minimum(gb_nblocks_per_points, bn), 0)
+      gb_nblocks_per_point =  tf.cast(tf.ceil( self._widths[0] / gb_stride[0,:] - MAX_FLOAT_DRIFT), tf.int32)
+      gb_nblocks_per_point = tf.expand_dims(tf.minimum(gb_nblocks_per_point, bn), 0)
       return gb_stride, gb_nblocks_per_point
 
     if auto_adjust_gb_stride:
@@ -271,8 +271,8 @@ class BlockGroupSampling():
       assert self.batch_size==1, "self._gb_stride and self._gb_nblocks_per_point are not readly for batch_size>1"
       self._gb_nblocks_per_point = tf.concat(gb_nblocks_per_point, 0)
 
-      self._gb_stride = tf.squeeze(self._gb_stride, 0)
-      self._gb_nblocks_per_point = tf.squeeze(self._gb_nblocks_per_point, 0)
+      self._gb_stride = tf.squeeze(self._gb_stride, 0, name='sq_gb_stride')
+      self._gb_nblocks_per_point = tf.squeeze(self._gb_nblocks_per_point, 0, name='gb_nblocks_per_point')
 
       # these should be not used
       if self.batch_size>1:
@@ -280,8 +280,9 @@ class BlockGroupSampling():
         self._nblocks_per_point[0] = [None]
         raise NotImplementedError
 
-      self._strides[0] =  self._gb_stride
-      self._nblocks_per_point[0] = self._gb_nblocks_per_point
+      #print(self._gb_stride.graph)
+      self._strides[0] = self._gb_stride                     # [0.3 , 0.31, 4.31]
+      self._nblocks_per_point[0] = self._gb_nblocks_per_point  #[2,2,1]
 
     scope1 = self._widths[0] + self._strides[0] * \
                             (tf.cast(self._nblocks_per_point[0], tf.float32)-1)
@@ -294,14 +295,14 @@ class BlockGroupSampling():
     self.global_block_num = self.global_bot_cen_top.shape[1].value
     self.global_bot_bot_bot = tf.tile(self.global_bot_cen_top[...,0:3], [1,1,1,3])
 
-    if DEBUG:
-      self.global_bot_cen_top = tf.Print(self.global_bot_cen_top, [self.global_bot_cen_top], message="\n\n global_bot_cen_top: ")
+    #if DEBUG:
+    #  self.global_bot_cen_top = tf.Print(self.global_bot_cen_top, [self.global_bot_cen_top], message="\n\n global_bot_cen_top: ")
     #print('xyz: {}'.format(xyz[:,0:3,:]))
     #print('\bscale global   global_bot_cen_top:\n{}'.format(self.global_bot_cen_top))
 
 
   def update_global_bot_cen_top_for_sub(self, out_bot_cen_top_scale0):
-    out_bot_cen_top = tf.squeeze( out_bot_cen_top_scale0, 1 )
+    out_bot_cen_top = tf.squeeze( out_bot_cen_top_scale0, 1, name='out_bot_cen_top')
     out_bot_cen_top = tf.expand_dims( out_bot_cen_top, 2 )
     self.global_bot_cen_top = out_bot_cen_top
     self.global_block_num = self.global_bot_cen_top.shape[1].value
@@ -357,7 +358,7 @@ class BlockGroupSampling():
           self.grouping(s, in_bot_cen_top)
 
         if s == 0:
-          in_bot_cen_top = tf.squeeze(ds['grouped_bot_cen_top'], 1)
+          in_bot_cen_top = tf.squeeze(ds['grouped_bot_cen_top'], 1, name='in_bot_cen_top')
           self.update_global_bot_cen_top_for_sub(ds['out_bot_cen_top'])
         else:
           in_bot_cen_top = ds['out_bot_cen_top']
@@ -413,7 +414,7 @@ class BlockGroupSampling():
     assert len(last_scale_bot_cen_top.shape) == 4
 
     grouped_bot_cen_top = tf.expand_dims(last_scale_bot_cen_top, 2)
-    out_bot_cen_top = tf.squeeze( gb_bot_cen_top, 1 )
+    out_bot_cen_top = tf.squeeze( gb_bot_cen_top, 1, name='out_bot_cen_top_gengv')
     out_bot_cen_top = tf.expand_dims( out_bot_cen_top, 2 )
 
     global_vox_index = self.voxelization(grouped_bot_cen_top, out_bot_cen_top)
@@ -926,7 +927,7 @@ class BlockGroupSampling():
     bindex_pindex_ls = []
     for bi in range(self.batch_size):
       for gi in range(self.global_block_num):
-        pindex_inb = tf.squeeze(tf.where(gp_valid_mask[bi,gi]),1)
+        pindex_inb = tf.squeeze(tf.where(gp_valid_mask[bi,gi]),1, name='pindex_inb_rm_poutb')
         pindex_inb = tf.cast(pindex_inb, tf.int32)
         bindex_pindex_ls.append(tf.gather(bindex_pindex[bi,gi], pindex_inb, 0))
 
@@ -1160,7 +1161,7 @@ class BlockGroupSampling():
 
     # (2.4) sampling fixed number of points for each block
     remain_mask = tf.less(bidspidx_pidxperb_pidx_VB[:,1], self._npoint_per_blocks[self.scale])
-    remain_index = tf.squeeze(tf.where(remain_mask),1)
+    remain_index = tf.squeeze(tf.where(remain_mask),1, name='remain_index')
     bidspidx_pidxperb_pidx_VBVP = tf.gather(bidspidx_pidxperb_pidx_VB, remain_index)
 
 
@@ -1796,7 +1797,7 @@ def pre_sampling_grouping(points, sg_settings, log_path):
 
     #*************************************************************
     # get inputs for each global block
-    grouped_pindex_global = tf.squeeze(dsb['grouped_pindex'][0], 2)
+    grouped_pindex_global = tf.squeeze(dsb['grouped_pindex'][0], 2, name='grouped_pindex_global')
     shape0 = [e.value for e in grouped_pindex_global.shape]
     grouped_pindex_global = tf.expand_dims(grouped_pindex_global, -1)
     tmp0 = tf.reshape(tf.range(0, batch_size, 1), [-1, 1, 1, 1])
@@ -2073,8 +2074,8 @@ if __name__ == '__main__':
   data_path = os.path.join(raw_tfrecord_path, 'data')
   #data_path = os.path.join(raw_tfrecord_path, 'merged_data')
   tmp = '*'
-  tmp = '17DRP5sb8fy_region3'
-  tmp = '17DRP5sb8fy_*'
+  tmp = '17DRP5sb8fy_region0'
+  #tmp = '17DRP5sb8fy_*'
   filenames = glob.glob(os.path.join(data_path, tmp+'.tfrecord'))
   random.shuffle(filenames)
   assert len(filenames) >= 1, data_path

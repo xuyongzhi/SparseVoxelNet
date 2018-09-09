@@ -102,6 +102,7 @@ def rm_some_labels(points, labels, valid_num_point, dset_metas):
     labels.set_shape([org_num_point, labels.shape[1].value])
     return points, labels
 
+
 def parse_pl_record(tfrecord_serialized, is_training, dset_metas=None, bsg=None,\
                     is_rm_void_labels=True, gen_ply=False):
     from aug_data_tf import aug_main, aug_views
@@ -213,6 +214,7 @@ def parse_pl_record(tfrecord_serialized, is_training, dset_metas=None, bsg=None,
     features['valid_num_point'] = valid_num_point
 
     return features, labels
+
 
 def gather_labels_for_each_gb(points, labels, grouped_pindex0):
   #grouped_pindex0 = tf.squeeze(grouped_pindex0, 1)
@@ -491,6 +493,7 @@ class RawH5_To_Tfrecord():
           print('{}/{} write tfrecord OK: {}'.format(self.fi, self.fn, tfrecord_fn))
 
     return block_num, valid_block_num, num_points_splited
+
 
 def write_dataset_summary(dataset_summary, data_dir):
   import pickle, shutil

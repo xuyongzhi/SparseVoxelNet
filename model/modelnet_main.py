@@ -60,8 +60,8 @@ def get_filenames_1(is_training, data_dir):
     fnls = glob.glob(data_dir+'/17DRP5sb8fy_*')
     #fnls = glob.glob(data_dir+'/17DRP5sb8fy_region0*')
   else:
-    #fnls = glob.glob(data_dir+'/1LXtFkjw3qL_region0*')
-    fnls = glob.glob(data_dir+'/1LXtFkjw3qL_*')
+    fnls = glob.glob(data_dir+'/1LXtFkjw3qL_region0*')
+    #fnls = glob.glob(data_dir+'/1LXtFkjw3qL_*')
   print('found {} files, train:{}'.format(len(fnls), is_training))
   return fnls
   #return datasets_meta.get_train_test_file_list(data_dir, is_training)
