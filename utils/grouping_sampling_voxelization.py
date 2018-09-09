@@ -139,6 +139,7 @@ class BlockGroupSampling():
     self._np_perb_min_includes = sg_settings['np_perb_min_include']
     self._empty_point_index = 'first' # -1(GPU only) or 'first'
     self._vox_sizes = sg_settings['vox_size']
+    self._auto_adjust_gb_stride = sg_settings['auto_adjust_gb_stride']
 
     self._flat_nums = [3]*self._num_scale
     self._flat_nums = [np.prod(e) for e in self._nblocks_per_point]
@@ -188,7 +189,7 @@ class BlockGroupSampling():
     self._gen_ply = sg_settings['gen_ply']
 
 
-  def update_global_bot_cen_top_for_global(self, xyz, auto_adjust_gb_stride=True):
+  def update_global_bot_cen_top_for_global(self, xyz):
     xyz_max = tf.reduce_max(xyz, 1)
     xyz_min = tf.reduce_min(xyz, 1)
     xyz_mean = (xyz_max + xyz_min) / 2
@@ -260,7 +261,7 @@ class BlockGroupSampling():
       gb_nblocks_per_point = tf.expand_dims(tf.minimum(gb_nblocks_per_point, bn), 0)
       return gb_stride, gb_nblocks_per_point
 
-    if auto_adjust_gb_stride:
+    if self._auto_adjust_gb_stride:
       gb_stride = []
       gb_nblocks_per_point = []
       for bi in range(self.batch_size):
@@ -907,7 +908,11 @@ class BlockGroupSampling():
       self.samplings[self.scale]['ngp_valid_rate'] += self.ngp_valid_rate
     check0 = tf.assert_greater(tf.reduce_min(self.ngp_valid_sum), 0,
                   message="ngp_valid_min==0")
-    check1 = tf.assert_greater(self.ngp_valid_rate, [0.01, 0.1, 0.1, 0.0][self.scale],
+    if self._auto_adjust_gb_stride:
+      ngpvr_min = 0.3
+    else:
+      ngpvr_min = 0.05
+    check1 = tf.assert_greater(self.ngp_valid_rate, [ngpvr_min, 0.1, 0.1, 0.0][self.scale],
                   message="scale {} ngp_valid_rate {}".format(self.scale, self.ngp_valid_rate))
     with tf.control_dependencies([check0, check1]):
       bid_pindex = tf.identity(bid_pindex)
@@ -2074,8 +2079,9 @@ if __name__ == '__main__':
   data_path = os.path.join(raw_tfrecord_path, 'data')
   #data_path = os.path.join(raw_tfrecord_path, 'merged_data')
   tmp = '*'
-  tmp = '17DRP5sb8fy_region0'
-  #tmp = '17DRP5sb8fy_*'
+  tmp = '17DRP5sb8fy_region5'
+  tmp = '17DRP5sb8fy_*'
+  tmp = '1LXtFkjw3qL_region0'
   filenames = glob.glob(os.path.join(data_path, tmp+'.tfrecord'))
   random.shuffle(filenames)
   assert len(filenames) >= 1, data_path

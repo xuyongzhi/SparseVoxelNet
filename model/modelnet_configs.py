@@ -23,13 +23,14 @@ DEFAULTS['data_path'] = os.path.join(DATA_DIR, \
                           '{}_H5TF/raw_tfrecord'.format(DATASET_NAME))
 DEFAULTS['precpu_sg'] = True
 DEFAULTS['sg_flag'] = '20480_2'
+DEFAULTS['sg_flag'] = '8192_4'
 
 DEFAULTS['resnet_size'] = '1A17'
 #DEFAULTS['resnet_size'] = '3A20'
 
 DEFAULTS['only_eval'] = 0
 DEFAULTS['eval_views'] = 1
-DEFAULTS['epochs_between_evals'] = 10
+DEFAULTS['epochs_between_evals'] = 5
 
 DEFAULTS['residual'] = 0
 DEFAULTS['shortcut'] = 'MC' #C, MC, AC, MZ, AZ
@@ -48,11 +49,11 @@ DEFAULTS['lr_warmup'] = 0
 DEFAULTS['batch_norm_decay0'] = 0.7
 
 DEFAULTS['model_flag'] = 'm'
-DEFAULTS['feed_data'] = 'xyzs-nxnynz'
+DEFAULTS['feed_data'] = 'xyzs'
 DEFAULTS['use_xyz'] = 1
 DEFAULTS['aug_types'] = 'N' # 'rpsfj-360_0_0'
 DEFAULTS['drop_imo'] = '0_0_5'
-DEFAULTS['batch_size'] = 4
+DEFAULTS['batch_size'] = 1
 DEFAULTS['num_gpus'] = 1
 DEFAULTS['gpu_id'] = 1
 DEFAULTS['train_epochs'] = 401

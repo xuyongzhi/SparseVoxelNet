@@ -62,7 +62,7 @@ def get_filenames_1(is_training, data_dir):
   else:
     fnls = glob.glob(data_dir+'/1LXtFkjw3qL_region0*')
     #fnls = glob.glob(data_dir+'/1LXtFkjw3qL_*')
-  print('found {} files, train:{}'.format(len(fnls), is_training))
+  print('\nfound {} files, train:{}'.format(len(fnls), is_training))
   return fnls
   #return datasets_meta.get_train_test_file_list(data_dir, is_training)
 
@@ -97,7 +97,7 @@ def input_fn(is_training, data_dir, batch_size, data_net_configs=None, num_epoch
     A dataset that can be used for iteration.
   """
   filenames = get_filenames(is_training, data_dir)
-  assert len(filenames)>0, (data_dir)
+  #assert len(filenames)>0, (data_dir)
   dataset = tf.data.Dataset.from_tensor_slices(filenames)
   if is_training:
     # Shuffle the input files

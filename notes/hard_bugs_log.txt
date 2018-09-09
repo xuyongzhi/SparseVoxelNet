@@ -1,0 +1,2 @@
+(1) training blocked
+Multiple gpu, input pipeline

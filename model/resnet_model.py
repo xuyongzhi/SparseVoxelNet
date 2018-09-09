@@ -206,7 +206,7 @@ bnd optimizer block_config\n'
       self.key_paras_str = key_para_names + key_paras_str
 
       items_to_write = ['model_flag', 'block_config_str',  'aug_types', 'drop_imo', \
-        'feed_data', 'xyz_elements', \
+        'feed_data', 'xyz_elements', 'num_gpus', 'batch_size',\
         'optimizer',\
         'learning_rate0', 'lr_decay_rate', 'batch_norm_decay0', 'lr_vals', \
         'bndecay_vals', 'use_bias', 'shortcut',\
