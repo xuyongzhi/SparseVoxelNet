@@ -60,7 +60,8 @@ def get_filenames_1(is_training, data_dir):
     fnls = glob.glob(data_dir+'/17DRP5sb8fy_*')
     #fnls = glob.glob(data_dir+'/17DRP5sb8fy_region0*')
   else:
-    fnls = glob.glob(data_dir+'/1LXtFkjw3qL_region0*')
+    #fnls = glob.glob(data_dir+'/1LXtFkjw3qL_region0*')
+    fnls = glob.glob(data_dir+'/1LXtFkjw3qL_*')
   print('found {} files, train:{}'.format(len(fnls), is_training))
   return fnls
   #return datasets_meta.get_train_test_file_list(data_dir, is_training)
@@ -314,7 +315,7 @@ def define_net_configs(flags_obj):
   _get_block_paras()
   _DATA_PARAS['sg_settings'] = get_sg_settings(flags_obj.sg_flag)
   net_num_scale = len(_DATA_PARAS['block_params']['filters'])
-  sg_num_scale = _DATA_PARAS['sg_settings']['width'].shape[0]
+  sg_num_scale = len(_DATA_PARAS['sg_settings']['width'])
   assert net_num_scale == sg_num_scale, "net_num_scale:{}, sg_num_scale:{}".\
                             format(net_num_scale, sg_num_scale)
 

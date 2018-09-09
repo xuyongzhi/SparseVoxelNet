@@ -193,9 +193,9 @@ class BlockGroupSampling():
     xyz_min = tf.reduce_min(xyz, 1)
     xyz_mean = (xyz_max + xyz_min) / 2
     self.xyz_scope = xyz_max - xyz_min
-    if DEBUG:
-      xyz = tf.Print(xyz, [self.xyz_scope], message="\n\nxyz scope: ")
-      #print('raw xyz scope:{}'.format(self.xyz_scope))
+
+    #xyz = tf.Print(xyz, [self.xyz_scope], message="\n\nxyz scope: ")
+    #print('raw xyz scope:{}'.format(self.xyz_scope))
 
     # align to 0.1
     bot0 =  tf.floor(xyz_min / 0.01) / 100
@@ -203,10 +203,21 @@ class BlockGroupSampling():
     scope0 = top0 - bot0
 
     def adjust_stride_gb(scope0_bi):
-      bn_min = (scope0_bi - self._widths[0]) / self._widths[0] + 1
+      #*************************************************************************
+      # max stride=width -> min block num
+      max_stride = self._widths[0]
+      bn_min = tf.maximum((scope0_bi - self._widths[0]) / max_stride,0) + 1
       bn_min_fixed = tf.ceil(bn_min)
       bn_min_fixed_err = bn_min_fixed - bn_min
       bn_min_3d = tf.reduce_prod(bn_min_fixed)
+
+      #*************************************************************************
+      # max overlap rate=0.6 ->  min stride=width*0.4 -> max block num
+      max_overlap_rate = 0.8
+      min_stride = self._widths[0] * (1-max_overlap_rate)
+      bn_max = tf.maximum((scope0_bi - self._widths[0]) / min_stride,0) + 1
+      bn_max_fixed = tf.ceil(bn_max)
+
       #print('bn_min:{}'.format(bn_min))
       #print('bn_min_fixed:{}'.format(bn_min_fixed))
       #print('bn_min_fixed_err:{}'.format(bn_min_fixed_err))
@@ -225,19 +236,28 @@ class BlockGroupSampling():
         j = order[i]
         i += 1
         i = i * tf.cast(tf.less(i,3), tf.int32)
-        bn += tf.gather(eye3,j)
+        not_skip = tf.cast(tf.less(bn[j], bn_max_fixed[j]), tf.float32)
+        bn += tf.gather(eye3,j) * not_skip
+        #print('{}  {}'.format(i, bn))
         return i, bn
-      cond = lambda i,bn: tf.less(tf.reduce_prod(bn), self._nblocks[0])
+      def cond(i, bn):
+        cond0 = tf.less(tf.reduce_prod(bn), self._nblocks[0])
+        #cond1 = tf.reduce_all(tf.less_equal(bn, bn_max_fixed))
+        cond1 = tf.logical_not( tf.reduce_all(tf.equal(bn, bn_max_fixed)) )
+        return tf.logical_and(cond0, cond1)
+
       i, bn = tf.while_loop(cond, body, [i, bn])
-      #print('bn:{}  {}'.format(bn, tf.reduce_prod(bn)))
+      #print('i:{} bn:{}  {}'.format(i, bn, tf.reduce_prod(bn)))
 
       strides0 = (scope0_bi - self._widths[0]) / (bn-1-1e-5)
       strides0 = tf.minimum(strides0, self._widths[0])
       gb_stride = tf.expand_dims(tf.ceil(strides0 / 0.01) / 100, 0)
+      overlap_rate = 1-gb_stride / self._widths[0]
+      #print('gb_stride:{}  overlap_rate:{}'.format(gb_stride, overlap_rate))
+
       bn = tf.cast(bn, tf.int32)
       gb_nblocks_per_points =  tf.cast(tf.ceil( self._widths[0]/self._strides[0] - MAX_FLOAT_DRIFT), tf.int32)
       gb_nblocks_per_point = tf.expand_dims(tf.minimum(gb_nblocks_per_points, bn), 0)
-      #print('strides0:{}'.format(strides0))
       return gb_stride, gb_nblocks_per_point
 
     if auto_adjust_gb_stride:
@@ -720,6 +740,11 @@ class BlockGroupSampling():
       check = tf.assert_equal(ngp_out_global,0)
       with tf.control_dependencies([check]):
         ngp_out_global = tf.identity(ngp_out_global)
+    ngp_out_global_rate = tf.cast(ngp_out_global, tf.float32) / tf.cast(tf.reduce_prod(tf.shape(block_index)[0:-1]), tf.float32)
+    check_gpout = tf.assert_less(ngp_out_global_rate, 0.7, message="ngp_out_global_rate: {}".format(ngp_out_global_rate))
+    with tf.control_dependencies([check_gpout]):
+      ngp_out_global = tf.identity(ngp_out_global)
+
     return in_global_mask, ngp_out_global
 
 
@@ -1975,7 +2000,7 @@ def gen_plys(DATASET_NAME, frame, points, grouped_bot_cen_top,
 def main(filenames, dset_metas, main_flag, batch_size = 2, cycles = 1):
   from utils.sg_settings import get_sg_settings
   #sg_settings = get_sg_settings('32768_1024_64')
-  sg_settings = get_sg_settings('20480_4')
+  sg_settings = get_sg_settings('20480_2')
   #sg_settings = get_sg_settings('8192_2_1024_64')
 
   #file_num = len(filenames)
@@ -2048,8 +2073,8 @@ if __name__ == '__main__':
   data_path = os.path.join(raw_tfrecord_path, 'data')
   #data_path = os.path.join(raw_tfrecord_path, 'merged_data')
   tmp = '*'
-  tmp = '17DRP5sb8fy_region0'
-  #tmp = '17DRP5sb8fy_*'
+  tmp = '17DRP5sb8fy_region3'
+  tmp = '17DRP5sb8fy_*'
   filenames = glob.glob(os.path.join(data_path, tmp+'.tfrecord'))
   random.shuffle(filenames)
   assert len(filenames) >= 1, data_path
@@ -2071,11 +2096,11 @@ if __name__ == '__main__':
 
   if main_flag:
     tf.enable_eager_execution()
-  #main_1by1_file(filenames, dset_metas, main_flag, batch_size)
+  main_1by1_file(filenames, dset_metas, main_flag, batch_size)
 
-  #cycles = len(filenames)//batch_size
-  cycles = 1
-  main(filenames, dset_metas, main_flag, batch_size, cycles)
+  cycles = len(filenames)//batch_size
+  #cycles = 1
+  #main(filenames, dset_metas, main_flag, batch_size, cycles)
 
   #get_data_summary_from_tfrecord(filenames, raw_tfrecord_path)
 

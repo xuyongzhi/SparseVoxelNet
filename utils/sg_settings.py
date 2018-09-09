@@ -70,13 +70,13 @@ def get_sg_settings(sgflag):
   sg_settings_all[sg_flag(sg_settings)] = sg_settings
 
   #-----------------------------------------------------------------------------
-  # matterport: 8192
+  # matterport: 20480_2
   sg_settings = {}
   sg_settings['width']  =  [[4.3,4.3,4.3],]
   sg_settings['stride'] =  [[2.0,2.0,2.0],]
-  sg_settings['nblock'] =  [4,             ]
+  sg_settings['nblock'] =  [2,             ]
   sg_settings['npoint_per_block'] = [20480, ]
-  sg_settings['np_perb_min_include'] = [4000, ]
+  sg_settings['np_perb_min_include'] = [6000, ]
   sg_settings_all[sg_flag(sg_settings)] = sg_settings
 
   #-----------------------------------------------------------------------------
@@ -132,7 +132,7 @@ def get_sg_settings(sgflag):
 
   sg_settings['flag'] = 'SG_'+sg_flag(sg_settings)
   sg_settings['num_sg_scale'] = len(sg_settings['width'])
-  sg_settings['gen_ply'] = True
+  sg_settings['gen_ply'] = False
   sg_settings['record'] = False
 
   sg_settings['nblocks_per_point'] = []

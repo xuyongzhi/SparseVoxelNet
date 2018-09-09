@@ -22,11 +22,7 @@ DEFAULTS['dataset_name'] = DATASET_NAME
 DEFAULTS['data_path'] = os.path.join(DATA_DIR, \
                           '{}_H5TF/raw_tfrecord'.format(DATASET_NAME))
 DEFAULTS['precpu_sg'] = True
-#DEFAULTS['sg_flag'] = '2048_800_40'
-#DEFAULTS['sg_flag'] = '2048'
-#DEFAULTS['sg_flag'] = '32768_1_1024_64'
-DEFAULTS['sg_flag'] = '8192_4'
-#DEFAULTS['sg_flag'] = '8192_2_1024_64'
+DEFAULTS['sg_flag'] = '20480_2'
 
 DEFAULTS['resnet_size'] = '1A17'
 #DEFAULTS['resnet_size'] = '3A20'
@@ -56,7 +52,7 @@ DEFAULTS['feed_data'] = 'xyzs-nxnynz'
 DEFAULTS['use_xyz'] = 1
 DEFAULTS['aug_types'] = 'N' # 'rpsfj-360_0_0'
 DEFAULTS['drop_imo'] = '0_0_5'
-DEFAULTS['batch_size'] = 8
+DEFAULTS['batch_size'] = 6
 DEFAULTS['num_gpus'] = 2
 DEFAULTS['gpu_id'] = 1
 DEFAULTS['train_epochs'] = 401

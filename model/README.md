@@ -10,7 +10,7 @@
 - [ ] Select global blocks random is bot good, -> choose by num point
 - [ ] Speed up sg for globla block, especially when only global scale
 - [ ] Try replace grouped_center by mean
-- [ ] Optimize global block splitation
+- [x] Optimize global block splitation
 
 # Key small items to be developed
 - [x] add learning rate warm up
@@ -27,6 +27,7 @@
 - [ ] Make shortcut inception as well. And remove NoRes_InceptionReduction
 - [x] Remove USE_CHARLES
 - [x] Try remove self.feature_uncompress_block
+- [ ] For duplicated blocks, use different randomly sampling
 
 
 # Training notes
