@@ -57,8 +57,8 @@ def get_filenames_1(is_training, data_dir):
   """Return filenames for dataset."""
   data_dir = os.path.join(data_dir, 'data')
   if is_training:
-    fnls = glob.glob(data_dir+'/17DRP5sb8fy_*')
-    #fnls = glob.glob(data_dir+'/17DRP5sb8fy_region0*')
+    #fnls = glob.glob(data_dir+'/17DRP5sb8fy_*')
+    fnls = glob.glob(data_dir+'/17DRP5sb8fy_region0*')
   else:
     fnls = glob.glob(data_dir+'/1LXtFkjw3qL_region0*')
     #fnls = glob.glob(data_dir+'/1LXtFkjw3qL_*')

@@ -22,7 +22,7 @@ DEFAULTS['dataset_name'] = DATASET_NAME
 DEFAULTS['data_path'] = os.path.join(DATA_DIR, \
                           '{}_H5TF/raw_tfrecord'.format(DATASET_NAME))
 DEFAULTS['precpu_sg'] = True
-DEFAULTS['sg_flag'] = '20480_2'
+#DEFAULTS['sg_flag'] = '20480_2'
 DEFAULTS['sg_flag'] = '8192_4'
 
 DEFAULTS['resnet_size'] = '1A17'
