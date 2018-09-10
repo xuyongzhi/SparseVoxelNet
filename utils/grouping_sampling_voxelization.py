@@ -285,9 +285,15 @@ class BlockGroupSampling():
       self._strides[0] = self._gb_stride                     # [0.3 , 0.31, 4.31]
       self._nblocks_per_point[0] = self._gb_nblocks_per_point  #[2,2,1]
 
-    scope1 = self._widths[0] + self._strides[0] * \
-                            (tf.cast(self._nblocks_per_point[0], tf.float32)-1)
-    top1 = scope1  + bot0
+      scope1 = self._widths[0] + self._strides[0] * \
+                              (tf.cast(self._nblocks_per_point[0], tf.float32)-1)
+      top1 = scope1  + bot0
+    else:
+      # align to width and stride
+      tmp = (scope0 - self._widths[0]) / self._strides[0]
+      tmp = tf.maximum(tf.ceil(tmp),0)
+      top1 = tmp * self._strides[0] + self._widths[0] + bot0
+
     cen1 = (bot0 + top1) / 2
     global_bot_cen_top = tf.concat([bot0, cen1, top1], -1)
     self.global_bot_cen_top = tf.reshape(global_bot_cen_top,
@@ -743,7 +749,11 @@ class BlockGroupSampling():
       with tf.control_dependencies([check]):
         ngp_out_global = tf.identity(ngp_out_global)
     ngp_out_global_rate = tf.cast(ngp_out_global, tf.float32) / tf.cast(tf.reduce_prod(tf.shape(block_index)[0:-1]), tf.float32)
-    check_gpout = tf.assert_less(ngp_out_global_rate, 0.7, message="ngp_out_global_rate: {}".format(ngp_out_global_rate))
+    if self._auto_adjust_gb_stride:
+      max_gpout = 0.7
+    else:
+      max_gpout = 0.99
+    check_gpout = tf.assert_less(ngp_out_global_rate, max_gpout, message="ngp_out_global_rate: {}".format(ngp_out_global_rate))
     with tf.control_dependencies([check_gpout]):
       ngp_out_global = tf.identity(ngp_out_global)
 
@@ -911,7 +921,7 @@ class BlockGroupSampling():
     if self._auto_adjust_gb_stride:
       ngpvr_min = 0.3
     else:
-      ngpvr_min = 0.05
+      ngpvr_min = 0.01
     check1 = tf.assert_greater(self.ngp_valid_rate, [ngpvr_min, 0.1, 0.1, 0.0][self.scale],
                   message="scale {} ngp_valid_rate {}".format(self.scale, self.ngp_valid_rate))
     with tf.control_dependencies([check0, check1]):
@@ -2006,7 +2016,8 @@ def gen_plys(DATASET_NAME, frame, points, grouped_bot_cen_top,
 def main(filenames, dset_metas, main_flag, batch_size = 2, cycles = 1):
   from utils.sg_settings import get_sg_settings
   #sg_settings = get_sg_settings('32768_1024_64')
-  sg_settings = get_sg_settings('20480_2')
+  #sg_settings = get_sg_settings('20480_2')
+  sg_settings = get_sg_settings('8192_4')
   #sg_settings = get_sg_settings('8192_2_1024_64')
 
   #file_num = len(filenames)
@@ -2079,9 +2090,9 @@ if __name__ == '__main__':
   data_path = os.path.join(raw_tfrecord_path, 'data')
   #data_path = os.path.join(raw_tfrecord_path, 'merged_data')
   tmp = '*'
-  tmp = '17DRP5sb8fy_region5'
-  tmp = '17DRP5sb8fy_*'
-  tmp = '1LXtFkjw3qL_region0'
+  tmp = '17DRP5sb8fy_region0'
+  #tmp = '17DRP5sb8fy_*'
+  #tmp = '1LXtFkjw3qL_region0'
   filenames = glob.glob(os.path.join(data_path, tmp+'.tfrecord'))
   random.shuffle(filenames)
   assert len(filenames) >= 1, data_path
