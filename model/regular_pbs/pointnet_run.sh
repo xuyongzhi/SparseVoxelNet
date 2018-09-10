@@ -1,9 +1,9 @@
 #!/bin/bash
 
-num_gpus=1
+num_gpus=2
 gpu_id=1
-batch_size=1
-train_epochs=81
+batch_size=10
+train_epochs=401
 
 learning_rate0=0.001
 optimizer='adam'
@@ -28,11 +28,11 @@ shortcut='MC'
 residual=0
 
 resnet_size='1A17'
-sg_flag='8192_6'
+sg_flag='10240_2'
 model_flag='m'
 
 
-feed_data='xyzs-nxnynz'
+#feed_data='xyzs-nxnynz'
 
 ./base.sh   $aug_types  $batch_size $model_flag $learning_rate0 $num_gpus $feed_data $drop_imo  $optimizer $use_bias $lr_decay_epochs $lr_decay_rate $resnet_size $block_style $residual $shortcut $loss_lw_gama  $train_epochs  $batch_norm_decay0 $gpu_id $use_xyz $sg_flag
 

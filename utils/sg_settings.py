@@ -71,12 +71,12 @@ def get_sg_settings(sgflag):
   sg_settings_all[sg_flag(sg_settings)] = sg_settings
 
   #-----------------------------------------------------------------------------
-  # matterport: 8192_4
+  # matterport: 10240_2
   sg_settings = {}
   sg_settings['width']  =  [[4.3,4.3,4.3],]
   sg_settings['stride'] =  [[2.0,2.0,2.0],]
-  sg_settings['nblock'] =  [4,             ]
-  sg_settings['npoint_per_block'] = [8192, ]
+  sg_settings['nblock'] =  [2,             ]
+  sg_settings['npoint_per_block'] = [10240, ]
   sg_settings['np_perb_min_include'] = [2000, ]
   sg_settings_all[sg_flag(sg_settings)] = sg_settings
   #-----------------------------------------------------------------------------
@@ -140,7 +140,7 @@ def get_sg_settings(sgflag):
       else:
         sg_settings[item][s] = sg_settings[item][s].astype(np.int32)
 
-  sg_settings['auto_adjust_gb_stride']=False
+  sg_settings['auto_adjust_gb_stride'] = True
   if sg_settings['auto_adjust_gb_stride']:
     tmpf = '_ags'
   else:

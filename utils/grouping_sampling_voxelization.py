@@ -919,7 +919,7 @@ class BlockGroupSampling():
     check0 = tf.assert_greater(tf.reduce_min(self.ngp_valid_sum), 0,
                   message="ngp_valid_min==0")
     if self._auto_adjust_gb_stride:
-      ngpvr_min = 0.3
+      ngpvr_min = 0.2
     else:
       ngpvr_min = 0.01
     check1 = tf.assert_greater(self.ngp_valid_rate, [ngpvr_min, 0.1, 0.1, 0.0][self.scale],

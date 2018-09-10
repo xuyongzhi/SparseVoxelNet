@@ -41,10 +41,10 @@ _DATA_PARAS = None
 DATASET_NAME = DEFAULTS['dataset_name']
 datasets_meta = DatasetsMeta(DATASET_NAME)
 
-_NUM_IMAGES = {
-    'train': 9843,
-    'validation': 2468,
-}
+#_NUM_IMAGES = {
+#    'train': 9843,
+#    'validation': 2468,
+#}
 
 _NUM_TRAIN_FILES = 10
 shuffle_buffers = {'MATTERPORT': 100, 'MODELNET40':1000}
@@ -57,12 +57,12 @@ def get_filenames_1(is_training, data_dir):
   """Return filenames for dataset."""
   data_dir = os.path.join(data_dir, 'data')
   if is_training:
-    #fnls = glob.glob(data_dir+'/17DRP5sb8fy_*')
-    fnls = glob.glob(data_dir+'/17DRP5sb8fy_region0*')
+    fnls = glob.glob(data_dir+'/17DRP5sb8fy_*')
+    #fnls = glob.glob(data_dir+'/17DRP5sb8fy_region0*')
   else:
-    fnls = glob.glob(data_dir+'/1LXtFkjw3qL_region0*')
-    #fnls = glob.glob(data_dir+'/1LXtFkjw3qL_*')
-  print('\nfound {} files, train:{}'.format(len(fnls), is_training))
+    #fnls = glob.glob(data_dir+'/1LXtFkjw3qL_region0*')
+    fnls = glob.glob(data_dir+'/1LXtFkjw3qL_*')
+  print('\nfound {} files, train:{}\n'.format(len(fnls), is_training))
   return fnls
   #return datasets_meta.get_train_test_file_list(data_dir, is_training)
 
@@ -75,7 +75,7 @@ def get_filenames(is_training, data_dir):
   else:
     pre = 'test_'
   fnls = glob.glob(os.path.join(data_dir, pre+'*.tfrecord'))
-  print('found {} files, train:{}'.format(len(fnls), is_training))
+  print('\nfound {} files, train:{}\n'.format(len(fnls), is_training))
   return fnls
 
 def get_global_block_num(fnls):
@@ -113,8 +113,8 @@ def input_fn(is_training, data_dir, batch_size, data_net_configs=None, num_epoch
 
   return resnet_run_loop.process_record_dataset(
       dataset, is_training, batch_size, _SHUFFLE_BUFFER, parse_pl_record, data_net_configs,
-      num_epochs, data_net_configs['num_gpus'] if is_training else None,
-      _NUM_IMAGES['train'] if is_training else None
+      num_epochs, num_gpus = data_net_configs['num_gpus'] if is_training else None,
+      steps_per_epoch = data_net_configs['steps_per_epoch'] if is_training else None
   )
 
 
@@ -248,8 +248,10 @@ def modelnet_model_fn(features, labels, mode, params):
 
   learning_rate_fn, bndecay_fn, lr_vals, bndecay_vals = \
       resnet_run_loop.learning_rate_with_decay(
-      batch_size=params['batch_size'], batch_denom=256,
-      num_images=_NUM_IMAGES['train'], boundary_epochs=boundary_epochs,
+      batch_size=params['batch_size'],
+      batch_denom=256,
+      steps_per_epoch = params['data_net_configs']['steps_per_epoch'],
+      boundary_epochs=boundary_epochs,
       lr_decay_rates=lr_decay_rates,
       bn_decay_rates=bn_decay_rates,
       initial_learning_rate=params['data_net_configs']['learning_rate0'],
@@ -347,7 +349,9 @@ def define_net_configs(flags_obj):
 
 
   gbn_train = get_global_block_num(get_filenames(True, _DATA_PARAS['data_dir']))
-  flags.DEFINE_float('steps_per_epoch', gbn_train/flags_obj.batch_size,'')
+  steps_per_epoch = gbn_train/flags_obj.batch_size
+  _DATA_PARAS['steps_per_epoch'] = steps_per_epoch
+  flags.DEFINE_float('steps_per_epoch', steps_per_epoch,'')
   flags_obj.max_train_steps = int(flags_obj.train_epochs * flags_obj.steps_per_epoch)
 
   # read summary

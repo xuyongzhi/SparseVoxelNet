@@ -46,7 +46,7 @@ IsCheckNet = False
 ################################################################################
 def process_record_dataset(dataset, is_training, batch_size, shuffle_buffer,
                            parse_record_fn, data_net_configs, num_epochs=1,
-                           num_gpus=None, examples_per_epoch=None):
+                           num_gpus=None, steps_per_epoch=None):
   """Given a Dataset with raw records, return an iterator over the records.
 
   Args:
@@ -76,9 +76,9 @@ def process_record_dataset(dataset, is_training, batch_size, shuffle_buffer,
   # dataset for the appropriate number of epochs.
   dataset = dataset.repeat(num_epochs)
 
-  if is_training and num_gpus and examples_per_epoch:
-    total_examples = examples_per_epoch*num_epochs
-    total_batches = total_examples // batch_size // num_gpus * num_gpus
+  if is_training and num_gpus and steps_per_epoch:
+    total_examples = steps_per_epoch*num_epochs
+    total_batches = int(total_examples // batch_size // num_gpus * num_gpus)
     dataset.take(total_batches * batch_size)
 
   if data_net_configs!=None and data_net_configs['precpu_sg']:
@@ -138,7 +138,7 @@ def get_synth_input_fn(height, width, num_channels, num_classes):
 # Functions for running training/eval/validation loops for the model.
 ################################################################################
 def learning_rate_with_decay(
-    batch_size, batch_denom, num_images, boundary_epochs, lr_decay_rates,
+    batch_size, batch_denom, steps_per_epoch, boundary_epochs, lr_decay_rates,
     bn_decay_rates, initial_learning_rate, initial_bndecay ):
   """Get a learning rate that decays step-wise as training progresses.
 
@@ -164,10 +164,8 @@ def learning_rate_with_decay(
   initial_learning_rate = initial_learning_rate
   initial_bndecay = initial_bndecay
 
-  batches_per_epoch = num_images / batch_size
-
   # Multiply the learning rate by 0.1 at 100, 150, and 200 epochs.
-  boundaries = [int(batches_per_epoch * epoch) for epoch in boundary_epochs]
+  boundaries = [int(steps_per_epoch * epoch) for epoch in boundary_epochs]
   lr_vals = [max(initial_learning_rate * decay, 1e-5) for decay in lr_decay_rates]
 
   lr_warmup = lr_decay_rates[0] < lr_decay_rates[1]
