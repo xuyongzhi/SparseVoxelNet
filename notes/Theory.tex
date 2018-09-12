@@ -9,12 +9,14 @@
 \usepackage{float}
 
 \usepackage{tikz}
+\usetikzlibrary{positioning}
 \usetikzlibrary{shapes.geometric, arrows}
 \tikzstyle{startstop} = [rectangle, rounded corners, minimum width=3cm, minimum height=1cm,text centered, draw=black, fill=red!10]
 \tikzstyle{io} = [trapezium, trapezium left angle=70, trapezium right angle=110, minimum width=3cm, minimum height=1cm, text centered, draw=black, fill=blue!10]
 \tikzstyle{process} = [rectangle, minimum width=3cm, minimum height=1cm, text centered, draw=black, fill=orange!10]
 \tikzstyle{decision} = [diamond, minimum width=3cm, minimum height=1cm, text centered, draw=black, fill=green!10]
 \tikzstyle{arrow} = [thick,->,>=stealth]
+
 \hypersetup{
 	citecolor=black,
 	filecolor=black,
@@ -415,8 +417,17 @@ Reasons that we do not need the T-Net:
 	\node (out) [io, below of=p2] {$(b,n,g_m,g_i)$};
 \end{tikzpicture}
 
+\newpage
 \section{Graph neural network for high resolution indoor mesh}
+Items need to reconsider
+\begin{itemize}
+	\item Down sample by points or faces
+	\item How to add new edges after down-sampling
+	\item Design the best operation for dynamic graph that may be highly unbalance. Is it still ok to share weights for each edges. If not, how to differentiate.
+	\item What if not enough edges available
+\end{itemize}
 
+\par \noindent
 Key ideas:
 \begin{itemize}
 	\item Indoor meshes are mostly planar and simple faces. Semantically down sample the mesh and remove the simple faces.
@@ -427,6 +438,63 @@ Key ideas:
 \end{itemize}
 
 \subsection{basic framework}
+\usetikzlibrary{positioning}
+\begin{tikzpicture}[align=center, node distance=2cm]
+\node (start) [startstop] 
+{vertices:$(B,N,3)$ \\ faces:$(B,M,3)$ \\ edges: $(B,N,k)$};
+
+\node (p1) [process, below of=start] 
+{edge features E0: $(B,N,k,6)$};
+\draw [arrow] (start) -- node [anchor=west] {edge feature genration \\ $e_{ij} = h(v_i, v_j)$} (p1);
+
+\node (p2) [process, below of=p1] 
+{edge features E1: $(B,N,k,24)$};
+\draw [arrow] (p1) -- node [anchor=west] {1x1 conv} (p2);
+
+\node (p3) [process, below of=p2,] 
+{Vertice features V1: $(B,N,24+24)$};
+\draw [arrow] (p2) -- node [anchor=west] {(max, mean)} (p3);
+
+\node (p4) [process, below of=p3] 
+{Vertice features V2: $(B,N,24+24)$};
+\draw [arrow] (p3) -- node [anchor=west] {edge feature encoder \\ point feature extraction} (p4);
+
+\node (p5) [process, below of=p4] 
+{Vertice features V3: $(B,N,24+24)$};
+\draw [arrow] (p4) -- node [anchor=west] {edge feature encoder \\ point feature extraction} (p5);
+
+\node (p6) [process, below of=p5] 
+{Simplicity label: $(B,N,1)$ \\Delete simple points, add new edges};
+\draw [arrow] (p5) -- node [anchor=west] {1*1 conv on [V1,V2,V3]} (p6);
+
+\node (Vs0) [process, below of=p6] 
+{Downsampled vertices Vs0: $(B,N_1,144)$};
+
+\node (Vs1) [process, right=2cm of Vs0 ]
+{Downsampled vertices Vs1: $(B,N_1,64)$ };
+\draw [arrow] (Vs0) -- node [anchor=west] {} (Vs1);
+
+\node (Vs2) [process, above of=Vs1 ] 
+{Downsampled vertices Vs2: $(B,N_1,64)$};
+
+\node (Vs3) [process, above of=Vs2 ] 
+{Downsampled vertices Vs3: $(B,N_1,64)$};
+
+\node (Vg0) [process, above of=Vs3 ] 
+{Global feature Vg0: $(B,1,144+64*3)$};
+
+\node (Vg1) [process, above of=Vg0 ] 
+{Global feature Vg1: $(B,1,256)$};
+
+\node (Vsf) [process, above of=Vg1 ] 
+{Downsampled vertices VsFinal: [Vg1,Vs3, Vs1]};
+
+\node (L) [process, above of=Vsf ] 
+{Prediction: $(B,N,C)$};
+\draw [arrow] (Vsf) -- node [anchor=west] {Fc} (L);
+
+\end{tikzpicture}
+
 \subsubsection{Point cloud triangulation}
 matterport dataset
 \subsubsection{point feature encoder}
@@ -465,6 +533,7 @@ $$f_i^{l+1} = \max_{j\in N(i)}W(x_i, x_j-x_i) $$
 \begin{itemize}
 	\item raw data format from sensors
 	\item search for neighbour points
+	\item the number of points are smaller than edges and faces
 \end{itemize}
 
 \subsubsection{face representation}
@@ -482,12 +551,9 @@ $$f_i^{l+1} = W_0f_i^l + \sum_{j\in N(i)}W_1 f_j^l$$
 \subsubsection{solution 1}
 Use point representation during feature extraction and down-sampling. Choose to predict point label or face label at last. 
 
-\subsection{Items need to reconsider}
-\begin{itemize}
-	\item Down sample by points or faces
-	\item How to add new edges after down-sampling
-	\item Design the best operation for dynamic graph that may be highly unbalance. Is it still ok to share weights for each edges. If not, how to differentiate.
-\end{itemize}
+\subsubsection{edge feature genration}
+
+
 
 \section{KNN acceleration}
 
