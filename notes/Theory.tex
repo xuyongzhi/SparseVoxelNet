@@ -24,7 +24,7 @@
 \usepackage{xcolor}
 
 \graphicspath{ {images/} {images/mat60_1AG/} }
-\title{Dynamic sampling pointnet notes}
+\title{3D learning notes}
 \author{xyz}
 \date{Feb 2018}
 
@@ -351,7 +351,7 @@ gp & block\_id & flat\_id
 \subsubsection{E}
 scatter\_nd(indices=[gp,flat\_id], \par updates=block\_id, shape=(num\_point\_last\_scale, flatten\_num))
 
-\section{Sparse voxel 3DCNN }
+
 
 \section{Data Augmentation} 
 \begin{itemize}
@@ -369,6 +369,7 @@ Since the features are calculated independently in each voxel, it should be fine
 
 \end{itemize}
 
+\section{Sparse voxel 3DCNN }
 \begin{tikzpicture}[node distance=2cm]
 	\node (start) [startstop] {Sparse voxel 3D CNN};
 	\node (in) [io, below of=start] {$(b,n_1,c_1)$};
@@ -413,5 +414,80 @@ Reasons that we do not need the T-Net:
 	\node (p2) [process, below of=p1] {$(b,n,g_m,c_2)$};
 	\node (out) [io, below of=p2] {$(b,n,g_m,g_i)$};
 \end{tikzpicture}
+
+\section{Graph neural network for high resolution indoor mesh}
+
+Key ideas:
+\begin{itemize}
+	\item Indoor meshes are mostly planar and simple faces. Semantically down sample the mesh and remove the simple faces.
+	\item Novel graph CNN to better capture features for highly unbalanced mesh 
+	\item Make use of raw resolution
+	\item Handle large scale point clouds
+	\item Make best use of mesh graph when searching local structure
+\end{itemize}
+
+\subsection{basic framework}
+\subsubsection{Point cloud triangulation}
+matterport dataset
+\subsubsection{point feature encoder}
+Enocode low level point features based on graph cnn.
+\subsubsection{predict simple points}
+\begin{itemize}
+	\item it's planar 2 edges around
+	\item it's all belong to the same category 2 edges around
+\end{itemize}
+planar points not at the edge of an object
+\subsubsection{delete simple points and add new edges}
+
+Generate the down sampled ground truth at the same time. If the new face contains different semantics, which is incorrect, set as fail label.
+\par \noindent
+The target:
+\begin{itemize}
+	\item Significantly reduce resolution: to 10\%
+	\item Do not lost shape information
+	\item Do not lost semantic information
+	
+
+	
+\end{itemize}
+\subsubsection{learn higher level features on new point cloud}
+The mesh graph can be highly unbalanced. The weight for each edge may not be shared directly. 
+
+\subsection{point representation or face representation}
+\subsubsection{point representation}
+Operation:
+$$f_i^{l+1} = W_0f_i^l + \sum_{j\in N(i)}W_1 f_j^l$$
+$$f_i^{l+1} = W_0f_i^l + max_{j\in N(i)}W_1 f_j^l$$
+$$f_i^{l+1} = \sum_{j\in N(i)}W(x_i, x_j-x_i) $$
+$$f_i^{l+1} = \max_{j\in N(i)}W(x_i, x_j-x_i) $$
+\par \noindent
+
+\begin{itemize}
+	\item raw data format from sensors
+	\item search for neighbour points
+\end{itemize}
+
+\subsubsection{face representation}
+Operation:
+$$f^0 = max\{x_0, x_1, x_2\}$$
+$$f_i^{l+1} = W_0f_i^l + \sum_{j\in N(i)}W_1 f_j^l$$
+\par \noindent
+
+\begin{itemize}
+	\item Better real meaning for labels. Commonly used for 3D viewers. Used in Matterport Dataset.
+	\item Search for neighbour faces
+	\item Still have to get point feature at first
+\end{itemize}
+
+\subsubsection{solution 1}
+Use point representation during feature extraction and down-sampling. Choose to predict point label or face label at last. 
+
+\subsection{Items need to reconsider}
+\begin{itemize}
+	\item Down sample by points or faces
+	\item How to add new edges after down-sampling
+	\item Design the best operation for dynamic graph that may be highly unbalance. Is it still ok to share weights for each edges. If not, how to differentiate.
+\end{itemize}
+
 
 \end{document}

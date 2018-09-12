@@ -36,15 +36,19 @@ from modelnet_configs import get_block_paras, DEFAULTS
 from datasets.rawh5_to_tfrecord import parse_pl_record, get_dataset_summary, get_dset_shape_idxs
 from utils.sg_settings import get_sg_settings
 from datasets.all_datasets_meta.datasets_meta import DatasetsMeta
+import time
 
 _DATA_PARAS = None
 DATASET_NAME = DEFAULTS['dataset_name']
 datasets_meta = DatasetsMeta(DATASET_NAME)
 
-#_NUM_IMAGES = {
-#    'train': 9843,
-#    'validation': 2468,
-#}
+_NUM_GBLOCKS = {}
+_NUM_GBLOCKS['MODELNET40'] = {
+    'train': 9843,
+    'validation': 2468,}
+_NUM_GBLOCKS['MATTERPORT'] = {
+    'train': 3490,
+    'validation': None,}
 
 _NUM_TRAIN_FILES = 10
 shuffle_buffers = {'MATTERPORT': 100, 'MODELNET40':1000}
@@ -61,14 +65,16 @@ def get_filenames_1(is_training, data_dir):
     #fnls = glob.glob(data_dir+'/17DRP5sb8fy_region0*')
   else:
     #fnls = glob.glob(data_dir+'/1LXtFkjw3qL_region0*')
-    fnls = glob.glob(data_dir+'/1LXtFkjw3qL_*')
+    fnls = glob.glob(data_dir+'/1LXtFkjw3qL_*')[0:5]
   print('\nfound {} files, train:{}\n'.format(len(fnls), is_training))
+  tot = 'train' if is_training else 'validation'
+  _NUM_GBLOCKS[DATASET_NAME][tot] = get_global_block_num(fnls)
   return fnls
   #return datasets_meta.get_train_test_file_list(data_dir, is_training)
 
 def get_filenames(is_training, data_dir):
   """Return filenames for dataset."""
-  return get_filenames_1(is_training, data_dir)
+  #return get_filenames_1(is_training, data_dir)
   data_dir = os.path.join(data_dir, 'merged_data')
   if is_training:
     pre = 'train_'
@@ -79,10 +85,12 @@ def get_filenames(is_training, data_dir):
   return fnls
 
 def get_global_block_num(fnls):
+  t0 = time.time()
   c = 0
   for fn in fnls:
     for record in tf.python_io.tf_record_iterator(fn):
       c += 1
+  print('\nget block num for {} files: {}, time:{}\n'.format(len(fnls), c, time.time()-t0))
   return c
 def input_fn(is_training, data_dir, batch_size, data_net_configs=None, num_epochs=1):
   """Input function which provides batches for train or eval.
@@ -347,8 +355,7 @@ def define_net_configs(flags_obj):
   _DATA_PARAS['model_dir'] = model_dir
   flags_obj.model_dir = model_dir
 
-
-  gbn_train = get_global_block_num(get_filenames(True, _DATA_PARAS['data_dir']))
+  gbn_train = _NUM_GBLOCKS[DATASET_NAME]['train']
   steps_per_epoch = gbn_train/flags_obj.batch_size
   _DATA_PARAS['steps_per_epoch'] = steps_per_epoch
   flags.DEFINE_float('steps_per_epoch', steps_per_epoch,'')

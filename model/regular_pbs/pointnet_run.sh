@@ -2,7 +2,7 @@
 
 num_gpus=2
 gpu_id=1
-batch_size=10
+batch_size=16
 train_epochs=401
 
 learning_rate0=0.001
