@@ -1,43 +1,21 @@
-import h5py, os, glob
+import h5py, os, glob,sys
 import numpy as np
 import tensorflow as tf
-from datasets.block_data_prep_util import Raw_H5f
+#from datasets.block_data_prep_util import Raw_H5f
 from datasets.all_datasets_meta.datasets_meta import DatasetsMeta
 import math
+from tfrecord_util import MeshDecimation
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+sys.path.append(BASE_DIR)
 ROOT_DIR = os.path.dirname(BASE_DIR)
 
 Points_eles_order = ['xyz','nxnynz', 'color']
-Label_eles_order = ['label_category', 'label_instance', 'label_material', 'label_raw_category']
+Label_eles_order = ['label_category', 'label_instance', 'label_material', \
+                    'label_raw_category', 'vertex_idx_per_face', 'label_simplity']
 
 MAX_FLOAT_DRIFT = 1e-6
 DEBUG = False
-
-def bytes_feature(values):
-  """Returns a TF-Feature of bytes.
-
-  Args:
-    values: A string.
-
-  Returns:
-    A TF-Feature.
-  """
-  return tf.train.Feature(bytes_list=tf.train.BytesList(value=[values]))
-
-
-def int64_feature(values):
-  """Returns a TF-Feature of int64s.
-
-  Args:
-    values: A scalar or list of values.
-
-  Returns:
-    A TF-Feature.
-  """
-  if not isinstance(values, (tuple, list)):
-    values = [values]
-  return tf.train.Feature(int64_list=tf.train.Int64List(value=values))
 
 
 def random_choice(org_vector, sample_N, random_sampl_pro=None,
@@ -61,178 +39,7 @@ def random_choice(org_vector, sample_N, random_sampl_pro=None,
     return sampled_vector
 
 
-def rm_some_labels(points, labels, valid_num_point, dset_metas):
-  if dset_metas['dataset_name'] == 'MODELNET40':
-    return points, labels
-  elif dset_metas['dataset_name'] == 'MATTERPORT':
-    assert len(points.shape) == 2
-    org_num_point = points.shape[0].value
-    label_category = labels[:, dset_metas['indices']['labels']['label_category'][0]]
-    mask_void = tf.equal(label_category, 0)    # void
-    mask_unlabeled = tf.equal(label_category, 41)  # unlabeld
-
-    #del_mask = tf.logical_or(mask_void, mask_unlabeled)
-    del_mask = mask_void
-
-    #del_indices = tf.squeeze(tf.where(del_mask),1)
-    #keep_indices = del_indices
-
-    keep_mask = tf.logical_not(del_mask)
-    keep_indices = tf.squeeze(tf.where(keep_mask),1)
-
-    keep_num = tf.shape(keep_indices)[0]
-    #keep_num = tf.Print(keep_num, [keep_num, org_num_point], message="keep num, org num")
-
-    check = tf.assert_greater(keep_num,0, message="all void or unlabled points")
-    with tf.control_dependencies([check]):
-      del_num = org_num_point - keep_num
-
-      points = tf.gather(points, keep_indices)
-      labels = tf.gather(labels, keep_indices)
-
-    def sampling(var):
-      tmp1 = lambda: tf.tile(var[0:1,:], [del_num,1])
-      tmp2 = lambda: var[0:del_num, :]
-      tmp = tf.case([(tf.less_equal(del_num, keep_num), tmp2)],\
-                  default = tmp1)
-      return tmp
-    points = tf.concat([points, sampling(points)], 0)
-    labels = tf.concat([labels, sampling(labels)], 0)
-    points.set_shape([org_num_point, points.shape[1].value])
-    labels.set_shape([org_num_point, labels.shape[1].value])
-    return points, labels
-
-
-def parse_pl_record(tfrecord_serialized, is_training, dset_metas=None, bsg=None,\
-                    is_rm_void_labels=True, gen_ply=False):
-    from aug_data_tf import aug_main, aug_views
-    assert dset_metas!=None, "current vertion data do not have shape info"
-    #if dset_metas!=None:
-    #  from aug_data_tf import aug_data, tf_Rz
-    #  R = tf_Rz(1)
-    #  import pdb; pdb.set_trace()  # XXX BREAKPOINT
-    feature_map = {
-        'points/encoded': tf.FixedLenFeature([], tf.string),
-        'labels/encoded': tf.FixedLenFeature([], tf.string),
-        'valid_num':      tf.FixedLenFeature([1], tf.int64, default_value=-1)
-    }
-    if dset_metas == None:
-      feature_map1 = {
-          'points/shape': tf.FixedLenFeature([], tf.string),
-          'labels/shape': tf.FixedLenFeature([], tf.string),
-      }
-      feature_map.update(feature_map1)
-
-    tfrecord_features = tf.parse_single_example(tfrecord_serialized,
-                                                features=feature_map,
-                                                name='pl_features')
-
-    #*************
-    labels = tf.decode_raw(tfrecord_features['labels/encoded'], tf.int32)
-    if dset_metas == None:
-      labels_shape = tf.decode_raw(tfrecord_features['labels/shape'], tf.int32)
-    else:
-      labels_shape = dset_metas['shape']['labels']
-    labels = tf.reshape(labels, labels_shape)
-
-    #*************
-    points = tf.decode_raw(tfrecord_features['points/encoded'], tf.float32)
-    if dset_metas == None:
-      points_shape = tf.decode_raw(tfrecord_features['points/shape'], tf.int32)
-    else:
-      points_shape = dset_metas['shape']['points']
-    # the points tensor is flattened out, so we have to reconstruct the shape
-    points = tf.reshape(points, points_shape)
-
-    valid_num_point = tf.cast(tfrecord_features['valid_num'], tf.int32)
-
-    if is_rm_void_labels:
-      points, labels = rm_some_labels(points, labels, valid_num_point, dset_metas)
-    # ------------------------------------------------
-    #             data augmentation
-    features = {}
-    b_bottom_centers_mm = []
-    if is_training:
-      if dset_metas != None and 'aug_types' in dset_metas and dset_metas['aug_types']!='none':
-        points, b_bottom_centers_mm, augs = aug_main(points, b_bottom_centers_mm,
-                    dset_metas['aug_types'],
-                    dset_metas['indices'])
-        #features['augs'] = augs
-    else:
-      if dset_metas!=None and 'eval_views' in dset_metas and dset_metas['eval_views'] > 1:
-        #features['eval_views'] = dset_metas['eval_views']
-        points, b_bottom_centers_mm, augs = aug_views(points, b_bottom_centers_mm,
-                    dset_metas['eval_views'],
-                    dset_metas['indices'])
-    # ------------------------------------------------
-    #             grouping and sampling on line
-    if bsg!=None:
-      xyz = tf.expand_dims(points[:,0:3], 0)
-      ds = {}
-      grouped_pindex, vox_index, grouped_bot_cen_top, empty_mask, bot_cen_top, \
-        flatting_idx, flat_valid_mask, nblock_valid, others = \
-                        bsg.grouping_multi_scale(xyz)
-
-      assert bsg.batch_size == 1
-      bsi = 0
-
-      if gen_ply:
-        features['raw_points'] = points
-        features['raw_labels'] = labels
-
-      points, labels = gather_labels_for_each_gb(points, labels, grouped_pindex[0][bsi])
-
-      num_scale = len(grouped_bot_cen_top)
-      global_block_num = grouped_pindex[0].shape[2]
-      for s in range(num_scale+1):
-        if len(empty_mask) <= s:
-          continue
-        features['empty_mask_%d'%(s)] = tf.cast(empty_mask[s][bsi], tf.int8)
-        if vox_index[s].shape[0].value == 0:
-          features['vox_index_%d'%(s)] = tf.zeros([0]*4, tf.int32)
-        else:
-          features['vox_index_%d'%(s)] = vox_index[s][bsi]
-        if s==num_scale:
-          continue
-
-        features['grouped_pindex_%d'%(s)] = grouped_pindex[s][bsi]
-        features['grouped_bot_cen_top_%d'%(s)] = grouped_bot_cen_top[s][bsi]
-        features['bot_cen_top_%d'%(s)] = bot_cen_top[s][bsi]
-        features['flatting_idx_%d'%(s)] = flatting_idx[s]
-        features['flat_valid_mask_%d'%(s)] = flat_valid_mask[s]
-
-        if gen_ply:
-          features['nblock_valid_%d'%(s)] = nblock_valid[s]
-        #for k in range(len(others[s]['name'])):
-        #  name = others[s]['name'][k]+'_%d'%(s)
-        #  if name not in features:
-        #    features[name] = []
-        #  features[name].append( others[s]['value'][k][bsi] )
-
-    # ------------------------------------------------
-    features['points'] = points
-    features['valid_num_point'] = valid_num_point
-
-    return features, labels
-
-
-def gather_labels_for_each_gb(points, labels, grouped_pindex0):
-  #grouped_pindex0 = tf.squeeze(grouped_pindex0, 1)
-
-  shape0 = [e.value for e in grouped_pindex0.shape]
-  points_gbs = tf.gather(points, grouped_pindex0)
-  labels_gbs = tf.gather(labels, grouped_pindex0)
-  points_gbs = tf.squeeze(points_gbs, 0)
-  labels_gbs = tf.squeeze(labels_gbs, 0)
-
-  # reshape all the gbs in a batch to one dim
-  # need to reshape it back after input pipeline
-  #points_gbs = tf.reshape(points_gbs, [-1, points.shape[-1].value])
-  #labels_gbs = tf.reshape(labels_gbs, [-1, labels_gbs.shape[-1].value])
-  return points_gbs, labels_gbs
-
-
-class RawH5_To_Tfrecord():
+class Raw_To_Tfrecord():
   def __init__(self, dataset_name, tfrecord_path, num_point=None, block_size=None):
     self.dataset_name = dataset_name
     self.tfrecord_path = tfrecord_path
@@ -247,7 +54,7 @@ class RawH5_To_Tfrecord():
     self.min_pn_inblock = min(self.num_point * 0.1, 2000)
     self.sampling_rates = []
 
-  def __call__(self, rawh5fns):
+  def __call__(self, rawfns):
     bsfn0 = os.path.join(self.tfrecord_path, 'block_split_settings.txt')
     if type(self.block_size)!=type(None):
       with open(bsfn0, 'w') as bsf:
@@ -260,12 +67,12 @@ class RawH5_To_Tfrecord():
       os.makedirs(block_split_dir)
 
 
-    self.fn = len(rawh5fns)
-    #rawh5fns = rawh5fns[5577:]
-    for fi, rawh5fn in enumerate(rawh5fns):
+    self.fn = len(rawfns)
+    #rawfns = rawfns[5577:]
+    for fi, rawfn in enumerate(rawfns):
       self.fi = fi
-      region_name = os.path.splitext(os.path.basename(rawh5fn))[0]
-      scene_name = os.path.basename(os.path.dirname(rawh5fn))
+      region_name = os.path.splitext(os.path.basename(rawfn))[0]
+      scene_name = os.path.basename(os.path.dirname(os.path.dirname(rawfn)))
       scene_bs_fn = os.path.join(block_split_dir, scene_name + '_' + region_name + '.txt')
 
       cur_tfrecord_intact = False
@@ -280,7 +87,8 @@ class RawH5_To_Tfrecord():
         print('skip {} intact'.format(scene_bs_fn))
         continue
 
-      block_num, valid_block_num, num_points_splited = self.transfer_onefile(rawh5fn)
+      if self.dataset_name == "MATTERPORT":
+        block_num, valid_block_num, num_points_splited = self.transfer_onefile_matterport(rawfn)
 
       with open(scene_bs_fn, 'w') as bsf:
         bsf.write('intact\n')
@@ -290,21 +98,21 @@ class RawH5_To_Tfrecord():
         bsf.write(vnstr)
     print('All {} file are converted to tfreord'.format(fi+1))
 
-  def sort_eles(self, h5f):
+  def sort_eles(self, all_eles):
     # elements *************************
-    tmp = [e in Points_eles_order + Label_eles_order for e in h5f]
+    tmp = [e in Points_eles_order + Label_eles_order for e in all_eles]
     assert sum(tmp) == len(tmp)
     self.eles_sorted = {}
-    self.eles_sorted['points'] = [e for e in Points_eles_order if e in h5f]
-    self.eles_sorted['labels'] = [e for e in Label_eles_order if e in h5f]
+    self.eles_sorted['points'] = [e for e in Points_eles_order if e in all_eles]
+    self.eles_sorted['labels'] = [e for e in Label_eles_order if e in all_eles]
 
-  def record_metas(self, h5f, dls):
+  def record_metas(self, raw_datas, dls):
     ele_idxs = {}
     for item in self.eles_sorted:
       ele_idxs[item] = {}
       n = 0
       for e in self.eles_sorted[item]:
-        shape_i = h5f[e].shape
+        shape_i = raw_datas[e].shape
         ele_idxs[item][e] = np.arange(n, n+shape_i[-1])
         n += shape_i[-1]
     self.ele_idxs = ele_idxs
@@ -402,96 +210,126 @@ class RawH5_To_Tfrecord():
                                           block_num, valid_block_num))
     return dls_splited,  valid_block_num, num_points_splited
 
+  @staticmethod
+  def downsample_face(vertex_idx_per_face, point_sampling_indices, num_point0):
+    num_face0 = vertex_idx_per_face.shape[0]
+    point_mask = np.zeros(num_point0, np.int8)
+    point_mask[point_sampling_indices] = 1
+    point_mask = point_mask.astype(np.bool)
+    face_vertex_mask = np.take(point_mask, vertex_idx_per_face)
+    face_vertex_mask = np.all(face_vertex_mask, 1)
+    face_keep_indices = np.where(face_vertex_mask)[0]
+    face_del_indices = np.where(np.logical_not(face_vertex_mask))[0]
+    del_face_num = face_del_indices.shape[0] # 16653
+
+    del_vertex_rate = 1 - 1.0* point_sampling_indices.shape[0] / num_point0
+    del_face_rate = 1.0 * del_face_num / num_face0
+    import pdb; pdb.set_trace()  # XXX BREAKPOINT
+    pass
+
   def sampling(self, dls):
     if self.num_point == None:
       return dls
-    #print('org num:{} sampled num:{}'.format(dls['points'].shape[0], self.num_point))
+    print('org num:{} sampled num:{}'.format(dls['points'].shape[0], self.num_point))
     num_point0 = dls['points'].shape[0]
     sampling_rate = 1.0 * self.num_point / num_point0
-    sampling_indices = random_choice(np.arange(num_point0),
-                    self.num_point, keeporder=False, only_tile_last_one=False)
-    for item in dls:
-      dls[item] = np.take(dls[item], sampling_indices, axis=0)
+    point_sampling_indices = random_choice(np.arange(num_point0), self.num_point,\
+                                     keeporder=True, only_tile_last_one=False)
+    dls['points'] = np.take(dls['points'], point_sampling_indices, axis=0)
+    vertex_idx_per_face = Raw_To_Tfrecord.downsample_face(\
+              dls['labels'][:, self.ele_idxs['labels']['vertex_idx_per_face']],\
+              point_sampling_indices, num_point0)
 
+    import pdb; pdb.set_trace()  # XXX BREAKPOINT
     self.sampling_rates.append(sampling_rate)
     if len(self.sampling_rates) % 10 == 0:
       ave_samplings_rate = np.mean(self.sampling_rates)
       print('sampled num point/ real:{:.2f}'.format(ave_samplings_rate))
     return dls
 
-  def transfer_onefile(self, rawh5fn):
-    base_name = os.path.splitext(os.path.basename(rawh5fn))[0]
-    base_name1 = os.path.basename(os.path.dirname(rawh5fn))
-    if self.dataset_name == "MATTERPORT":
-      base_name = base_name1 + '_' + base_name
+  def get_label_MODELNET40(self):
+    # get label for MODELNET40
+    if self.dataset_name == 'MODELNET40':
+      tmp = base_name.split('_')
+      if len(tmp) == 2:
+        category = tmp[0]
+      elif len(tmp) == 3:
+        category = '_'.join(tmp[0:2])
+      object_label = dataset_meta.class2label[category]
+      dls['labels'] = np.array([object_label])
+
+  def transfer_onefile_matterport(self, rawfn):
+    from MATTERPORT_util import parse_ply_file, parse_ply_vertex_semantic
+
+    base_name = os.path.splitext(os.path.basename(rawfn))[0]
+    base_name1 = os.path.basename(os.path.dirname(os.path.dirname(rawfn)))
+    base_name = base_name1 + '_' + base_name
     dataset_meta = DatasetsMeta(self.dataset_name)
 
-    with h5py.File(rawh5fn, 'r') as h5f:
-      print('starting {} th file: {}'.format(self.fi, rawh5fn))
-      if not hasattr(self, 'eles_sorted'):
-        self.sort_eles(h5f)
+    raw_datas = parse_ply_file(rawfn)
+    num_vertex0 = raw_datas['xyz'].shape[0]
+
+    face_idx_per_vertex = MeshDecimation.main_eager_get_face_indices_per_vertex(
+      raw_datas['vertex_idx_per_face'], num_vertex0)
+
+    #face_idx_per_vertex_ = MeshDecimation.main_get_face_indices_per_vertex(
+    #  raw_datas['vertex_idx_per_face'], num_vertex0)
+    import pdb; pdb.set_trace()  # XXX BREAKPOINT
+
+    print('starting {} th file: {}'.format(self.fi, rawfn))
+    if not hasattr(self, 'eles_sorted'):
+      self.sort_eles(raw_datas.keys())
+    #*************************************************************************
+    dls = {}
+    for item in self.eles_sorted:
+      dls[item] = []
+      for e in self.eles_sorted[item]:
+        data = raw_datas[e]
+        dls[item].append( data )
+      if len(dls[item]) >  0:
+        dls[item] = np.concatenate(dls[item], -1)
+
+    #*************************************************************************
+    # convert to expample
+    dls['points'] = dls['points'].astype(np.float32, casting='same_kind')
+    dls['labels'] = dls['labels'].astype(np.int32, casting='same_kind')
+    if not hasattr(self, 'ele_idxs'):
+      self.record_metas(raw_datas, dls)
+
+    max_category =  np.max(dls['labels'][:, self.ele_idxs['labels']['label_category']])
+    assert max_category < dataset_meta.num_classes, "max_category {} > {}".format(\
+                                          max_category, dataset_meta.num_classes)
+
+    dls_splited, valid_block_num, num_points_splited = self.split_pcl(dls)
+    assert valid_block_num==1, "split_pcl should split face as well"
+    block_num = len(dls_splited)
+
+    for bk, ds0 in enumerate(dls_splited):
+      ds = self.sampling(ds0)
+
+      datas_bin = ds['points'].tobytes()
+      datas_shape_bin = np.array(ds['points'].shape, np.int32).tobytes()
+      labels_bin = ds['labels'].tobytes()
+      labels_shape_bin = np.array(ds['labels'].shape, np.int32).tobytes()
+      features_map = {
+        'points/encoded': bytes_feature(datas_bin),
+        #'points/shape':   bytes_feature(datas_shape_bin),
+        'labels/encoded': bytes_feature(labels_bin),
+        #'labels/shape':   bytes_feature(labels_shape_bin),
+        'valid_num':      int64_feature(num_points_splited[bk]) }
+
+      example = tf.train.Example(features=tf.train.Features(feature=features_map))
+
       #*************************************************************************
-      # concat elements together
-      for e in h5f:
-        assert e in self.eles_sorted['points'] + self.eles_sorted['labels']
+      tmp = '' if block_num==1 else '_'+str(bk)
+      tfrecord_fn = os.path.join(self.data_path, base_name)+tmp + '.tfrecord'
+      with tf.python_io.TFRecordWriter( tfrecord_fn ) as raw_tfrecord_writer:
+        raw_tfrecord_writer.write(example.SerializeToString())
 
-      dls = {}
-      for item in self.eles_sorted:
-        dls[item] = []
-        for e in self.eles_sorted[item]:
-          data = h5f[e][:]
-          dls[item].append( data )
-        if len(dls[item]) >  0:
-          dls[item] = np.concatenate(dls[item], -1)
+      if self.fi %50 ==0:
+        print('{}/{} write tfrecord OK: {}'.format(self.fi, self.fn, tfrecord_fn))
 
-      #*************************************************************************
-      # get label for MODELNET40
-      if self.dataset_name == 'MODELNET40':
-        tmp = base_name.split('_')
-        if len(tmp) == 2:
-          category = tmp[0]
-        elif len(tmp) == 3:
-          category = '_'.join(tmp[0:2])
-        object_label = dataset_meta.class2label[category]
-        dls['labels'] = np.array([object_label])
-
-      #*************************************************************************
-      # convert to expample
-      dls['points'] = dls['points'].astype(np.float32, casting='same_kind')
-      dls['labels'] = dls['labels'].astype(np.int32, casting='same_kind')
-      if not hasattr(self, 'ele_idxs'):
-        self.record_metas(h5f, dls)
-
-      max_category =  np.max(dls['labels'][:,self.ele_idxs['labels']['label_category']])
-      assert max_category < dataset_meta.num_classes, "max_category > {}".format(dataset_meta.num_classes)
-
-      dls_splited, valid_block_num, num_points_splited = self.split_pcl(dls)
-      block_num = len(dls_splited)
-      for bk, ds0 in enumerate(dls_splited):
-        ds = self.sampling(ds0)
-
-        datas_bin = ds['points'].tobytes()
-        datas_shape_bin = np.array(ds['points'].shape, np.int32).tobytes()
-        labels_bin = ds['labels'].tobytes()
-        labels_shape_bin = np.array(ds['labels'].shape, np.int32).tobytes()
-        features_map = {
-          'points/encoded': bytes_feature(datas_bin),
-          #'points/shape':   bytes_feature(datas_shape_bin),
-          'labels/encoded': bytes_feature(labels_bin),
-          #'labels/shape':   bytes_feature(labels_shape_bin),
-          'valid_num':      int64_feature(num_points_splited[bk]) }
-
-        example = tf.train.Example(features=tf.train.Features(feature=features_map))
-
-        #*************************************************************************
-        tmp = '' if block_num==1 else '_'+str(bk)
-        tfrecord_fn = os.path.join(self.data_path, base_name)+tmp + '.tfrecord'
-        with tf.python_io.TFRecordWriter( tfrecord_fn ) as raw_tfrecord_writer:
-          raw_tfrecord_writer.write(example.SerializeToString())
-
-        if self.fi %50 ==0:
-          print('{}/{} write tfrecord OK: {}'.format(self.fi, self.fn, tfrecord_fn))
-
+    import pdb; pdb.set_trace()  # XXX BREAKPOINT
     return block_num, valid_block_num, num_points_splited
 
 
@@ -645,10 +483,10 @@ def get_dataset_summary(dataset_name, tf_path, loss_lw_gama=2):
 
 
 def main_write(dataset_name, rawh5_glob, tfrecord_path, num_point, block_size):
-  rawh5_fns = glob.glob(rawh5_glob)
+  raw_fns = glob.glob(rawh5_glob)
 
-  raw_to_tf = RawH5_To_Tfrecord(dataset_name, tfrecord_path, num_point, block_size)
-  raw_to_tf(rawh5_fns)
+  raw_to_tf = Raw_To_Tfrecord(dataset_name, tfrecord_path, num_point, block_size)
+  raw_to_tf(raw_fns)
 
 def split_fn_ls( tfrecordfn_ls, merged_n):
     nf = len(tfrecordfn_ls)
@@ -772,23 +610,27 @@ def gen_ply_onef(dataset_name, tf_path, filename, scene):
       ply_fn = os.path.join(ply_dir+'_labeled', base_name+'.ply')
       create_ply_dset( dataset_name, all_points[...,0:3],  ply_fn, all_label_categories)
 
-if __name__ == '__main__':
-  dataset_name = 'MODELNET40'
+def main_matterport():
   dataset_name = 'MATTERPORT'
-  dset_path = '/home/z/Research/SparseVoxelNet/data/{}_H5TF'.format(dataset_name)
-  num_point = {'MODELNET40':None, 'MATTERPORT':60000}
+  dset_path = '/DS/Matterport3D/Matterport3D_WHOLE_extracted/v1/scans'
+  num_point = {'MODELNET40':None, 'MATTERPORT':100000}
   block_size = {'MODELNET40':None, 'MATTERPORT':np.array([6.4,6.4,6.4]) }
 
-  rawh5_glob = os.path.join(dset_path, 'rawh5/*/*.rh5')
-  #rawh5_glob = os.path.join(dset_path, 'rawh5/D7N2EKCX4Sj/*.rh5')
-  tfrecord_path = os.path.join(dset_path, 'raw_tfrecord')
+  #raw_glob = os.path.join(dset_path, '*/*/region_segmentations/*.ply')
+  raw_glob = os.path.join(dset_path, '17DRP5sb8fy/*/region_segmentations/*.ply')
+  tfrecord_path = '/DS/Matterport3D/MATTERPORT_TF/mesh_tfrecord'
 
-  #main_write(dataset_name, rawh5_glob, tfrecord_path, num_point[dataset_name], block_size[dataset_name])
+  main_write(dataset_name, raw_glob, tfrecord_path, num_point[dataset_name],\
+             block_size[dataset_name])
 
-  main_merge_tfrecord(dataset_name, tfrecord_path)
+  #main_merge_tfrecord(dataset_name, tfrecord_path)
 
   #main_gen_ply(dataset_name, tfrecord_path)
 
   #get_dataset_summary(dataset_name, tfrecord_path)
   #get_dset_shape_idxs(tfrecord_path)
+
+
+if __name__ == '__main__':
+  main_matterport()
 

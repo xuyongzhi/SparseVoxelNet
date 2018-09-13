@@ -1,5 +1,9 @@
 import os,csv
 import numpy as np
+import zipfile,gzip
+from plyfile import PlyData, PlyElement
+import glob
+import time
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 mpcat40_fn = BASE_DIR+'/mpcat40.tsv'
@@ -39,6 +43,10 @@ with open(mpcat40_fn,'r') as f:
         MATTERPORT_Meta['label26'][k] = line[6]
 
 MATTERPORT_Meta['label_names'] = [MATTERPORT_Meta['label2class'][l] for l in range(len(MATTERPORT_Meta['label2class'])) ]
+
+Material_Index = 0
+Instance_Index = 1
+Category_Index = 2
 
 with open(category_mapping_fn,'r') as f:
     '''
@@ -106,4 +114,189 @@ def benchmark():
   return tte_names
 
 
+def parse_ply_file(ply_fn):
+  '''
+  element vertex 1522546
+  property float x
+  property float y
+  property float z
+  property float nx
+  property float ny
+  property float nz
+  property float tx
+  property float ty
+  property uchar red
+  property uchar green
+  property uchar blue
 
+  element face 3016249
+  property list uchar int vertex_indices
+  property int material_id
+  property int segment_id
+  property int category_id
+  '''
+  with open(ply_fn, 'r') as ply_fo:
+    plydata = PlyData.read(ply_fo)
+    num_ele = len(plydata.elements)
+    num_vertex = plydata['vertex'].count
+    num_face = plydata['face'].count
+    data_vertex = plydata['vertex'].data
+    data_face = plydata['face'].data
+
+    ## vertex
+    vertex_eles = ['x','y','z','nx','ny','nz','tx','ty','red','green','blue']
+    datas_vertex = {}
+    for e in vertex_eles:
+        datas_vertex[e] = np.expand_dims(data_vertex[e],axis=-1)
+    vertex_xyz = np.concatenate([datas_vertex['x'],datas_vertex['y'],datas_vertex['z']],axis=1)
+    vertex_nxnynz = np.concatenate([datas_vertex['nx'],datas_vertex['ny'],datas_vertex['nz']],axis=1)
+    vertex_rgb = np.concatenate([datas_vertex['red'],datas_vertex['green'],datas_vertex['blue']],axis=1)
+
+    ## face
+    vertex_idx_per_face = data_face['vertex_indices']
+    vertex_idx_per_face = np.concatenate(vertex_idx_per_face,axis=0)
+    vertex_idx_per_face = np.reshape(vertex_idx_per_face,[-1,3])
+
+    datas = {}
+    datas['xyz'] = vertex_xyz           # (N,3)
+    datas['nxnynz'] = vertex_nxnynz     # (N,3)
+    datas['color'] = vertex_rgb         # (N,3)
+    datas['vertex_idx_per_face'] = vertex_idx_per_face  # (F,3)
+    datas['label_material'] = np.expand_dims(data_face['material_id'],1) # (F,1)
+    datas['label_instance'] = np.expand_dims(data_face['segment_id'],1)
+    datas['label_raw_category'] = np.expand_dims(data_face['category_id'],1)
+    label_category = get_cat40_from_rawcat(data_face['category_id'])
+    datas['label_category'] = np.expand_dims(label_category, 1)
+
+    return datas
+
+    face_eles = ['vertex_indices','material_id','segment_id','category_id']
+    datas_face = {}
+    for e in face_eles:
+        datas_face[e] = np.expand_dims(data_face[e],axis=-1)
+    face_semantic = np.concatenate([datas_face['material_id'], datas_face['segment_id'], datas_face['category_id']],axis=1)
+
+    return vertex_xyz, vertex_nxnynz, vertex_rgb, vertex_idx_per_face, face_semantic
+
+def parse_ply_vertex_semantic(ply_fn):
+    vertex_xyz, vertex_nxnynz, vertex_rgb, vertex_idx_per_face, face_semantic = parse_ply_file(ply_fn)
+
+    num_vertex = vertex_xyz.shape[0]
+    vertex_semantic,vertex_indices_multi_semantic,face_indices_multi_semantic =\
+      get_vertex_label_from_face(vertex_idx_per_face,face_semantic,num_vertex)
+
+    IsDeleteNonPosId = False
+    if IsDeleteNonPosId:
+      # get vertex and face  with category_id==-1 or ==0
+      vertex_nonpos_indices = np.where(vertex_semantic[:, Category_Index]<1)[0]
+      face_nonpos_indices = np.where(face_semantic[:,Category_Index]<1)[0]
+
+      vertex_del_indices = np.concatenate([vertex_indices_multi_semantic, vertex_nonpos_indices], 0)
+      face_del_indices = np.concatenate([face_indices_multi_semantic, face_nonpos_indices], 0)
+    else:
+      vertex_del_indices = vertex_indices_multi_semantic
+      face_del_indices = face_indices_multi_semantic
+
+    # Del VexMultiSem
+    vertex_xyz = np.delete(vertex_xyz, vertex_del_indices, axis=0)
+    vertex_nxnynz = np.delete(vertex_nxnynz, vertex_del_indices, axis=0)
+    vertex_rgb = np.delete(vertex_rgb, vertex_del_indices, axis=0)
+    vertex_semantic = np.delete(vertex_semantic, vertex_del_indices,axis=0)
+    vertex_idx_per_face = np.delete(vertex_idx_per_face, face_del_indices, axis=0)
+    face_semantic = np.delete(face_semantic, face_del_indices, axis=0)
+
+    return vertex_xyz, vertex_nxnynz, vertex_rgb, vertex_semantic, vertex_idx_per_face, face_semantic
+
+def get_vertex_label_from_face(vertex_idx_per_face, face_semantic, num_vertex):
+    '''
+    vertex_idx_per_face: the vertex indices in each face
+    vertex_face_indices: the face indices in each vertex
+    '''
+    vertex_face_indices = -np.ones(shape=[num_vertex,30])
+    face_num_per_vertex = np.zeros(shape=[num_vertex]).astype(np.int8)
+    vertex_semantic = np.zeros(shape=[num_vertex,3]) # only record the first one
+    vertex_semantic_num = np.zeros(shape=[num_vertex])
+    vertex_indices_multi_semantic = set()
+    face_indices_multi_semantic = set()
+    for i in range(vertex_idx_per_face.shape[0]):
+        for vertex_index in vertex_idx_per_face[i]:
+            face_num_per_vertex[vertex_index] += 1
+            vertex_face_indices[vertex_index,face_num_per_vertex[vertex_index]-1] = i
+
+            if vertex_semantic_num[vertex_index] == 0:
+                vertex_semantic_num[vertex_index] += 1
+                vertex_semantic[vertex_index] = face_semantic[i]
+            else:
+                # (1) Only 60% vertexs have unique labels for all three semntics
+                # (2) There are 96% vertexs have unique labels for the first two:  category_id and segment_id
+                # (3) only need category_id to be same
+                IsSameSemantic = (vertex_semantic[vertex_index][Category_Index]==face_semantic[i][Category_Index]).all()
+                if not IsSameSemantic:
+                    vertex_semantic_num[vertex_index] += 1
+                    vertex_indices_multi_semantic.add(vertex_index)
+                    face_indices_multi_semantic.add(i)
+    vertex_indices_multi_semantic = np.array(list(vertex_indices_multi_semantic))
+    face_indices_multi_semantic = np.array(list(face_indices_multi_semantic))
+    print('vertex rate with multiple semantic: %f'%(1.0*vertex_indices_multi_semantic.shape[0]/num_vertex))
+
+    vertex_semantic = vertex_semantic.astype(np.int32)
+
+   # vertex_semantic_num_max = np.max(vertex_semantic_num)
+   # vertex_semantic_num_min = np.min(vertex_semantic_num)
+   # vertex_semantic_num_mean = np.mean(vertex_semantic_num)
+   # vertex_semantic_num_one = np.sum(vertex_semantic_num==1)
+   # print(vertex_semantic_num_max)
+   # print(vertex_semantic_num_mean)
+   # print(vertex_semantic_num_min)
+   # print(1.0*vertex_semantic_num_one/num_vertex)
+
+    return vertex_semantic,vertex_indices_multi_semantic,face_indices_multi_semantic
+
+
+def zip_extract(ply_item_name,zipf,house_dir_extracted):
+    '''
+    extract file if not already
+    '''
+    #zipfile_name = '%s/%s/%s.%s'%(house_name,groupe_name,file_name,file_format)
+    file_path = house_dir_extracted + '/' + ply_item_name
+    noneed_extract = False
+    if os.path.exists(file_path):
+      try:
+        with open(file_path, 'r') as ply_fo:
+          plydata = PlyData.read(ply_fo)
+        noneed_extract = True
+      except:
+        print('\nfile extracted but not intact: %s\n'%(file_path))
+
+    if not noneed_extract:
+        print('extracting %s...'%(file_path))
+        file_path_extracted  = zipf.extract(ply_item_name,house_dir_extracted)
+        print('file extracting finished: %s'%(file_path_extracted) )
+        assert file_path == file_path_extracted
+    else:
+        print('file already extracted: %s'%(file_path))
+    return file_path
+
+def unzip_house(house_name):
+  house_dir = self.scans_dir+'/%s'%(house_name)
+  house_dir_extracted = self.matterport3D_extracted_dir + self.scans_name+'/%s'%(house_name)
+  region_segmentations_zip_fn = house_dir+'/region_segmentations.zip'
+  rs_zf = zipfile.ZipFile(region_segmentations_zip_fn,'r')
+
+  namelist_ply = [ name for name in rs_zf.namelist()  if 'ply' in name]
+  num_region = len(namelist_ply)
+
+  for ply_item_name in namelist_ply:
+    results = pool.apply_async(WriteRawH5f_Region_Ply,(ply_item_name,rs_zf, house_name, self.scans_h5f_dir, house_dir_extracted))
+    s = ply_item_name.index('region_segmentations/region')+len('region_segmentations/region')
+    e = ply_item_name.index('.ply')
+    k_region = int( ply_item_name[ s:e ] )
+    print('apply_async %d'%(k_region))
+
+def unzip_all():
+  house_names_ls = os.listdir('/DS/Matterport3D/Matterport3D_WHOLE/v1/scans')
+  for house_name in house_names_ls:
+    unzip_house(house_name)
+
+if __name__ == '__main__':
+  unzip_all()

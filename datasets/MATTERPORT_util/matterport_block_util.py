@@ -5,7 +5,6 @@ import os
 import sys
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(BASE_DIR)
-from datasets.block_data_prep_util import Raw_H5f, check_h5fs_intact
 import numpy as np
 import h5py
 import glob
@@ -175,6 +174,7 @@ def get_vertex_label_from_face(face_vertex_indices, face_semantic, num_vertex):
     return vertex_semantic,vertex_indices_multi_semantic,face_indices_multi_semantic
 
 def WriteRawH5f_Region_Ply(ply_item_name,rs_zf,house_name,scans_h5f_dir,house_dir_extracted):
+    from datasets.block_data_prep_util import Raw_H5f, check_h5fs_intact
     from MATTERPORT_util import get_cat40_from_rawcat
     #file_name = 'region'+str(k_region)
     region_ply_fn = zip_extract(ply_item_name,rs_zf,house_dir_extracted)
@@ -278,6 +278,7 @@ class Matterport3D_Prepare():
 
 
     def GenObj_RawH5f(self,house_name):
+        from datasets.block_data_prep_util import Raw_H5f, check_h5fs_intact
         house_h5f_dir = self.scans_h5f_dir+'/rawh5'+'/%s'%(house_name)
         file_name = house_h5f_dir+'/region0.rh5'
         xyz_cut_rate= [0,0,0.9]

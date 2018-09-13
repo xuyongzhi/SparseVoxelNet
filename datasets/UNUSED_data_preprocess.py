@@ -46,33 +46,6 @@ def WriteRawh5_to_Tfrecord(rawh5_file_ls, rawtfrecord_path, IsShowInfoFinished):
     raw_to_tf = RawH5_To_Tfrecord(DATASET, rawtfrecord_path)
     raw_to_tf(rawh5_file_ls)
 
-def WriteSortH5f_FromRawH5f(rawh5_file_ls,block_step_xyz,sorted_path, RotateBeforeSort, IsShowInfoFinished):
-    Sort_RawH5f(rawh5_file_ls,block_step_xyz,sorted_path,RotateBeforeSort, IsShowInfoFinished)
-    return rawh5_file_ls
-
-def GenPyramidSortedFlie(file_id, fn, data_aug_configs):
-    no_bidxmap = False
-    with h5py.File(fn,'r') as f:
-        sorted_h5f = Sorted_H5f(f,fn)
-        Always_CreateNew_plh5 = False
-        Always_CreateNew_bmh5 = False
-        Always_CreateNew_bxmh5 = False
-        if TMPDEBUG:
-            Always_CreateNew_bmh5 = False
-            Always_CreateNew_plh5 = False
-            Always_CreateNew_bxmh5 = False
-
-        sorted_h5f.file_saveas_pyramid_feed(
-          file_id,
-          IsShowSummaryFinished=True,
-          Always_CreateNew_plh5 = Always_CreateNew_plh5,
-          Always_CreateNew_bmh5 = Always_CreateNew_bmh5,
-          Always_CreateNew_bxmh5=Always_CreateNew_bxmh5,
-          IsGenPly=False,
-          data_aug_configs = data_aug_configs,
-          no_bidxmap =  no_bidxmap )
-    return fn
-
 def split_fn_ls( tfrecordfn_ls, merged_n):
     nf = len(tfrecordfn_ls)
     assert merged_n < nf
@@ -543,27 +516,6 @@ def GenObj_rh5():
             rawh5f = Raw_H5f(h5f,fn)
             rawh5f.generate_objfile(IsLabelColor=True,xyz_cut_rate=xyz_cut_rate)
 
-def GenObj_sh5():
-    path = '/home/z/Research/dynamic_pointnet/data/Scannet__H5F/BasicData/stride_0d1_step_0d1'
-    path = '/home/z/Research/dynamic_pointnet/data/MODELNET40__H5F/BasicData/stride_0d05_step_0d05'
-    path = '/home/z/Research/dynamic_pointnet/data/ETH__H5F/BasicData/stride_0d2_step_0d2_parts'
-    fn_ls = glob.glob( path+'/untermaederbrunnen_station3_xyz_intensity_rgb--0_0_n100_10_10_100.sh5' )
-    for fn in fn_ls:
-        with h5py.File( fn,'r' ) as h5f:
-            sh5f = Sorted_H5f(h5f,fn)
-            sh5f.gen_file_obj(IsLabelColor=False)
-
-
-def GenObj_sph5():
-    path = '/home/z/Research/dynamic_pointnet/data/Scannet__H5F/ORG_sph5/30000_gs-2d4_-3d4'
-    path = '/home/z/Research/dynamic_pointnet/data/Scannet__H5F/ORG_sph5/30000_gs-2d4_-3d4-dec5'
-    path = '/home/z/Research/dynamic_pointnet/data/MODELNET40__H5F/BasicData/stride_0d05_step_0d05'
-    path = '/home/z/Research/dynamic_pointnet/data/ETH__H5F/ORG_sph5/80000_gs4d8_7d8'
-    fn_ls = glob.glob( path+'/untermaederbrunnen_station3_xyz_intensity_rgb.sph5' )
-    for fn in fn_ls:
-        with h5py.File(fn,'r') as h5f:
-            normedh5f = Normed_H5f(h5f,fn)
-            normedh5f.gen_gt_pred_obj_examples()
 
 def main( ):
     t0 = time.time()
