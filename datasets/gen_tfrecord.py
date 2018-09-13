@@ -266,11 +266,12 @@ class Raw_To_Tfrecord():
     base_name = base_name1 + '_' + base_name
     dataset_meta = DatasetsMeta(self.dataset_name)
 
+    # ['label_material', 'label_category', 'vertex_idx_per_face', 'color',
+    # 'xyz', 'nxnynz', 'label_raw_category', 'label_instance']
     raw_datas = parse_ply_file(rawfn)
-    num_vertex0 = raw_datas['xyz'].shape[0]
 
-    face_idx_per_vertex = MeshDecimation.main_eager_get_face_indices_per_vertex(
-      raw_datas['vertex_idx_per_face'], num_vertex0)
+    face_idx_per_vertex, fidx_pv_empty_mask = MeshDecimation.main_eager_parse_rawmesh(
+                                          raw_datas)
 
     #face_idx_per_vertex_ = MeshDecimation.main_get_face_indices_per_vertex(
     #  raw_datas['vertex_idx_per_face'], num_vertex0)

@@ -353,7 +353,11 @@ def get_dataset_summary(dataset_name, tf_path, loss_lw_gama=2):
 
 class MeshDecimation():
   @staticmethod
-  def get_face_indices_per_vertex(vertex_idx_per_face, num_vertex0):
+  def get_fidx_nbrv_per_vertex(vertex_idx_per_face, num_vertex0):
+    '''
+    Inputs: [F,3] []
+    Output: [N, ?]
+    '''
     num_face = tf.shape(vertex_idx_per_face)[0]
     face_indices = tf.reshape(tf.range(0, num_face), [-1,1,1])
     face_indices = tf.tile(face_indices, [1, 3,1])
@@ -366,11 +370,11 @@ class MeshDecimation():
 
     # sort by vidx. Put all fidx belong to same vertex together
     sort_indices = tf.contrib.framework.argsort(vidx_fidx[:,0])
-    vidx_fidx = tf.gather(vidx_fidx, sort_indices)
+    vidx_fidx_flat_sorted = tf.gather(vidx_fidx, sort_indices)
 
     #***************************************************************************
     # get unique indices
-    vidx_unique, vidx_perf, nface_per_v = tf.unique_with_counts(vidx_fidx[:,0])
+    vidx_unique, vidx_perf, nface_per_v = tf.unique_with_counts(vidx_fidx_flat_sorted[:,0])
     check_vertex_num = tf.assert_equal(vidx_unique[-1]+1, num_vertex0,
                                        message="num_vertex incorrect")
     with tf.control_dependencies([check_vertex_num]):
@@ -384,35 +388,143 @@ class MeshDecimation():
     nface_cumsum0 = tf.cumsum(nface_per_v)[0:-1]
     nface_cumsum0 = tf.concat([tf.constant([0], tf.int32), nface_cumsum0], 0)
     nface_cumsum1 = tf.gather(nface_cumsum0, vidx_perf)
-    auged_vidx = tf.range(tf.shape(vidx_fidx)[0])
+    auged_vidx = tf.range(tf.shape(vidx_fidx_flat_sorted)[0])
     fidx_per_v_flat = tf.expand_dims(auged_vidx - nface_cumsum1, 1)
 
+    #***************************************************************************
     # reshape
-    vidx_fidxperv = tf.concat([vidx_fidx[:,0:1], fidx_per_v_flat], 1)
+    vidx_fidxperv = tf.concat([vidx_fidx_flat_sorted[:,0:1], fidx_per_v_flat], 1)
 
-    face_idx_per_vertex = tf.scatter_nd(vidx_fidxperv, vidx_fidx[:,1]+1, \
-                                    [num_vertex0,max_nf_perv]) - 1
-    return face_idx_per_vertex
+    face_idx_per_vertex = tf.scatter_nd(vidx_fidxperv, vidx_fidx_flat_sorted[:,1]+1, \
+                                    [num_vertex0, max_nf_perv]) - 1
+    fidx_pv_empty_mask = tf.cast(tf.equal(face_idx_per_vertex, -1), tf.bool)
+
+    # set -1 as 0
+    face_idx_per_vertex += tf.cast(fidx_pv_empty_mask, tf.int32)
+
+    #***************************************************************************
+    # get neighbor verties
+    edges_per_vertexs_flat = tf.gather(tf.squeeze(vertex_idx_per_face,-1), vidx_fidx_flat_sorted[:,1])
+
+    # remove self vertex
+    self_mask = tf.equal(edges_per_vertexs_flat, vidx_fidx_flat_sorted[:,0:1])
+    self_mask = tf.cast(self_mask, tf.int32)
+    sort_indices = tf.contrib.framework.argsort(self_mask, axis=-1)
+    sort_indices = tf.expand_dims(sort_indices, 2)
+    tmp0 = tf.reshape(tf.range(tf.shape(sort_indices)[0]), [-1,1,1])
+    tmp0 = tf.tile(tmp0, [1,3,1])
+    sort_indices = tf.concat([tmp0, sort_indices], 2)
+
+    edges_per_vertexs_flat = tf.gather_nd(edges_per_vertexs_flat, sort_indices)
+    edges_per_vertexs_flat = edges_per_vertexs_flat[:,0:2]
+
+    # reshape edges_per_vertexs_flat
+    edges_per_vertex = tf.scatter_nd(vidx_fidxperv, edges_per_vertexs_flat+1,\
+                                     [num_vertex0, max_nf_perv, 2])-1
+
+    edges_per_vertex = tf.reshape(edges_per_vertex, [num_vertex0, max_nf_perv*2])
+    epv_empty_mask = tf.cast(tf.equal(edges_per_vertex, -1), tf.bool)
+    # set -1 as 0
+    edges_per_vertex += tf.cast(epv_empty_mask, tf.int32)
+
+    return face_idx_per_vertex, fidx_pv_empty_mask, edges_per_vertex, epv_empty_mask
+
 
   @staticmethod
-  def main_eager_get_face_indices_per_vertex(vertex_idx_per_face, num_vertex0):
+  def get_simplicity_label( face_idx_per_vertex, fidx_pv_empty_mask,
+                        edges_per_vertex, epv_empty_mask,
+                        vertex_nxnynz, face_label_category, face_label_instance):
+    '''
+    Inputs: [N, ?] [N,3] [F,1]
+    A point is simple if:
+    (1) all the faces belong to one point with same category and instance (and) material
+    (2) all the faces belong to one point with similar normal
+    '''
+    dis = 2 # unit: edge
+    num_vertex0 = tf.shape(vertex_nxnynz)[0]
+    num_vertex0_f = tf.cast(num_vertex0, tf.float64)
+
+    def get_same_category_mask():
+      # get same_category_mask
+      face_label_category_ = tf.squeeze(face_label_category, 1)
+      vertex_label_categories = tf.gather(face_label_category_, face_idx_per_vertex)
+
+      same_category_mask = tf.equal(vertex_label_categories, vertex_label_categories[:,0:1])
+      same_category_mask = tf.logical_or(same_category_mask, fidx_pv_empty_mask)
+      same_category_mask = tf.reduce_all(same_category_mask, 1)
+      show_same_mask(same_category_mask, 'category')
+      return same_category_mask
+
+    # get normal same mask
+    def get_same_normal_mask(max_normal_dif):
+      normal = tf.gather(vertex_nxnynz, edges_per_vertex)
+      normal_dif = normal - normal[:,0:1,:]
+      normal_dif = tf.reduce_prod(normal_dif,-1)
+      same_normal_mask = tf.less(normal_dif, max_normal_dif)
+      same_normal_mask = tf.logical_or(same_normal_mask, epv_empty_mask)
+      same_normal_mask = tf.reduce_all(same_normal_mask, 1)
+      show_same_mask(same_normal_mask, 'normal')
+      return same_normal_mask
+
+    def show_same_mask(same_mask, pre=''):
+      same_mask_f = tf.cast(same_mask, tf.int64)
+      same_num = tf.cast(tf.reduce_sum(same_mask_f), tf.float64)
+      same_rate = same_num / num_vertex0_f
+      print('{} same rate:{}'.format(pre, same_rate))
+
+    def extend_same_mask(same_mask0, pre):
+      same_mask0 = tf.greater(same_mask0, 0)
+      extended_mask = tf.gather(same_mask0, edges_per_vertex)
+      extended_mask = tf.logical_or(extended_mask, epv_empty_mask)
+      extended_mask = tf.reduce_all(extended_mask, 1)
+      show_same_mask(extended_mask, pre)
+      extended_mask = tf.cast(extended_mask, tf.int8)
+      return extended_mask
+
+    _edge_distance = 2
+    same_normal_mask = tf.cast(get_same_normal_mask(1e-2), tf.int8)
+    same_category_mask = tf.cast(get_same_category_mask(), tf.int8)
+
+    for d in range(_edge_distance-1):
+      same_category_mask  += extend_same_mask(same_category_mask,\
+                                                'category dis {}'.format(d+1) )
+      same_normal_mask  += extend_same_mask(same_normal_mask,\
+                                                'normal dis {}'.format(d+1) )
+
+    return same_normal_mask, same_category_mask
+
+  @staticmethod
+  def main_eager_parse_rawmesh(raw_datas):
     tf.enable_eager_execution()
-    face_idx_per_vertex = MeshDecimation.get_face_indices_per_vertex(vertex_idx_per_face, num_vertex0)
+    num_vertex0 = raw_datas['xyz'].shape[0]
+
+    face_idx_per_vertex, fidx_pv_empty_mask, edges_per_vertex, epv_empty_mask = \
+                      MeshDecimation.get_fidx_nbrv_per_vertex(
+                      raw_datas['vertex_idx_per_face'], num_vertex0)
+
+    MeshDecimation.get_simplicity_label(face_idx_per_vertex, fidx_pv_empty_mask,
+                                        edges_per_vertex, epv_empty_mask,
+                                        raw_datas['nxnynz'],
+                                        raw_datas['label_category'],
+                                        raw_datas['label_instance'])
+
     face_idx_per_vertex = face_idx_per_vertex.numpy()
-    return face_idx_per_vertex
+
+    import pdb; pdb.set_trace()  # XXX BREAKPOINT
+    return face_idx_per_vertex. fidx_pv_empty_mask
 
   @staticmethod
-  def main_get_face_indices_per_vertex(vertex_idx_per_face, num_vertex0):
+  def main_get_fidx_nbrv_per_vertex(vertex_idx_per_face, num_vertex0):
     with tf.Graph().as_default():
       vertex_idx_per_face_pl = tf.placeholder(tf.int32, [None,3], 'vertex_idx_per_face')
       num_vertex0_pl = tf.placeholder(tf.int32, [], 'num_vertex0')
-      face_idx_per_vertex_pl = MeshDecimation.get_face_indices_per_vertex(vertex_idx_per_face_pl, num_vertex0_pl)
+      face_idx_per_vertex_pl = MeshDecimation.get_fidx_nbrv_per_vertex(vertex_idx_per_face_pl, num_vertex0_pl)
 
       with tf.Session() as sess:
         face_idx_per_vertex = sess.run(face_idx_per_vertex_pl, feed_dict={
           vertex_idx_per_face_pl: vertex_idx_per_face,
           num_vertex0_pl: num_vertex0})
-        return face_idx_per_vertex
+        return face_idx_per_vertex, fidx_pv_empty_mask
 
 
 
