@@ -5,40 +5,6 @@ import numpy as np
 from plyfile import PlyData, PlyElement
 from datasets.all_datasets_meta.datasets_meta import DatasetsMeta
 
-def test_plyfile():
-    vertex = np.array([(0, 0, 0), (0,1,0), (1,1,0), (1,0,0),
-                        (0, 0, 1), (0,1,1), (1,1,1), (1,0,1)],
-                        dtype=[('x', 'f8'), ('y', 'f8'),
-                               ('z', 'f8')])
-    el_vertex = PlyElement.describe(vertex,'vertex')
-
-    #PlyData([el]).write('tmp/test_binary.ply')
-    #PlyData([el],text=True).write('tmp/test_ascii.ply')
-
-    face = np.array([([0, 1, 2], 255, 255, 255),
-                     ([0, 2, 3], 255,   0,   0),
-                     ([0, 1, 3],   0, 255,   0),
-                     ([1, 2, 3],   0,   0, 255)],
-                    dtype=[('vertex_indices', 'i4', (3,)),
-                           ('red', 'u1'), ('green', 'u1'),
-                           ('blue', 'u1')])
-    el_face = PlyElement.describe(face,'face')
-
-    edge = np.array([(0, 1, 255, 0, 0),
-                     (1, 2, 255, 0, 0),
-                     (2, 3, 255, 0, 0),
-                     (3, 0, 255, 0, 0),
-                     (0, 4, 255, 0, 0)],
-                    dtype=[('vertex1', 'i4'), ('vertex2','i4'),
-                           ('red', 'u1'), ('green', 'u1'),('blue', 'u1')])
-    el_edge = PlyElement.describe(edge,'edge')
-
-    PlyData([el_vertex,el_edge],text=True).write('tmp/test_ascii.ply')
-   # PlyData([el],
-   #         byte_order='>').write('tmp/big_endian_binary.ply')
-    print('write tmp/test_ascii.ply')
-
-
 def gen_box_and_pl( ply_fn, box_vertexes, pl_xyz=None, extra='' ):
     '''
     Generate box and points together in the same file. box_vertexes and pl_xyz
@@ -306,8 +272,59 @@ def draw_blocks_by_bot_cen_top(ply_fn, bot_cen_top, random_crop=0):
   gen_box_and_pl(ply_fn, box_vertexes, extra='random_color_between_boxes')
 
 
+Color2Rgb = {
+  'Black':	  (0,0,0      ),
+ 	'White':	  (255,255,255),
+ 	'Red':	    (255,0,0    ),
+ 	'Lime':	    (0,255,0    ),
+ 	'Blue':	    (0,0,255    ),
+ 	'Yellow':	  (255,255,0  ),
+ 	'Cyan':	    (0,255,255  ),
+ 	'Magentahsia':(255,0,255),
+ 	'Silver':	  (192,192,192),
+ 	'Gray':	    (128,128,128),
+ 	'Maroon':		(128,0,0    ),
+ 	'Olive':		(128,128,0  ),
+ 	'Green':		(0,128,0    ),
+ 	'Purple':		(128,0,128  ),
+ 	'Teal':	    (0,128,128  ),
+ 	'Navy':	    (0,0,128    ) }
+color_order = ['Black', 'White', 'Yellow', 'Blue', 'Red', 'Maroon']
+rgb_order = np.array([Color2Rgb[e] for e in color_order], np.uint8)
+
+def gen_mesh_ply(ply_fn, vertices0, face_vertex_indices0, face_label=None, extra=''):
+    '''
+    '''
+    vertices0 = np.reshape( vertices0, (-1,3) )
+    num_vertex = vertices0.shape[0]
+    vertex = np.zeros( shape=(num_vertex) ).astype([('x', 'f8'), ('y', 'f8'),('z', 'f8')])
+    for i in range(vertices0.shape[0]):
+        vertex[i] = ( vertices0[i,0],vertices0[i,1],vertices0[i,2] )
+
+    el_vertex = PlyElement.describe(vertex,'vertex')
+
+    # define the order of the 8 vertexs for a box
+    num_face = face_vertex_indices0.shape[0]
+    if extra=='label_color0':
+      color = np.take(rgb_order, face_label, 0)
+    else:
+      color = np.ones([num_face,3], dtype=np.unit8)
+
+    face = np.zeros( shape=(num_face) ).astype(
+                    dtype=[('vertex_indices', 'i4', (3,)),
+                           ('red', 'u1'), ('green', 'u1'),('blue', 'u1')])
+    for i in range(num_face):
+      face[i] = ( face_vertex_indices0[i], color[i,0], color[i,1], color[i,2] )
+    el_face = PlyElement.describe(face,'face')
+
+    dirname = os.path.dirname(ply_fn)
+    if not os.path.exists(dirname):
+      os.makedirs(dirname)
+    PlyData([el_vertex, el_face],text=True).write(ply_fn)
+    print('write %s ok'%(ply_fn))
+
+
 if __name__ == '__main__':
-    #test_plyfile()
     test_box()
 
     #sg_bidxmap_i0 = np.arange( sg_bidxmap_i1.shape[0] ).reshape([-1,1,1,1])

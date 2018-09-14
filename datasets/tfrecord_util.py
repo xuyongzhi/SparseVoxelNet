@@ -4,6 +4,7 @@ import tensorflow as tf
 #from datasets.block_data_prep_util import Raw_H5f
 from datasets.all_datasets_meta.datasets_meta import DatasetsMeta
 import math
+import utils.ply_util as ply_util
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(BASE_DIR)
@@ -352,6 +353,8 @@ def get_dataset_summary(dataset_name, tf_path, loss_lw_gama=2):
 
 
 class MeshDecimation():
+  _edge_distance = 3
+
   @staticmethod
   def get_fidx_nbrv_per_vertex(vertex_idx_per_face, num_vertex0):
     '''
@@ -440,7 +443,6 @@ class MeshDecimation():
     (1) all the faces belong to one point with same category and instance (and) material
     (2) all the faces belong to one point with similar normal
     '''
-    dis = 2 # unit: edge
     num_vertex0 = tf.shape(vertex_nxnynz)[0]
     num_vertex0_f = tf.cast(num_vertex0, tf.float64)
 
@@ -452,7 +454,6 @@ class MeshDecimation():
       same_category_mask = tf.equal(vertex_label_categories, vertex_label_categories[:,0:1])
       same_category_mask = tf.logical_or(same_category_mask, fidx_pv_empty_mask)
       same_category_mask = tf.reduce_all(same_category_mask, 1)
-      show_same_mask(same_category_mask, 'category')
       return same_category_mask
 
     # get normal same mask
@@ -463,35 +464,42 @@ class MeshDecimation():
       same_normal_mask = tf.less(normal_dif, max_normal_dif)
       same_normal_mask = tf.logical_or(same_normal_mask, epv_empty_mask)
       same_normal_mask = tf.reduce_all(same_normal_mask, 1)
-      show_same_mask(same_normal_mask, 'normal')
       return same_normal_mask
 
-    def show_same_mask(same_mask, pre=''):
-      same_mask_f = tf.cast(same_mask, tf.int64)
-      same_num = tf.cast(tf.reduce_sum(same_mask_f), tf.float64)
-      same_rate = same_num / num_vertex0_f
-      print('{} same rate:{}'.format(pre, same_rate))
-
-    def extend_same_mask(same_mask0, pre):
+    def extend_same_mask(same_mask0):
       same_mask0 = tf.greater(same_mask0, 0)
       extended_mask = tf.gather(same_mask0, edges_per_vertex)
       extended_mask = tf.logical_or(extended_mask, epv_empty_mask)
       extended_mask = tf.reduce_all(extended_mask, 1)
-      show_same_mask(extended_mask, pre)
       extended_mask = tf.cast(extended_mask, tf.int8)
       return extended_mask
 
-    _edge_distance = 2
+
     same_normal_mask = tf.cast(get_same_normal_mask(1e-2), tf.int8)
     same_category_mask = tf.cast(get_same_category_mask(), tf.int8)
 
-    for d in range(_edge_distance-1):
-      same_category_mask  += extend_same_mask(same_category_mask,\
-                                                'category dis {}'.format(d+1) )
-      same_normal_mask  += extend_same_mask(same_normal_mask,\
-                                                'normal dis {}'.format(d+1) )
+    for d in range(MeshDecimation._edge_distance-1):
+      same_category_mask  += extend_same_mask(same_category_mask)
+      same_normal_mask  += extend_same_mask(same_normal_mask)
 
     return same_normal_mask, same_category_mask
+
+  @staticmethod
+  def same_mask_rates(same_mask,  pre=''):
+    same_rates = []
+    num_total = tf.cast( same_mask.shape[0].value, tf.float64)
+    for e in range(MeshDecimation._edge_distance+1):
+      same_num = tf.reduce_sum(tf.cast(tf.equal(same_mask, e), tf.float64))
+      same_rates.append( 1.0 * same_num / num_total )
+    same_rates[0] = tf.Print(same_rates[0], same_rates, message=pre+' same rates: ')
+    #print('\n{} same rate:{}\n'.format(pre, same_rates))
+    return same_rates
+
+  @staticmethod
+  def get_face_same_mask(vertex_same_mask, vertex_idx_per_face):
+    same_mask = tf.gather(vertex_same_mask, vertex_idx_per_face)
+    face_same_mask = tf.reduce_max(same_mask, 1)
+    return face_same_mask
 
   @staticmethod
   def main_eager_parse_rawmesh(raw_datas):
@@ -502,16 +510,44 @@ class MeshDecimation():
                       MeshDecimation.get_fidx_nbrv_per_vertex(
                       raw_datas['vertex_idx_per_face'], num_vertex0)
 
-    MeshDecimation.get_simplicity_label(face_idx_per_vertex, fidx_pv_empty_mask,
-                                        edges_per_vertex, epv_empty_mask,
-                                        raw_datas['nxnynz'],
-                                        raw_datas['label_category'],
-                                        raw_datas['label_instance'])
+    same_normal_mask, same_category_mask = MeshDecimation.get_simplicity_label(
+                                    face_idx_per_vertex, fidx_pv_empty_mask,
+                                    edges_per_vertex, epv_empty_mask,
+                                    raw_datas['nxnynz'],
+                                    raw_datas['label_category'],
+                                    raw_datas['label_instance'])
+    same_norm_rates = MeshDecimation.same_mask_rates(same_normal_mask, 'v_normal')
+    same_category_rates = MeshDecimation.same_mask_rates(same_category_mask, 'v_category')
+
+    face_same_normal_mask = MeshDecimation.get_face_same_mask(same_normal_mask,
+                                              raw_datas['vertex_idx_per_face'])
+    face_same_category_mask = MeshDecimation.get_face_same_mask(same_category_mask,
+                                              raw_datas['vertex_idx_per_face'])
+
+    face_norm_rates = MeshDecimation.same_mask_rates(face_same_normal_mask, 'f_normal')
+    face_category_rates = MeshDecimation.same_mask_rates(face_same_category_mask, 'f_category')
 
     face_idx_per_vertex = face_idx_per_vertex.numpy()
+    same_normal_mask = same_normal_mask.numpy()
+    same_category_mask = same_category_mask.numpy()
 
-    import pdb; pdb.set_trace()  # XXX BREAKPOINT
+
+    ply_util.gen_mesh_ply('/tmp/face_same_normal.ply', raw_datas['xyz'],
+                          raw_datas['vertex_idx_per_face'],
+                          face_label = face_same_normal_mask,
+                          extra = 'label_color0')
+
+    ply_util.gen_mesh_ply('/tmp/face_same_category.ply', raw_datas['xyz'],
+                          raw_datas['vertex_idx_per_face'],
+                          face_label = face_same_category_mask,
+                          extra = 'label_color0')
+
     return face_idx_per_vertex. fidx_pv_empty_mask
+
+  def show_simplity_label(raw_datas, same_normal_mask, same_category_mask):
+    '''
+    numpy inputs
+    '''
 
   @staticmethod
   def main_get_fidx_nbrv_per_vertex(vertex_idx_per_face, num_vertex0):
