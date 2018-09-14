@@ -353,8 +353,9 @@ def get_dataset_summary(dataset_name, tf_path, loss_lw_gama=2):
 
 
 class MeshDecimation():
-  _edge_distance = 3
+  _full_edge_dis = 3
   _max_norm_dif_angle = 15.0
+  _check_optial = True
 
   @staticmethod
   def get_fidx_nbrv_per_vertex(vertex_idx_per_face, num_vertex0):
@@ -480,19 +481,25 @@ class MeshDecimation():
     same_normal_mask = tf.cast(get_same_normal_mask(1e-2), tf.int8)
     same_category_mask = tf.cast(get_same_category_mask(), tf.int8)
 
-    for d in range(MeshDecimation._edge_distance-1):
+    for d in range(MeshDecimation._full_edge_dis-1):
       same_category_mask  += extend_same_mask(same_category_mask)
       same_normal_mask  += extend_same_mask(same_normal_mask)
 
     return same_normal_mask, same_category_mask
 
   @staticmethod
-  def same_mask_rates(same_mask,  pre=''):
-    same_rates = []
-    num_total = tf.cast( same_mask.shape[0].value, tf.float64)
-    for e in range(MeshDecimation._edge_distance+1):
+  def same_mask_nums(same_mask):
+    same_nums = []
+    for e in range(MeshDecimation._full_edge_dis+1):
       same_num = tf.reduce_sum(tf.cast(tf.equal(same_mask, e), tf.float64))
-      same_rates.append( 1.0 * same_num / num_total )
+      same_nums.append(same_num)
+    return same_nums
+
+  @staticmethod
+  def same_mask_rates(same_mask,  pre=''):
+    num_total = tf.cast( same_mask.shape[0].value, tf.float64)
+    same_nums = MeshDecimation.same_mask_nums(same_mask)
+    same_rates = [1.0*n/num_total for n in same_nums]
     same_rates[0] = tf.Print(same_rates[0], same_rates, message=pre+' same rates: ')
     #print('\n{} same rate:{}\n'.format(pre, same_rates))
     return same_rates
@@ -504,7 +511,93 @@ class MeshDecimation():
     return face_same_mask
 
   @staticmethod
-  def main_eager_parse_rawmesh(raw_datas, num_vertex_fixed):
+  def sampling_mesh(same_normal_mask, _num_vertex_sp, raw_datas):
+    vertex_sp_indices = MeshDecimation.sampling_vertex(same_normal_mask, _num_vertex_sp)
+    num_vertex0 = tf.shape(raw_datas['xyz'])[0]
+    face_sp_indices, vertex_idx_per_face_new = MeshDecimation.sampling_face(
+                                vertex_sp_indices,
+                                num_vertex0, raw_datas['vertex_idx_per_face'])
+    for item in raw_datas:
+      if item == 'vertex_idx_per_face':
+        continue
+      sp_indices = tf.cond( tf.equal(raw_datas[item].shape[0], num_vertex0),
+                           lambda: vertex_sp_indices,
+                           lambda: face_sp_indices )
+      raw_datas[item] = tf.gather(raw_datas[item], sp_indices)
+    raw_datas['vertex_idx_per_face'] = vertex_idx_per_face_new
+    return raw_datas
+
+
+  @staticmethod
+  def sampling_vertex(same_normal_mask, _num_vertex_sp):
+    num_point0 = same_normal_mask.shape[0].value
+    sampling_rate = 1.0 * _num_vertex_sp / num_point0
+    print('org num:{}, sampled num:{}, sampling_rate:{}'.format(
+                                  num_point0, _num_vertex_sp, sampling_rate))
+    del_num = num_point0 - _num_vertex_sp
+    same_nums = MeshDecimation.same_mask_nums(same_normal_mask)
+    full_dis = MeshDecimation._full_edge_dis
+
+    #*********************
+    # max_dis: the max dis that provide enough simple vertices to remove
+    assert len(same_nums) == full_dis + 1
+    for j in range(0, full_dis+1):
+      max_dis = full_dis -j
+      if tf.reduce_sum(same_nums[full_dis-j:full_dis+1]) > del_num:
+        break
+    check_max_dis = tf.assert_greater(max_dis, 0,
+                                message="same norm poitns not enough to remove")
+    with tf.control_dependencies([check_max_dis]):
+      max_dis = tf.identity(max_dis)
+    max_dis = tf.cast(max_dis, tf.int8)
+
+    #*********************
+    # complex_indices + part of simple_indices
+    complex_indices = tf.squeeze(tf.where(tf.less(same_normal_mask, max_dis)),1)
+    complex_num = tf.shape(complex_indices)[0]
+    simple_indices = tf.squeeze(tf.where(tf.greater_equal(same_normal_mask, max_dis)),1)
+    simple_num = tf.shape(simple_indices)[0]
+    sp_num_from_simple = _num_vertex_sp - complex_num
+
+    tmp = tf.random_shuffle(tf.range(simple_num))[0:sp_num_from_simple]
+    simple_sp_indices = tf.gather(simple_indices, tmp)
+    vertex_sp_indices = tf.concat([complex_indices, simple_sp_indices], 0)
+    vertex_sp_indices = tf.contrib.framework.sort(vertex_sp_indices)
+
+    if MeshDecimation._check_optial:
+      # check no duplicate
+      tmp0, tmp1, tmp_count = tf.unique_with_counts(vertex_sp_indices)
+      max_count = tf.reduce_max(tmp_count)
+      check_no_duplicate = tf.assert_equal(max_count,1)
+      with tf.control_dependencies([check_no_duplicate]):
+        vertex_sp_indices = tf.identity(vertex_sp_indices)
+
+    return vertex_sp_indices
+
+  @staticmethod
+  def sampling_face(vertex_sp_indices, num_vertex0, vertex_idx_per_face):
+    _num_vertex_sp = vertex_sp_indices.shape[0].value
+    vertex_sp_indices = tf.expand_dims(tf.cast(vertex_sp_indices, tf.int32),1)
+    # scatter new vertex index
+    raw_vidx_2_sp_vidx = tf.scatter_nd(vertex_sp_indices, tf.range(_num_vertex_sp)+1, [num_vertex0])-1
+    vertex_idx_per_face_new = tf.gather(raw_vidx_2_sp_vidx, vertex_idx_per_face)
+
+    # rm lost faces
+    remain_mask = tf.reduce_all(tf.greater(vertex_idx_per_face_new, -1),1)
+    face_sp_indices = tf.squeeze(tf.where(remain_mask), 1)
+
+    vertex_idx_per_face_new = tf.gather(vertex_idx_per_face_new, face_sp_indices)
+
+    if MeshDecimation._check_optial:
+      max_vidx = tf.reduce_max(vertex_idx_per_face_new)
+      check0 = tf.assert_equal(max_vidx, _num_vertex_sp-1)
+      with tf.control_dependencies([check0]):
+        vertex_idx_per_face_new = tf.identity(vertex_idx_per_face_new)
+
+    return face_sp_indices, vertex_idx_per_face_new
+
+  @staticmethod
+  def parse_rawmesh(raw_datas, _num_vertex_sp):
     tf.enable_eager_execution()
     num_vertex0 = raw_datas['xyz'].shape[0]
 
@@ -526,10 +619,26 @@ class MeshDecimation():
 
     #***************************************************************************
     # down sample
+    sampled_datas = MeshDecimation.sampling_mesh(same_normal_mask, _num_vertex_sp,
+                                 raw_datas)
 
-    #***************************************************************************
     IsGenply = True
     if IsGenply:
+      #MeshDecimation.gen_ply_raw(raw_datas, same_normal_mask, same_category_mask, same_norm_cat_mask)
+      MeshDecimation.gen_mesh_ply_basic(sampled_datas, 'sampled_{}'.format(_num_vertex_sp))
+
+    import pdb; pdb.set_trace()  # XXX BREAKPOINT
+    return face_idx_per_vertex. fidx_pv_empty_mask
+
+  @staticmethod
+  def gen_mesh_ply_basic(datas, flag=''):
+    path =  '/tmp/{}'.format(flag)
+    ply_fn = '{}/category_labeled.ply'.format(path)
+    ply_util.gen_mesh_ply(ply_fn, datas['xyz'].numpy(), datas['vertex_idx_per_face'].numpy(),
+                          datas['label_category'].numpy())
+
+  @staticmethod
+  def gen_ply_raw(raw_datas, same_normal_mask, same_category_mask, same_norm_cat_mask):
       # face same mask for generating ply
       face_same_normal_mask = MeshDecimation.get_face_same_mask(same_normal_mask,
                                                 raw_datas['vertex_idx_per_face'])
@@ -547,7 +656,6 @@ class MeshDecimation():
       face_category_rates = MeshDecimation.same_mask_rates(face_same_category_mask, 'f_category')
       face_norm_cat_rates = MeshDecimation.same_mask_rates(face_same_norm_cat_mask, 'f_norm_cat')
 
-      face_idx_per_vertex = face_idx_per_vertex.numpy()
       same_normal_mask = same_normal_mask.numpy()
       same_category_mask = same_category_mask.numpy()
       face_same_normal_mask = tf.Print(face_same_normal_mask,
@@ -558,21 +666,16 @@ class MeshDecimation():
       ply_util.gen_mesh_ply('/tmp/face_same_normal_{}.ply'.format(int(MeshDecimation._max_norm_dif_angle)),
                             raw_datas['xyz'],
                             raw_datas['vertex_idx_per_face'],
-                            face_label = face_same_normal_mask,
-                            extra = 'label_color0')
+                            face_label = face_same_normal_mask)
 
       ply_util.gen_mesh_ply('/tmp/face_same_category.ply', raw_datas['xyz'],
                             raw_datas['vertex_idx_per_face'],
-                            face_label = face_same_category_mask,
-                            extra = 'label_color0')
+                            face_label = face_same_category_mask)
       ply_util.gen_mesh_ply('/tmp/face_same_norm_{}_cat.ply'.format(int(MeshDecimation._max_norm_dif_angle)),
                             raw_datas['xyz'],
                             raw_datas['vertex_idx_per_face'],
-                            face_label = face_same_norm_cat_mask,
-                            extra = 'label_color0')
+                            face_label = face_same_norm_cat_mask)
 
-    import pdb; pdb.set_trace()  # XXX BREAKPOINT
-    return face_idx_per_vertex. fidx_pv_empty_mask
 
   def show_simplity_label(raw_datas, same_normal_mask, same_category_mask):
     '''

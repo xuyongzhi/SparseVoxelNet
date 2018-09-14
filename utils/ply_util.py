@@ -272,30 +272,15 @@ def draw_blocks_by_bot_cen_top(ply_fn, bot_cen_top, random_crop=0):
   gen_box_and_pl(ply_fn, box_vertexes, extra='random_color_between_boxes')
 
 
-Color2Rgb = {
-  'Black':	  (0,0,0      ),
- 	'White':	  (255,255,255),
- 	'Red':	    (255,0,0    ),
- 	'Lime':	    (0,255,0    ),
- 	'Blue':	    (0,0,255    ),
- 	'Yellow':	  (255,255,0  ),
- 	'Cyan':	    (0,255,255  ),
- 	'Magentahsia':(255,0,255),
- 	'Silver':	  (192,192,192),
- 	'Gray':	    (128,128,128),
- 	'Maroon':		(128,0,0    ),
- 	'Olive':		(128,128,0  ),
- 	'Green':		(0,128,0    ),
- 	'Purple':		(128,0,128  ),
- 	'Teal':	    (0,128,128  ),
- 	'Navy':	    (0,0,128    ) }
-color_order = ['Black', 'White', 'Yellow', 'Blue', 'Red', 'Maroon']
-rgb_order = np.array([Color2Rgb[e] for e in color_order], np.uint8)
-
-def gen_mesh_ply(ply_fn, vertices0, face_vertex_indices0, face_label=None, extra=''):
+import  color_dic
+def gen_mesh_ply(ply_fn, vertices0, face_vertex_indices0, face_label=None,
+                 extra='label_color_default'):
     '''
     '''
     vertices0 = np.reshape( vertices0, (-1,3) )
+    face_vertex_indices0 = np.reshape(face_vertex_indices0, (-1,3))
+    face_label = np.squeeze(face_label)
+
     num_vertex = vertices0.shape[0]
     vertex = np.zeros( shape=(num_vertex) ).astype([('x', 'f8'), ('y', 'f8'),('z', 'f8')])
     for i in range(vertices0.shape[0]):
@@ -305,10 +290,10 @@ def gen_mesh_ply(ply_fn, vertices0, face_vertex_indices0, face_label=None, extra
 
     # define the order of the 8 vertexs for a box
     num_face = face_vertex_indices0.shape[0]
-    if extra=='label_color0':
-      color = np.take(rgb_order, face_label, 0)
+    if extra=='label_color_default':
+      color = np.take(color_dic.rgb_order, face_label, 0)
     else:
-      color = np.ones([num_face,3], dtype=np.unit8)
+      color = np.ones([num_face,3], dtype=np.uint8) * 255
 
     face = np.zeros( shape=(num_face) ).astype(
                     dtype=[('vertex_indices', 'i4', (3,)),
