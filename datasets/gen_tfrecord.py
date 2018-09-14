@@ -271,7 +271,7 @@ class Raw_To_Tfrecord():
     raw_datas = parse_ply_file(rawfn)
 
     face_idx_per_vertex, fidx_pv_empty_mask = MeshDecimation.main_eager_parse_rawmesh(
-                                          raw_datas)
+                                          raw_datas, self.num_point)
 
     #face_idx_per_vertex_ = MeshDecimation.main_get_face_indices_per_vertex(
     #  raw_datas['vertex_idx_per_face'], num_vertex0)
