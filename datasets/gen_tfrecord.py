@@ -614,7 +614,7 @@ def gen_ply_onef(dataset_name, tf_path, filename, scene):
 def main_matterport():
   dataset_name = 'MATTERPORT'
   dset_path = '/DS/Matterport3D/Matterport3D_WHOLE_extracted/v1/scans'
-  num_point = {'MODELNET40':None, 'MATTERPORT':100000}
+  num_point = {'MODELNET40':None, 'MATTERPORT':90000}
   block_size = {'MODELNET40':None, 'MATTERPORT':np.array([6.4,6.4,6.4]) }
 
   #raw_glob = os.path.join(dset_path, '*/*/region_segmentations/*.ply')

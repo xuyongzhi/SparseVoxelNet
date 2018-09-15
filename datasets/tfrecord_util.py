@@ -541,27 +541,61 @@ class MeshDecimation():
     #*********************
     # max_dis: the max dis that provide enough simple vertices to remove
     assert len(same_nums) == full_dis + 1
-    for j in range(0, full_dis+1):
+    #simple_is_enough_to_rm = False
+    #max_dis = full_dis
+    ## max_dis: reduce 1 by 1 from full_dis
+    #for j in range(0, full_dis):
+    #  simple_num = tf.reduce_sum(same_nums[full_dis-j:full_dis+1])
+    #  simple_is_enough_to_rm =  tf.greater(simple_num, del_num)
+    #  max_dis = tf.cond( simple_is_enough_to_rm,
+    #            lambda :  max_dis,
+    #            lambda : full_dis -j)
+
+    j = tf.constant(0, tf.int32)
+    max_dis = tf.constant(full_dis, tf.int32)
+    simple_is_enough_to_rm = tf.constant(False, tf.bool)
+
+    def cond(j, simple_is_enough_to_rm, max_dis):
+        cond0 = tf.less(j, full_dis)
+        cond1 = tf.logical_not(simple_is_enough_to_rm)
+        cond = tf.logical_and(cond0, cond1)
+        return cond
+    def body(j, simple_is_enough_to_rm, max_dis):
       max_dis = full_dis -j
-      if tf.reduce_sum(same_nums[full_dis-j:full_dis+1]) > del_num:
-        break
-    check_max_dis = tf.assert_greater(max_dis, 0,
-                                message="same norm poitns not enough to remove")
-    with tf.control_dependencies([check_max_dis]):
-      max_dis = tf.identity(max_dis)
+      simple_num = tf.reduce_sum(tf.gather(same_nums, tf.range(full_dis-j,full_dis+1)))
+      simple_is_enough_to_rm =  tf.greater(simple_num, del_num)
+      j += 1
+      return j, simple_is_enough_to_rm, max_dis
+    j, simple_is_enough_to_rm, max_dis = tf.while_loop(cond, body, [j, simple_is_enough_to_rm, max_dis])
+
     max_dis = tf.cast(max_dis, tf.int8)
 
     #*********************
-    # complex_indices + part of simple_indices
     complex_indices = tf.squeeze(tf.where(tf.less(same_normal_mask, max_dis)),1)
     complex_num = tf.shape(complex_indices)[0]
     simple_indices = tf.squeeze(tf.where(tf.greater_equal(same_normal_mask, max_dis)),1)
     simple_num = tf.shape(simple_indices)[0]
-    sp_num_from_simple = _num_vertex_sp - complex_num
+    # max_dis>0: simple vertices are enough to del. Keep all complex, rm from
+    # simple: complex_indices + part of simple_indices
+    # max_dis==0: rm all simple, and part of complex
 
-    tmp = tf.random_shuffle(tf.range(simple_num))[0:sp_num_from_simple]
-    simple_sp_indices = tf.gather(simple_indices, tmp)
-    vertex_sp_indices = tf.concat([complex_indices, simple_sp_indices], 0)
+    def rm_part_of_simple_only():
+      sp_num_from_simple = _num_vertex_sp - complex_num
+      tmp = tf.random_shuffle(tf.range(simple_num))[0:sp_num_from_simple]
+      simple_sp_indices = tf.gather(simple_indices, tmp)
+      vertex_sp_indices = tf.concat([complex_indices, simple_sp_indices], 0)
+      return vertex_sp_indices
+
+    def rm_all_simple_partof_complex():
+      sp_num_from_complex = _num_vertex_sp
+      tmp = tf.random_shuffle(tf.range(complex_num))[0:sp_num_from_complex]
+      vertex_sp_indices = tf.gather(complex_indices, tmp)
+      return vertex_sp_indices
+
+    vertex_sp_indices = tf.cond(simple_is_enough_to_rm,
+                                rm_part_of_simple_only,
+                                rm_all_simple_partof_complex )
+
     vertex_sp_indices = tf.contrib.framework.sort(vertex_sp_indices)
 
     if MeshDecimation._check_optial:
@@ -624,7 +658,8 @@ class MeshDecimation():
 
     IsGenply = True
     if IsGenply:
-      #MeshDecimation.gen_ply_raw(raw_datas, same_normal_mask, same_category_mask, same_norm_cat_mask)
+      MeshDecimation.gen_ply_raw(raw_datas, same_normal_mask,
+                                 same_category_mask, same_norm_cat_mask)
       MeshDecimation.gen_mesh_ply_basic(sampled_datas, 'sampled_{}'.format(_num_vertex_sp))
 
     import pdb; pdb.set_trace()  # XXX BREAKPOINT
@@ -663,7 +698,7 @@ class MeshDecimation():
                                        message='max_normal_dif_angle')
 
 
-      ply_util.gen_mesh_ply('/tmp/face_same_normal_{}.ply'.format(int(MeshDecimation._max_norm_dif_angle)),
+      ply_util.gen_mesh_ply('/tmp/face_same_normal_{}degree.ply'.format(int(MeshDecimation._max_norm_dif_angle)),
                             raw_datas['xyz'],
                             raw_datas['vertex_idx_per_face'],
                             face_label = face_same_normal_mask)
@@ -671,7 +706,7 @@ class MeshDecimation():
       ply_util.gen_mesh_ply('/tmp/face_same_category.ply', raw_datas['xyz'],
                             raw_datas['vertex_idx_per_face'],
                             face_label = face_same_category_mask)
-      ply_util.gen_mesh_ply('/tmp/face_same_norm_{}_cat.ply'.format(int(MeshDecimation._max_norm_dif_angle)),
+      ply_util.gen_mesh_ply('/tmp/face_same_norm_{}degree_cat.ply'.format(int(MeshDecimation._max_norm_dif_angle)),
                             raw_datas['xyz'],
                             raw_datas['vertex_idx_per_face'],
                             face_label = face_same_norm_cat_mask)
