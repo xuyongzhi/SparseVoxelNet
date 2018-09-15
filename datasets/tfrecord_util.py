@@ -694,8 +694,11 @@ class MeshDecimation():
   def gen_mesh_ply_basic(datas, flag=''):
     path =  '/tmp/{}'.format(flag)
     ply_fn = '{}/category_labeled.ply'.format(path)
-    ply_util.gen_mesh_ply(ply_fn, datas['xyz'].numpy(), datas['vertex_idx_per_face'].numpy(),
-                          datas['label_category'].numpy())
+    for item in datas:
+      if isinstance(datas['item'], tf.Tensor):
+        datas[item] = datas[item].numpy()
+    ply_util.gen_mesh_ply(ply_fn, datas['xyz'], datas['vertex_idx_per_face'],
+                          datas['label_category'])
 
   @staticmethod
   def gen_ply_raw(raw_datas, same_normal_mask, same_category_mask, same_norm_cat_mask):
