@@ -512,9 +512,32 @@ class MeshDecimation():
 
   @staticmethod
   def sampling_mesh(same_normal_mask, _num_vertex_sp, raw_datas):
-    vertex_sp_indices = MeshDecimation.sampling_vertex(same_normal_mask, _num_vertex_sp)
-    num_vertex0 = tf.shape(raw_datas['xyz'])[0]
-    face_sp_indices, vertex_idx_per_face_new = MeshDecimation.sampling_face(
+    num_vertex0 = same_normal_mask.shape[0].value
+    is_down_sampling = tf.less(_num_vertex_sp, num_vertex0)
+    sampled_datas = tf.cond(is_down_sampling,
+      lambda: MeshDecimation.down_sampling_mesh(same_normal_mask, _num_vertex_sp, raw_datas),
+      lambda: MeshDecimation.up_sampling_mesh(same_normal_mask, _num_vertex_sp, raw_datas) )
+    return sampled_datas
+
+  @staticmethod
+  def up_sampling_mesh(same_normal_mask, _num_vertex_sp, raw_datas):
+    num_vertex0 = same_normal_mask.shape[0].value
+    duplicate_num = _num_vertex_sp - num_vertex0
+    for item in raw_datas:
+      is_vertex = tf.equal(raw_datas[item].shape[0], num_vertex0)
+      def duplicate_last():
+        duplicated = tf.tile(raw_datas[item][-1:,:], [duplicate_num, 1])
+        raw_datas[item] = tf.concat([raw_datas[item], duplicated], 0)
+      tf.cond(is_vertex, duplicate_last, tf.no_op)
+    return raw_datas
+
+  @staticmethod
+  def down_sampling_mesh(same_normal_mask, _num_vertex_sp, raw_datas):
+    num_vertex0 = same_normal_mask.shape[0].value
+    vertex_sp_indices = MeshDecimation.down_sampling_vertex(
+                                            same_normal_mask, _num_vertex_sp)
+
+    face_sp_indices, vertex_idx_per_face_new = MeshDecimation.down_sampling_face(
                                 vertex_sp_indices,
                                 num_vertex0, raw_datas['vertex_idx_per_face'])
     for item in raw_datas:
@@ -527,29 +550,30 @@ class MeshDecimation():
     raw_datas['vertex_idx_per_face'] = vertex_idx_per_face_new
     return raw_datas
 
+  @staticmethod
+  def up_sampling_vertex(same_normal_mask, _num_vertex_sp):
+    num_vertex0 = same_normal_mask.shape[0].value
+    #simple_indices = tf.squeeze(tf.where(tf.greater_equal(
+    #                        same_normal_mask, MeshDecimation._full_edge_dis)),1)
+    duplicate_num = _num_vertex_sp - num_vertex0
+    #duplicate_indices = tf.tile( simple_indices[0:1], [duplicate_num] )
+    duplicate_indices = tf.ones([duplicate_num], tf.int32) * (num_vertex0 -1)
+    vertex_sp_indices = tf.concat([tf.range(num_vertex0), duplicate_indices], 0)
+    return vertex_sp_indices
 
   @staticmethod
-  def sampling_vertex(same_normal_mask, _num_vertex_sp):
-    num_point0 = same_normal_mask.shape[0].value
-    sampling_rate = 1.0 * _num_vertex_sp / num_point0
+  def down_sampling_vertex(same_normal_mask, _num_vertex_sp):
+    num_vertex0 = same_normal_mask.shape[0].value
+    sampling_rate = 1.0 * _num_vertex_sp / num_vertex0
     print('org num:{}, sampled num:{}, sampling_rate:{}'.format(
-                                  num_point0, _num_vertex_sp, sampling_rate))
-    del_num = num_point0 - _num_vertex_sp
+                                  num_vertex0, _num_vertex_sp, sampling_rate))
+    del_num = num_vertex0 - _num_vertex_sp
     same_nums = MeshDecimation.same_mask_nums(same_normal_mask)
     full_dis = MeshDecimation._full_edge_dis
 
     #*********************
     # max_dis: the max dis that provide enough simple vertices to remove
     assert len(same_nums) == full_dis + 1
-    #simple_is_enough_to_rm = False
-    #max_dis = full_dis
-    ## max_dis: reduce 1 by 1 from full_dis
-    #for j in range(0, full_dis):
-    #  simple_num = tf.reduce_sum(same_nums[full_dis-j:full_dis+1])
-    #  simple_is_enough_to_rm =  tf.greater(simple_num, del_num)
-    #  max_dis = tf.cond( simple_is_enough_to_rm,
-    #            lambda :  max_dis,
-    #            lambda : full_dis -j)
 
     j = tf.constant(0, tf.int32)
     max_dis = tf.constant(full_dis, tf.int32)
@@ -592,9 +616,10 @@ class MeshDecimation():
       vertex_sp_indices = tf.gather(complex_indices, tmp)
       return vertex_sp_indices
 
+
     vertex_sp_indices = tf.cond(simple_is_enough_to_rm,
-                                rm_part_of_simple_only,
-                                rm_all_simple_partof_complex )
+                                  rm_part_of_simple_only,
+                                  rm_all_simple_partof_complex )
 
     vertex_sp_indices = tf.contrib.framework.sort(vertex_sp_indices)
 
@@ -609,7 +634,7 @@ class MeshDecimation():
     return vertex_sp_indices
 
   @staticmethod
-  def sampling_face(vertex_sp_indices, num_vertex0, vertex_idx_per_face):
+  def down_sampling_face(vertex_sp_indices, num_vertex0, vertex_idx_per_face):
     _num_vertex_sp = vertex_sp_indices.shape[0].value
     vertex_sp_indices = tf.expand_dims(tf.cast(vertex_sp_indices, tf.int32),1)
     # scatter new vertex index
