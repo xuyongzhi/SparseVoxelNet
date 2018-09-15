@@ -4,7 +4,7 @@ import tensorflow as tf
 #from datasets.block_data_prep_util import Raw_H5f
 from datasets.all_datasets_meta.datasets_meta import DatasetsMeta
 import math
-from tfrecord_util import MeshDecimation
+from tfrecord_util import MeshSampling
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(BASE_DIR)
@@ -270,11 +270,9 @@ class Raw_To_Tfrecord():
     # 'xyz', 'nxnynz', 'label_raw_category', 'label_instance']
     raw_datas = parse_ply_file(rawfn)
 
-    face_idx_per_vertex, fidx_pv_empty_mask = MeshDecimation.parse_rawmesh(
+    sampled_datas = MeshSampling.main_sampling_rawmesh(
                                           raw_datas, self.num_point)
 
-    #face_idx_per_vertex_ = MeshDecimation.main_get_face_indices_per_vertex(
-    #  raw_datas['vertex_idx_per_face'], num_vertex0)
     import pdb; pdb.set_trace()  # XXX BREAKPOINT
 
     print('starting {} th file: {}'.format(self.fi, rawfn))
@@ -614,7 +612,7 @@ def gen_ply_onef(dataset_name, tf_path, filename, scene):
 def main_matterport():
   dataset_name = 'MATTERPORT'
   dset_path = '/DS/Matterport3D/Matterport3D_WHOLE_extracted/v1/scans'
-  num_point = {'MODELNET40':None, 'MATTERPORT':120000}
+  num_point = {'MODELNET40':None, 'MATTERPORT':80000}
   block_size = {'MODELNET40':None, 'MATTERPORT':np.array([6.4,6.4,6.4]) }
 
   #raw_glob = os.path.join(dset_path, '*/*/region_segmentations/*.ply')

@@ -24,6 +24,8 @@
 	urlcolor=black
 }
 \usepackage{xcolor}
+\usepackage{wasysym}
+
 
 \graphicspath{ {images/} {images/mat60_1AG/} }
 \title{3D learning notes}
@@ -418,7 +420,7 @@ Reasons that we do not need the T-Net:
 \end{tikzpicture}
 
 \newpage
-\section{Graph neural network for high resolution indoor mesh}
+\section{Multi-scale mesh net for high resolution indoor mesh}
 Items need to reconsider
 \begin{itemize}
 	\item Down sample by points or faces
@@ -521,8 +523,8 @@ The target:
 \subsubsection{learn higher level features on new point cloud}
 The mesh graph can be highly unbalanced. The weight for each edge may not be shared directly. 
 
-\subsection{point representation or face representation}
-\subsubsection{point representation}
+\section{Graph CNN: point, edge and face representation}
+\subsection{point representation}
 Operation:
 $$f_i^{l+1} = W_0f_i^l + \sum_{j\in N(i)}W_1 f_j^l$$
 $$f_i^{l+1} = W_0f_i^l + max_{j\in N(i)}W_1 f_j^l$$
@@ -536,22 +538,34 @@ $$f_i^{l+1} = \max_{j\in N(i)}W(x_i, x_j-x_i) $$
 	\item the number of points are smaller than edges and faces
 \end{itemize}
 
-\subsubsection{face representation}
+\subsection{face representation}
 Operation:
 $$f^0 = max\{x_0, x_1, x_2\}$$
 $$f_i^{l+1} = W_0f_i^l + \sum_{j\in N(i)}W_1 f_j^l$$
 \par \noindent
 
 \begin{itemize}
-	\item Better real meaning for labels. Commonly used for 3D viewers. Used in Matterport Dataset.
+	\item \smiley Better real meaning for labels. Commonly used for 3D viewers. Used in Matterport Dataset.
 	\item Search for neighbour faces
 	\item Still have to get point feature at first
+	\item Naturally differentiate neighbour edges  
 \end{itemize}
 
-\subsubsection{solution 1}
+\subsection{solution 1: face conv}
 Use point representation during feature extraction and down-sampling. Choose to predict point label or face label at last. 
 
-\subsubsection{edge feature genration}
+\begin{tikzpicture}
+\draw (0,4) node[anchor=south]{$v_2$}
+-- (2,0) node[anchor=north]{$v_0$} node[midway, left] {$e_{02}$}
+-- (4,4) node[anchor=south]{$v_1$} node[midway, right] {$e_{01}$}
+-- cycle  node[midway, above] {$e_{12}$};
+\end{tikzpicture}
+
+$$ V_0 -> E_0 -> F_0 -> V_1 -> E_1 -> F_1 -> V_2$$
+$$ E_{0i} = W_{e0}(V_i-V_0)+W_{e1}(\frac{V_i+V_0}{2}) \ i=(1,2)$$
+$$ E_{12} = W_{e2}(|V_2-V_1|)+W_{e1}(\frac{V_1+V_2}{2})$$
+$$ F = [max(E01, E02, E12), mean(E01, E02, E12)] $$
+$$ V_p^{l+1} = W_0 V_p^l + max_{q\in N(p)}\{F_q\}$$
 
 
 
