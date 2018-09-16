@@ -358,11 +358,11 @@ class MeshSampling():
   _check_optial = True
 
   @staticmethod
-  def main_sampling_rawmesh(raw_datas, _num_vertex_sp):
+  def main_sampling_rawmesh(raw_datas, _num_vertex_sp, splited_vidx):
     tf.enable_eager_execution()
     num_vertex0 = raw_datas['xyz'].shape[0]
 
-    is_show_shapes = False
+    is_show_shapes = True
     #***************************************************************************
     #face idx per vetex, edges per vertyex
     face_idx_per_vertex, fidx_pv_empty_mask, edges_per_vertex, edges_pv_empty_mask = \
@@ -388,6 +388,7 @@ class MeshSampling():
 
     #***************************************************************************
     # down sample
+    import pdb; pdb.set_trace()  # XXX BREAKPOINT
     sampled_datas = MeshSampling.sampling_mesh(same_normal_mask, _num_vertex_sp,
                                  raw_datas)
 

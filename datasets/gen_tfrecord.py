@@ -139,15 +139,13 @@ class Raw_To_Tfrecord():
     print('write ok: {}'.format(metas_fn))
     pass
 
-  def split_pcl(self, dls):
+  def split_pcl(self, xyz):
     if type(self.block_size) == type(None):
-      return [dls], 1, [dls['points'].shape[0]]
+      return None
 
-    xyz = dls['points'][:, self.ele_idxs['points']['xyz']]
     xyz_min = np.min(xyz, 0)
     xyz_max = np.max(xyz, 0)
     xyz_scope = xyz_max - xyz_min
-    #print(xyz_scope)
 
     block_size = self.block_size
     block_stride = self.block_stride
@@ -163,9 +161,11 @@ class Raw_To_Tfrecord():
     top = bot + block_size
 
     block_num = bot.shape[0]
+    print('raw scope:\n{} \nblock_num:{}'.format(xyz_scope, block_num))
+    print('splited bot:\n{} splited top:\n{}'.format(bot, top))
+
     if block_num == 1:
-      #print('xyz scope:{} block_num:{}'.format(xyz_scope, block_num))
-      return [dls], 1, [dls['points'].shape[0]]
+      return None
 
     if block_num>1:
       for i in range(block_num):
@@ -173,16 +173,13 @@ class Raw_To_Tfrecord():
           if top[i,j] > xyz_scope[j]:
             top[i,j] = xyz_scope[j] - MAX_FLOAT_DRIFT
             bot[i,j] = np.maximum(xyz_scope[j] - block_size[j] + MAX_FLOAT_DRIFT, 0)
-    #print(xyzindices)
-    #print(bot_indices)
-    #print(bot)
-    #print(top)
 
     bot += xyz_min
     top += xyz_min
 
     dls_splited = []
     num_points_splited = []
+    splited_vidx = []
     for i in range(block_num):
       mask0 = xyz >= bot[i]
       mask1 = xyz < top[i]
@@ -196,19 +193,9 @@ class Raw_To_Tfrecord():
         #                                self.num_point * 0.1, i, block_num))
         continue
       num_points_splited.append(num_point_i)
-      dls_i = {}
-      dls_i['points'] = np.take(dls['points'], indices, axis=0)
-      dls_i['labels'] = np.take(dls['labels'], indices, axis=0)
-      dls_splited.append(dls_i)
+      splited_vidx.append(indices)
+    return splited_vidx
 
-      xyz_i = dls_i['points'][:,0:3]
-      xyz_min_i = np.min(xyz_i,0)
-      xyz_max_i = np.max(xyz_i,0)
-
-    valid_block_num = len(dls_splited)
-    print('xyz scope:{} \tblock_num:{} \tvalid block num:{}'.format(xyz_scope,\
-                                          block_num, valid_block_num))
-    return dls_splited,  valid_block_num, num_points_splited
 
   @staticmethod
   def downsample_face(vertex_idx_per_face, point_sampling_indices, num_point0):
@@ -270,10 +257,11 @@ class Raw_To_Tfrecord():
     # 'xyz', 'nxnynz', 'label_raw_category', 'label_instance']
     raw_datas = parse_ply_file(rawfn)
 
-    sampled_datas = MeshSampling.main_sampling_rawmesh(
-                                          raw_datas, self.num_point)
+    splited_vidx = self.split_pcl(raw_datas['xyz'])
 
-    import pdb; pdb.set_trace()  # XXX BREAKPOINT
+    sampled_datas = MeshSampling.main_sampling_rawmesh(
+                          raw_datas, self.num_point, splited_vidx)
+
 
     print('starting {} th file: {}'.format(self.fi, rawfn))
     if not hasattr(self, 'eles_sorted'):
@@ -299,7 +287,7 @@ class Raw_To_Tfrecord():
     assert max_category < dataset_meta.num_classes, "max_category {} > {}".format(\
                                           max_category, dataset_meta.num_classes)
 
-    dls_splited, valid_block_num, num_points_splited = self.split_pcl(dls)
+    import pdb; pdb.set_trace()  # XXX BREAKPOINT
     assert valid_block_num==1, "split_pcl should split face as well"
     block_num = len(dls_splited)
 
@@ -613,7 +601,7 @@ def main_matterport():
   dataset_name = 'MATTERPORT'
   dset_path = '/DS/Matterport3D/Matterport3D_WHOLE_extracted/v1/scans'
   num_point = {'MODELNET40':None, 'MATTERPORT':80000}
-  block_size = {'MODELNET40':None, 'MATTERPORT':np.array([6.4,6.4,6.4]) }
+  block_size = {'MODELNET40':None, 'MATTERPORT':np.array([2.5,2.5,2.5]) }
 
   #raw_glob = os.path.join(dset_path, '*/*/region_segmentations/*.ply')
   raw_glob = os.path.join(dset_path, '17DRP5sb8fy/*/region_segmentations/*.ply')
