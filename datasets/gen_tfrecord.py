@@ -259,7 +259,7 @@ class Raw_To_Tfrecord():
 
     splited_vidx = self.split_pcl(raw_datas['xyz'])
 
-    sampled_datas = MeshSampling.main_sampling_rawmesh(
+    sampled_datas = MeshSampling.main_split_sampling_rawmesh(
                           raw_datas, self.num_point, splited_vidx)
 
 
