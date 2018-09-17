@@ -367,6 +367,8 @@ class MeshSampling():
 
   @staticmethod
   def sess_split_sampling_rawmesh(raw_datas, _num_vertex_sp, splited_vidx):
+    raw_vertex_nums = [e.shape[0] if type(e)!=type(None) else raw_datas['xyz'].shape[0]\
+                         for e in splited_vidx]
     with tf.Graph().as_default():
       raw_datas_pl = {}
       for item in raw_datas:
@@ -383,16 +385,16 @@ class MeshSampling():
                                                  'splited_vidx_%d'%(bi)) )
 
       splited_sampled_datas_ = MeshSampling.main_split_sampling_rawmesh(\
-                              raw_datas_pl, _num_vertex_sp, splited_vidx_pl)
-
-      raw_vertex_nums = [e.shape[0] for e in splited_vidx]
+                              raw_datas_pl.copy(), _num_vertex_sp, splited_vidx_pl)
 
       with tf.Session() as sess:
         feed_dict = {}
         for item in raw_datas:
           feed_dict[raw_datas_pl[item]] = raw_datas[item]
-        for bi in range(block_num):
-          feed_dict[splited_vidx_pl[bi]] = splited_vidx[bi]
+
+        if block_num>1:
+          for bi in range(block_num):
+            feed_dict[splited_vidx_pl[bi]] = splited_vidx[bi]
 
         splited_sampled_datas = sess.run(splited_sampled_datas_, feed_dict=feed_dict)
 
@@ -405,10 +407,13 @@ class MeshSampling():
     MeshSampling._fi += 1
     if start:
       tf.enable_eager_execution()
+
+    raw_vertex_nums = [e.shape[0] if type(e)!=type(None) else raw_datas['xyz'].shape[0]\
+                         for e in splited_vidx]
+
     splited_sampled_datas = MeshSampling.main_split_sampling_rawmesh(
                                       raw_datas, _num_vertex_sp, splited_vidx)
 
-    raw_vertex_nums = [e.shape[0] for e in splited_vidx]
     bn = len(splited_sampled_datas)
     for bi in range(bn):
       for item in splited_sampled_datas[bi]:
@@ -693,17 +698,19 @@ class MeshSampling():
       num_vertex0 = raw_datas['xyz'].shape[0].value
     else:
       num_vertex0 = raw_datas['xyz'].shape[0]
-    is_down_sampling = tf.less(_num_vertex_sp, num_vertex0)
-    sampled_datas = tf.cond(is_down_sampling,
-      lambda: MeshSampling.down_sampling_mesh(_num_vertex_sp, raw_datas),
-      lambda: MeshSampling.up_sampling_mesh(_num_vertex_sp, raw_datas) )
+    is_down_sampling = _num_vertex_sp < num_vertex0
+    if is_down_sampling:
+      sampled_datas = MeshSampling.down_sampling_mesh(_num_vertex_sp, raw_datas.copy())
+    else:
+      sampled_datas = MeshSampling.up_sampling_mesh(_num_vertex_sp, raw_datas.copy())
     return sampled_datas
 
   @staticmethod
   def up_sampling_mesh( _num_vertex_sp, raw_datas):
     MeshSampling.show_datas_shape(raw_datas)
     if isinstance(raw_datas['xyz'], tf.Tensor):
-      num_vertex0 = tf.shape(raw_datas['xyz'])[0]
+      #num_vertex0 = tf.shape(raw_datas['xyz'])[0]
+      num_vertex0 = raw_datas['xyz'].shape[0].value
     else:
       num_vertex0 = raw_datas['xyz'].shape[0]
     duplicate_num = _num_vertex_sp - num_vertex0
