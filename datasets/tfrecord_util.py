@@ -366,18 +366,51 @@ class MeshSampling():
   _fi = 0
 
   @staticmethod
+  def sess_split_sampling_rawmesh(raw_datas, _num_vertex_sp, splited_vidx):
+    with tf.Graph().as_default():
+      raw_datas_pl = {}
+      for item in raw_datas:
+        type_i = eval( 'tf.' + str(raw_datas[item].dtype) )
+        shape_i = raw_datas[item].shape
+        raw_datas_pl[item] = tf.placeholder(type_i, shape_i, item)
+      block_num = len(splited_vidx)
+      splited_vidx_pl = []
+      if block_num==1:
+        splited_vidx_pl = [None]
+      else:
+        for bi in range(block_num):
+          splited_vidx_pl.append( tf.placeholder(tf.int32, splited_vidx[bi].shape,
+                                                 'splited_vidx_%d'%(bi)) )
+
+      splited_sampled_datas_ = MeshSampling.main_split_sampling_rawmesh(\
+                              raw_datas_pl, _num_vertex_sp, splited_vidx_pl)
+
+      raw_vertex_nums = [e.shape[0] for e in splited_vidx]
+
+      with tf.Session() as sess:
+        feed_dict = {}
+        for item in raw_datas:
+          feed_dict[raw_datas_pl[item]] = raw_datas[item]
+        for bi in range(block_num):
+          feed_dict[splited_vidx_pl[bi]] = splited_vidx[bi]
+
+        splited_sampled_datas = sess.run(splited_sampled_datas_, feed_dict=feed_dict)
+
+    return splited_sampled_datas, raw_vertex_nums
+
+
+  @staticmethod
   def eager_split_sampling_rawmesh(raw_datas, _num_vertex_sp, splited_vidx):
     start = MeshSampling._fi == 0
     MeshSampling._fi += 1
     if start:
       tf.enable_eager_execution()
-    splited_sampled_datas, raw_vertex_nums = MeshSampling.main_split_sampling_rawmesh(
+    splited_sampled_datas = MeshSampling.main_split_sampling_rawmesh(
                                       raw_datas, _num_vertex_sp, splited_vidx)
+
+    raw_vertex_nums = [e.shape[0] for e in splited_vidx]
     bn = len(splited_sampled_datas)
     for bi in range(bn):
-      if isinstance(raw_vertex_nums[bi], tf.Tensor):
-        raw_vertex_nums[bi] = raw_vertex_nums[bi].numpy()
-
       for item in splited_sampled_datas[bi]:
         if isinstance(splited_sampled_datas[bi][item], tf.Tensor):
           splited_sampled_datas[bi][item] = splited_sampled_datas[bi][item].numpy()
@@ -434,9 +467,7 @@ class MeshSampling():
         MeshSampling.gen_mesh_ply_basic(splited_datas[bi], 'Splited' ,'Block_{}'.format(bi))
     #***************************************************************************
     # sampling
-    raw_vertex_nums = []
     for bi in range(block_num):
-      raw_vertex_nums.append(splited_datas[bi]['xyz'].shape[0])
       splited_datas[bi] = MeshSampling.sampling_mesh(
                                       _num_vertex_sp, splited_datas[bi])
     splited_sampled_datas = splited_datas
@@ -449,7 +480,7 @@ class MeshSampling():
     if is_show_shapes:
       MeshSampling.show_datas_shape(splited_sampled_datas, 'sampled datas')
 
-    return splited_sampled_datas, raw_vertex_nums
+    return splited_sampled_datas
 
   @staticmethod
   def split_vertex(raw_datas, splited_vidx):
@@ -637,7 +668,7 @@ class MeshSampling():
   def same_mask_nums(same_mask):
     same_nums = []
     for e in range(MeshSampling._full_edge_dis+1):
-      same_num = tf.reduce_sum(tf.cast(tf.equal(same_mask, e), tf.float64))
+      same_num = tf.reduce_sum(tf.cast(tf.equal(same_mask, e), tf.int32))
       same_nums.append(same_num)
     return same_nums
 
@@ -672,7 +703,7 @@ class MeshSampling():
   def up_sampling_mesh( _num_vertex_sp, raw_datas):
     MeshSampling.show_datas_shape(raw_datas)
     if isinstance(raw_datas['xyz'], tf.Tensor):
-      num_vertex0 = raw_datas['xyz'].shape[0].value
+      num_vertex0 = tf.shape(raw_datas['xyz'])[0]
     else:
       num_vertex0 = raw_datas['xyz'].shape[0]
     duplicate_num = _num_vertex_sp - num_vertex0
@@ -680,11 +711,10 @@ class MeshSampling():
     raw_datas['same_category_mask']  = tf.cast(raw_datas['same_category_mask'], tf.int32)
     raw_datas['same_normal_mask']  = tf.cast(raw_datas['same_normal_mask'], tf.int32)
     for item in raw_datas:
-      is_vertex = tf.equal(raw_datas[item].shape[0], num_vertex0)
-      def duplicate_last():
+      is_vertex = item in MeshSampling._vertex_eles
+      if is_vertex:
         duplicated = tf.tile(raw_datas[item][-1:,:], [duplicate_num, 1])
         raw_datas[item] = tf.concat([raw_datas[item], duplicated], 0)
-      tf.cond(is_vertex, duplicate_last, tf.no_op)
     raw_datas['same_category_mask']  = tf.cast(raw_datas['same_category_mask'], tf.int8)
     raw_datas['same_normal_mask']  = tf.cast(raw_datas['same_normal_mask'], tf.int8)
     return raw_datas
@@ -704,7 +734,13 @@ class MeshSampling():
     for item in raw_datas:
       if item == 'vertex_idx_per_face':
         continue
-      sp_indices = tf.cond( tf.equal(raw_datas[item].shape[0], num_vertex0),
+      is_vertex_0 = tf.equal(tf.shape(raw_datas[item])[0], num_vertex0)
+      is_vertex = item in MeshSampling._vertex_eles
+      check0 = tf.assert_equal(is_vertex, is_vertex_0)
+      with tf.control_dependencies([check0]):
+        is_vertex = tf.identity(is_vertex)
+
+      sp_indices = tf.cond(is_vertex,
                            lambda: vertex_sp_indices,
                            lambda: face_sp_indices )
       raw_datas[item] = tf.gather(raw_datas[item], sp_indices)
@@ -726,7 +762,7 @@ class MeshSampling():
   def down_sampling_vertex(same_normal_mask, _num_vertex_sp):
     same_normal_mask = tf.squeeze(same_normal_mask)
     num_vertex0 = same_normal_mask.shape[0].value
-    sampling_rate = 1.0 * _num_vertex_sp / num_vertex0
+    sampling_rate = 1.0 * tf.cast(_num_vertex_sp, tf.float32) / num_vertex0
     print('org num:{}, sampled num:{}, sampling_rate:{}'.format(
                                   num_vertex0, _num_vertex_sp, sampling_rate))
     del_num = num_vertex0 - _num_vertex_sp
@@ -758,8 +794,10 @@ class MeshSampling():
 
     #*********************
     complex_indices = tf.squeeze(tf.where(tf.less(same_normal_mask, max_dis)),1)
+    complex_indices = tf.cast(complex_indices, tf.int32)
     complex_num = tf.shape(complex_indices)[0]
     simple_indices = tf.squeeze(tf.where(tf.greater_equal(same_normal_mask, max_dis)),1)
+    simple_indices = tf.cast(simple_indices, tf.int32)
     simple_num = tf.shape(simple_indices)[0]
     # max_dis>0: simple vertices are enough to del. Keep all complex, rm from
     # simple: complex_indices + part of simple_indices
@@ -778,12 +816,16 @@ class MeshSampling():
       vertex_sp_indices = tf.gather(complex_indices, tmp)
       return vertex_sp_indices
 
-
     vertex_sp_indices = tf.cond(simple_is_enough_to_rm,
                                   rm_part_of_simple_only,
                                   rm_all_simple_partof_complex )
 
     vertex_sp_indices = tf.contrib.framework.sort(vertex_sp_indices)
+
+    check_s = tf.assert_equal(tf.shape(vertex_sp_indices)[0], _num_vertex_sp)
+    with tf.control_dependencies([check_s]):
+      vertex_sp_indices = tf.identity(vertex_sp_indices)
+    vertex_sp_indices.set_shape([_num_vertex_sp])
 
     if MeshSampling._check_optial:
       # check no duplicate
@@ -803,12 +845,14 @@ class MeshSampling():
       _num_vertex_sp = vertex_sp_indices.shape[0]
     vertex_sp_indices = tf.expand_dims(tf.cast(vertex_sp_indices, tf.int32),1)
     # scatter new vertex index
-    raw_vidx_2_sp_vidx = tf.scatter_nd(vertex_sp_indices, tf.range(_num_vertex_sp)+1, [num_vertex0])-1
+    raw_vidx_2_sp_vidx = tf.scatter_nd(vertex_sp_indices,
+                                tf.range(_num_vertex_sp)+1, [num_vertex0])-1
     vertex_idx_per_face_new = tf.gather(raw_vidx_2_sp_vidx, vertex_idx_per_face)
 
     # rm lost faces
     remain_mask = tf.reduce_all(tf.greater(vertex_idx_per_face_new, -1),1)
     face_sp_indices = tf.squeeze(tf.where(remain_mask), 1)
+    face_sp_indices = tf.cast(face_sp_indices, tf.int32)
 
     vertex_idx_per_face_new = tf.gather(vertex_idx_per_face_new, face_sp_indices)
 
@@ -875,19 +919,6 @@ class MeshSampling():
     '''
     numpy inputs
     '''
-
-  @staticmethod
-  def main_get_fidx_nbrv_per_vertex(vertex_idx_per_face, num_vertex0):
-    with tf.Graph().as_default():
-      vertex_idx_per_face_pl = tf.placeholder(tf.int32, [None,3], 'vertex_idx_per_face')
-      num_vertex0_pl = tf.placeholder(tf.int32, [], 'num_vertex0')
-      face_idx_per_vertex_pl = MeshSampling.get_fidx_nbrv_per_vertex(vertex_idx_per_face_pl, num_vertex0_pl)
-
-      with tf.Session() as sess:
-        face_idx_per_vertex = sess.run(face_idx_per_vertex_pl, feed_dict={
-          vertex_idx_per_face_pl: vertex_idx_per_face,
-          num_vertex0_pl: num_vertex0})
-        return face_idx_per_vertex, fidx_pv_empty_mask
 
 
 
