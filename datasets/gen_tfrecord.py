@@ -51,6 +51,7 @@ class Raw_To_Tfrecord():
     if not os.path.exists(self.data_path):
       os.makedirs(self.data_path)
     self.num_point = num_point
+    self.num_face = num_point * 2
     self.block_size = block_size
     if type(block_size)!=type(None):
       self.block_stride = block_size * 0.5
@@ -112,7 +113,7 @@ class Raw_To_Tfrecord():
     self.eles_sorted['vertex_i'] = [e for e in Vertex_ieles if e in all_eles]
     self.eles_sorted['face_i'] = [e for e in Face_ieles if e in all_eles]
 
-  def record_metas(self, raw_datas, dls):
+  def record_shape_idx(self, raw_datas, dls):
     ele_idxs = {}
     for item in self.eles_sorted:
       ele_idxs[item] = {}
@@ -123,13 +124,11 @@ class Raw_To_Tfrecord():
         n += shape_i[-1]
     self.ele_idxs = ele_idxs
 
-    metas_fn = os.path.join(self.tfrecord_path, 'metas.txt')
+    metas_fn = os.path.join(self.tfrecord_path, 'shape_idx.txt')
     with open(metas_fn, 'w') as f:
       f.write('dataset_name:{}\n'.format(self.dataset_name))
       for item in self.eles_sorted:
         shape = dls[item].shape
-        if self.num_point!=None:
-          shape = (self.num_point,) + shape[1:]
         shape_str = ','.join([str(k) for k in shape])
         shape_str = 'shape: {}: {}\n'.format(item, shape_str)
         f.write(shape_str)
@@ -143,7 +142,6 @@ class Raw_To_Tfrecord():
         f.write('indices: labels: label_category: 0\n')
       f.flush()
     print('write ok: {}'.format(metas_fn))
-    pass
 
   def split_vertex(self, xyz):
     if type(self.block_size) == type(None):
@@ -248,8 +246,8 @@ class Raw_To_Tfrecord():
     num_points_splited = [e.shape[0] if type(e)!=type(None) else raw_datas['xyz'].shape[0]\
                           for e in splited_vidx]
 
-    #main_split_sampling_rawmesh = MeshSampling.eager_split_sampling_rawmesh
-    main_split_sampling_rawmesh = MeshSampling.sess_split_sampling_rawmesh
+    main_split_sampling_rawmesh = MeshSampling.eager_split_sampling_rawmesh
+    #main_split_sampling_rawmesh = MeshSampling.sess_split_sampling_rawmesh
     splited_sampled_datas, raw_vertex_nums = main_split_sampling_rawmesh(
                           raw_datas, self.num_point, splited_vidx)
 
@@ -263,7 +261,7 @@ class Raw_To_Tfrecord():
     return block_num, valid_block_num, num_points_splited
 
   def transfer_one_block(self, tfrecord_fn, block_sampled_datas, raw_vertex_num):
-    from tfrecord_util import bytes_feature
+    from tfrecord_util import bytes_feature, int64_feature
 
     if not hasattr(self, 'eles_sorted'):
       self.sort_eles(block_sampled_datas.keys())
@@ -278,13 +276,20 @@ class Raw_To_Tfrecord():
         dls[item] = np.concatenate(dls[item], -1)
 
     #*************************************************************************
+    # fix face_i shape
+    face_shape = dls['face_i'].shape
+    assert face_shape[0] <= self.num_face, "face num > buffer"
+    tmp = np.ones([self.num_face - face_shape[0], face_shape[1]], np.int32) * (-777)
+    dls['face_i'] = np.concatenate([dls['face_i'], tmp], 0)
+
+    #*************************************************************************
     # convert to expample
     assert dls['vertex_i'].dtype == np.int32
     assert dls['vertex_f'].dtype == np.float32
     assert dls['face_i'].dtype == np.int32
     if not hasattr(self, 'ele_idxs'):
-      self.record_metas(block_sampled_datas, dls)
-      #print(self.ele_idxs)
+      self.record_shape_idx(block_sampled_datas, dls)
+      print(self.ele_idxs)
 
     max_category =  np.max(dls['face_i'][:, self.ele_idxs['face_i']['label_category']])
     assert max_category < self.dataset_meta.num_classes, "max_category {} > {}".format(\
@@ -300,7 +305,8 @@ class Raw_To_Tfrecord():
       'vertex_f': bytes_feature(vertex_f_bin),
       'vertex_i': bytes_feature(vertex_i_bin),
       'face_i':   bytes_feature(face_i_bin),
-      #'valid_num':int64_feature(raw_vertex_num)
+      #'raw_num_vertex':int64_feature(raw_vertex_num),
+      'valid_num_face':int64_feature(face_shape[0])
     }
 
     example = tf.train.Example(features=tf.train.Features(feature=features_map))
@@ -311,18 +317,6 @@ class Raw_To_Tfrecord():
 
     if self.fi %50 ==0:
       print('{}/{} write tfrecord OK: {}'.format(self.fi, self.fn, tfrecord_fn))
-
-
-
-def write_dataset_summary(dataset_summary, data_dir):
-  import pickle, shutil
-  summary_path = os.path.join(data_dir, 'summary.pkl')
-  dataset_summary['intact'] = True
-  with open(summary_path, 'w') as sf:
-    pickle.dump(dataset_summary, sf)
-    print(summary_path)
-  print_script = os.path.join(BASE_DIR,'print_pkl.py')
-  shutil.copyfile(print_script,os.path.join(data_dir,'print_pkl.py'))
 
 
 def read_dataset_summary(data_dir):
@@ -356,111 +350,6 @@ def get_label_num_weights(dataset_summary, loss_lw_gama):
       plt.plot(label_hist, weights[gama], '.', label=str(gama))
     plt.legend()
     plt.show()
-
-
-def get_dset_shape_idxs(tf_path):
-  metas_fn = os.path.join(tf_path, 'metas.txt')
-  with open(metas_fn, 'r') as mf:
-    dset_metas = {}
-    dataset_name = ''
-
-    shapes = {}
-    shapes['points'] = {}
-    shapes['labels'] = {}
-    dset_metas['shape'] = shapes
-
-    indices = {}
-    indices['points'] = {}
-    indices['labels'] = {}
-    dset_metas['indices'] = indices
-
-    for line in mf:
-      tmp = line.split(':')
-      tmp = [e.strip() for e in tmp]
-      assert tmp[0] == 'indices' or tmp[0]=='shape' or tmp[0] == 'dataset_name'
-      if tmp[0]!='dataset_name':
-        assert tmp[1] == 'points' or tmp[1]=='labels'
-
-      if tmp[0] == 'dataset_name':
-        dset_metas['dataset_name'] = tmp[1]
-      elif tmp[0] == 'shape':
-        value = [int(e) for e in tmp[2].split(',')]
-        dset_metas[tmp[0]][tmp[1]] = value
-      elif tmp[0] == 'indices':
-        value = [int(e) for e in tmp[3].split(',')]
-        dset_metas[tmp[0]][tmp[1]][tmp[2]] = value
-      else:
-        raise NotImplementedError
-    return dset_metas
-
-
-def get_dataset_summary(dataset_name, tf_path, loss_lw_gama=2):
-  dset_metas = get_dset_shape_idxs(tf_path)
-  dataset_summary = read_dataset_summary(tf_path)
-  if dataset_summary['intact']:
-    print('dataset_summary intact, no need to read')
-    get_label_num_weights(dataset_summary, loss_lw_gama)
-    return dataset_summary
-
-  data_path = os.path.join(tf_path, 'merged_data')
-  filenames = glob.glob(os.path.join(data_path,'*.tfrecord'))
-  assert len(filenames) > 0, data_path
-
-  datasets_meta = DatasetsMeta(dataset_name)
-  num_classes = datasets_meta.num_classes
-
-  with tf.Graph().as_default():
-    dataset = tf.data.TFRecordDataset(filenames,
-                                      compression_type="",
-                                      buffer_size=1024*100,
-                                      num_parallel_reads=1)
-
-    batch_size = 1
-    is_training = False
-
-    dataset = dataset.prefetch(buffer_size=batch_size)
-    dataset = dataset.apply(
-      tf.contrib.data.map_and_batch(
-        lambda value: parse_pl_record(value, is_training, dset_metas),
-        batch_size=batch_size,
-        num_parallel_batches=1,
-        drop_remainder=False))
-    dataset = dataset.prefetch(buffer_size=tf.contrib.data.AUTOTUNE)
-    get_next = dataset.make_one_shot_iterator().get_next()
-
-    with tf.Session() as sess:
-      m = 0
-      n = 0
-      label_hist = np.zeros(num_classes)
-
-
-      #features, labels = sess.run(get_next)
-      ##category_label = labels[:, dset_metas['labels']['label_category']]
-      #label_hist += np.histogram(category_label, range(num_classes+1))[0]
-
-      try:
-        print('start reading all the dataset to get summary')
-        while(True):
-          features, labels = sess.run(get_next)
-          assert len(labels.shape) == 3
-          assert len(features['points'].shape) == 3
-          assert len(features['valid_num_point'].shape) == 2
-          category_label = labels[:, :, \
-                           dset_metas['indices']['labels']['label_category'][0]]
-          label_hist += np.histogram(category_label, range(num_classes+1))[0]
-          if m%10==0:
-            print('%d  %d'%(m,n))
-          m += 1
-          n += category_label.size
-      except:
-        print('Total: %d  %d'%(m,n))
-        print(label_hist)
-      dataset_summary = {}
-      dataset_summary['size'] = n
-      dataset_summary['label_hist'] = label_hist
-      write_dataset_summary(dataset_summary, tf_path)
-      get_label_num_weights(dataset_summary, loss_lw_gama)
-      return dataset_summary
 
 
 def main_write(dataset_name, rawh5_glob, tfrecord_path, num_point, block_size):
@@ -597,11 +486,8 @@ def main_matterport():
   num_point = {'MODELNET40':None, 'MATTERPORT':150000}
   block_size = {'MODELNET40':None, 'MATTERPORT':np.array([5.0, 5.0, 5.0]) }
 
-  #num_point = {'MODELNET40':None, 'MATTERPORT':15000}
-  #block_size = {'MODELNET40':None, 'MATTERPORT':np.array([2.0, 2.0, 5.0]) }
-
   #raw_glob = os.path.join(dset_path, '*/*/region_segmentations/*.ply')
-  raw_glob = os.path.join(dset_path, '17DRP5sb8fy/*/region_segmentations/*.ply')
+  raw_glob = os.path.join(dset_path, '17DRP5sb8fy/*/region_segmentations/region*.ply')
   tfrecord_path = '/DS/Matterport3D/MATTERPORT_TF/mesh_tfrecord'
 
   main_write(dataset_name, raw_glob, tfrecord_path, num_point[dataset_name],\
@@ -612,7 +498,6 @@ def main_matterport():
   #main_gen_ply(dataset_name, tfrecord_path)
 
   #get_dataset_summary(dataset_name, tfrecord_path)
-  #get_dset_shape_idxs(tfrecord_path)
 
 
 if __name__ == '__main__':

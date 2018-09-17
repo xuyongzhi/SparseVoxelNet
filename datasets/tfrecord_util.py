@@ -10,9 +10,6 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(BASE_DIR)
 ROOT_DIR = os.path.dirname(BASE_DIR)
 
-Points_eles_order = ['xyz','nxnynz', 'color']
-Label_eles_order = ['label_category', 'label_instance', 'label_material', 'label_raw_category']
-
 MAX_FLOAT_DRIFT = 1e-6
 DEBUG = False
 
@@ -42,13 +39,13 @@ def int64_feature(values):
   return tf.train.Feature(int64_list=tf.train.Int64List(value=values))
 
 
-def rm_some_labels(points, labels, valid_num_point, dset_metas):
-  if dset_metas['dataset_name'] == 'MODELNET40':
+def rm_some_labels(points, vertex_i, labels, dset_shape_idx):
+  if dset_shape_idx['dataset_name'] == 'MODELNET40':
     return points, labels
-  elif dset_metas['dataset_name'] == 'MATTERPORT':
+  elif dset_shape_idx['dataset_name'] == 'MATTERPORT':
     assert len(points.shape) == 2
     org_num_point = points.shape[0].value
-    label_category = labels[:, dset_metas['indices']['labels']['label_category'][0]]
+    label_category = labels[:, dset_shape_idx['indices']['face_i']['label_category'][0]]
     mask_void = tf.equal(label_category, 0)    # void
     mask_unlabeled = tf.equal(label_category, 41)  # unlabeld
 
@@ -81,121 +78,47 @@ def rm_some_labels(points, labels, valid_num_point, dset_metas):
     labels = tf.concat([labels, sampling(labels)], 0)
     points.set_shape([org_num_point, points.shape[1].value])
     labels.set_shape([org_num_point, labels.shape[1].value])
+    import pdb; pdb.set_trace()  # XXX BREAKPOINT
     return points, labels
 
 
-def parse_pl_record(tfrecord_serialized, is_training, dset_metas=None, bsg=None,\
-                    is_rm_void_labels=True, gen_ply=False):
-    from aug_data_tf import aug_main, aug_views
-    assert dset_metas!=None, "current vertion data do not have shape info"
-    #if dset_metas!=None:
+def parse_pl_record(tfrecord_serialized, is_training, dset_shape_idx, bsg=None,\
+                    is_rm_void_labels=False, gen_ply=False):
+    from utils.aug_data_tf import aug_main, aug_views
+    #if dset_shape_idx!=None:
     #  from aug_data_tf import aug_data, tf_Rz
     #  R = tf_Rz(1)
     #  import pdb; pdb.set_trace()  # XXX BREAKPOINT
-    feature_map = {
-        'points/encoded': tf.FixedLenFeature([], tf.string),
-        'labels/encoded': tf.FixedLenFeature([], tf.string),
-        'valid_num':      tf.FixedLenFeature([1], tf.int64, default_value=-1)
+    features_map = {
+        'vertex_f': tf.FixedLenFeature([], tf.string),
+        'vertex_i': tf.FixedLenFeature([], tf.string),
+        'face_i':   tf.FixedLenFeature([], tf.string),
+        'valid_num_face': tf.FixedLenFeature([1], tf.int64, default_value=-1)
     }
-    if dset_metas == None:
-      feature_map1 = {
-          'points/shape': tf.FixedLenFeature([], tf.string),
-          'labels/shape': tf.FixedLenFeature([], tf.string),
-      }
-      feature_map.update(feature_map1)
 
     tfrecord_features = tf.parse_single_example(tfrecord_serialized,
-                                                features=feature_map,
+                                                features=features_map,
                                                 name='pl_features')
 
     #*************
-    labels = tf.decode_raw(tfrecord_features['labels/encoded'], tf.int32)
-    if dset_metas == None:
-      labels_shape = tf.decode_raw(tfrecord_features['labels/shape'], tf.int32)
-    else:
-      labels_shape = dset_metas['shape']['labels']
-    labels = tf.reshape(labels, labels_shape)
+    vertex_i = tf.decode_raw(tfrecord_features['vertex_i'], tf.int32)
+    vertex_i = tf.reshape(vertex_i, dset_shape_idx['shape']['vertex_i'])
+
+    vertex_f = tf.decode_raw(tfrecord_features['vertex_f'], tf.float32)
+    vertex_f = tf.reshape(vertex_f, dset_shape_idx['shape']['vertex_f'])
+
+    face_i = tf.decode_raw(tfrecord_features['face_i'], tf.int32)
+    face_i = tf.reshape(face_i, dset_shape_idx['shape']['face_i'])
+    valid_num_face = tfrecord_features['valid_num_face']
+    #*************
+    if is_rm_void_labels:
+      vertex_f, vertex_i, face_i = rm_some_labels(vertex_f, vertex_i, face_i, dset_shape_idx)
 
     #*************
-    points = tf.decode_raw(tfrecord_features['points/encoded'], tf.float32)
-    if dset_metas == None:
-      points_shape = tf.decode_raw(tfrecord_features['points/shape'], tf.int32)
-    else:
-      points_shape = dset_metas['shape']['points']
-    # the points tensor is flattened out, so we have to reconstruct the shape
-    points = tf.reshape(points, points_shape)
-
-    valid_num_point = tf.cast(tfrecord_features['valid_num'], tf.int32)
-
-    if is_rm_void_labels:
-      points, labels = rm_some_labels(points, labels, valid_num_point, dset_metas)
-    # ------------------------------------------------
-    #             data augmentation
-    features = {}
-    b_bottom_centers_mm = []
-    if is_training:
-      if dset_metas != None and 'aug_types' in dset_metas and dset_metas['aug_types']!='none':
-        points, b_bottom_centers_mm, augs = aug_main(points, b_bottom_centers_mm,
-                    dset_metas['aug_types'],
-                    dset_metas['indices'])
-        #features['augs'] = augs
-    else:
-      if dset_metas!=None and 'eval_views' in dset_metas and dset_metas['eval_views'] > 1:
-        #features['eval_views'] = dset_metas['eval_views']
-        points, b_bottom_centers_mm, augs = aug_views(points, b_bottom_centers_mm,
-                    dset_metas['eval_views'],
-                    dset_metas['indices'])
-    # ------------------------------------------------
-    #             grouping and sampling on line
-    if bsg!=None:
-      xyz = tf.expand_dims(points[:,0:3], 0)
-      ds = {}
-      grouped_pindex, vox_index, grouped_bot_cen_top, empty_mask, bot_cen_top, \
-        flatting_idx, flat_valid_mask, nblock_valid, others = \
-                        bsg.grouping_multi_scale(xyz)
-
-      assert bsg.batch_size == 1
-      bsi = 0
-
-      if gen_ply:
-        features['raw_points'] = points
-        features['raw_labels'] = labels
-
-      points, labels = gather_labels_for_each_gb(points, labels, grouped_pindex[0][bsi])
-
-      num_scale = len(grouped_bot_cen_top)
-      global_block_num = grouped_pindex[0].shape[2]
-      for s in range(num_scale+1):
-        if len(empty_mask) <= s:
-          continue
-        features['empty_mask_%d'%(s)] = tf.cast(empty_mask[s][bsi], tf.int8)
-        if vox_index[s].shape[0].value == 0:
-          features['vox_index_%d'%(s)] = tf.zeros([0]*4, tf.int32)
-        else:
-          features['vox_index_%d'%(s)] = vox_index[s][bsi]
-        if s==num_scale:
-          continue
-
-        features['grouped_pindex_%d'%(s)] = grouped_pindex[s][bsi]
-        features['grouped_bot_cen_top_%d'%(s)] = grouped_bot_cen_top[s][bsi]
-        features['bot_cen_top_%d'%(s)] = bot_cen_top[s][bsi]
-        features['flatting_idx_%d'%(s)] = flatting_idx[s]
-        features['flat_valid_mask_%d'%(s)] = flat_valid_mask[s]
-
-        if gen_ply:
-          features['nblock_valid_%d'%(s)] = nblock_valid[s]
-        #for k in range(len(others[s]['name'])):
-        #  name = others[s]['name'][k]+'_%d'%(s)
-        #  if name not in features:
-        #    features[name] = []
-        #  features[name].append( others[s]['value'][k][bsi] )
-
-    # ------------------------------------------------
-    features['points'] = points
-    features['valid_num_point'] = valid_num_point
+    features = {"vertex_i": vertex_i, "vertex_f": vertex_f}
+    labels = {"face_i": face_i, "valid_num_face": valid_num_face}
 
     return features, labels
-
 
 def gather_labels_for_each_gb(points, labels, grouped_pindex0):
   #grouped_pindex0 = tf.squeeze(grouped_pindex0, 1)
@@ -247,51 +170,51 @@ def get_label_num_weights(dataset_summary, loss_lw_gama):
 
 
 def get_dset_shape_idxs(tf_path):
-  metas_fn = os.path.join(tf_path, 'metas.txt')
+  metas_fn = os.path.join(tf_path, 'shape_idx.txt')
   with open(metas_fn, 'r') as mf:
-    dset_metas = {}
+    dset_shape_idx = {}
     dataset_name = ''
 
     shapes = {}
-    shapes['points'] = {}
-    shapes['labels'] = {}
-    dset_metas['shape'] = shapes
-
     indices = {}
-    indices['points'] = {}
-    indices['labels'] = {}
-    dset_metas['indices'] = indices
+    the_items = ['vertex_i', 'vertex_f', 'face_i']
+    for item in the_items:
+      shapes[item] = {}
+      indices[item] = {}
+    dset_shape_idx['shape'] = shapes
+    dset_shape_idx['indices'] = indices
 
     for line in mf:
       tmp = line.split(':')
       tmp = [e.strip() for e in tmp]
       assert tmp[0] == 'indices' or tmp[0]=='shape' or tmp[0] == 'dataset_name'
       if tmp[0]!='dataset_name':
-        assert tmp[1] == 'points' or tmp[1]=='labels'
+        assert tmp[1] in the_items
 
       if tmp[0] == 'dataset_name':
-        dset_metas['dataset_name'] = tmp[1]
+        dset_shape_idx['dataset_name'] = tmp[1]
       elif tmp[0] == 'shape':
         value = [int(e) for e in tmp[2].split(',')]
-        dset_metas[tmp[0]][tmp[1]] = value
+        dset_shape_idx[tmp[0]][tmp[1]] = value
       elif tmp[0] == 'indices':
         value = [int(e) for e in tmp[3].split(',')]
-        dset_metas[tmp[0]][tmp[1]][tmp[2]] = value
+        dset_shape_idx[tmp[0]][tmp[1]][tmp[2]] = value
       else:
         raise NotImplementedError
-    return dset_metas
+    return dset_shape_idx
 
 
-def get_dataset_summary(dataset_name, tf_path, loss_lw_gama=2):
-  dset_metas = get_dset_shape_idxs(tf_path)
+def get_dataset_summary(dataset_name, tf_path, loss_lw_gama=-1):
+  dset_shape_idx = get_dset_shape_idxs(tf_path)
   dataset_summary = read_dataset_summary(tf_path)
   if dataset_summary['intact']:
     print('dataset_summary intact, no need to read')
     get_label_num_weights(dataset_summary, loss_lw_gama)
     return dataset_summary
 
-  data_path = os.path.join(tf_path, 'merged_data')
-  filenames = glob.glob(os.path.join(data_path,'*.tfrecord'))
+  #data_path = os.path.join(tf_path, 'merged_data')
+  data_path = os.path.join(tf_path, 'data')
+  filenames = glob.glob(os.path.join(data_path,'*region*.tfrecord'))
   assert len(filenames) > 0, data_path
 
   datasets_meta = DatasetsMeta(dataset_name)
@@ -309,46 +232,51 @@ def get_dataset_summary(dataset_name, tf_path, loss_lw_gama=2):
     dataset = dataset.prefetch(buffer_size=batch_size)
     dataset = dataset.apply(
       tf.contrib.data.map_and_batch(
-        lambda value: parse_pl_record(value, is_training, dset_metas),
+        lambda value: parse_pl_record(value, is_training, dset_shape_idx),
         batch_size=batch_size,
         num_parallel_batches=1,
         drop_remainder=False))
     dataset = dataset.prefetch(buffer_size=tf.contrib.data.AUTOTUNE)
-    get_next = dataset.make_one_shot_iterator().get_next()
+    dset_iterater = dataset.make_one_shot_iterator()
 
     with tf.Session() as sess:
-      m = 0
-      n = 0
+      batch_num = 0
+      point_num = 0
       label_hist = np.zeros(num_classes)
-
-
-      #features, labels = sess.run(get_next)
-      ##category_label = labels[:, dset_metas['labels']['label_category']]
-      #label_hist += np.histogram(category_label, range(num_classes+1))[0]
-
       try:
-        print('start reading all the dataset to get summary')
+      #if True:
         while(True):
-          features, labels = sess.run(get_next)
-          assert len(labels.shape) == 3
-          assert len(features['points'].shape) == 3
-          assert len(features['valid_num_point'].shape) == 2
-          category_label = labels[:, :, \
-                           dset_metas['indices']['labels']['label_category'][0]]
+          features, labels = sess.run(dset_iterater.get_next())
+
+          valid_num_face = labels['valid_num_face']
+          category_idx = dset_shape_idx['indices']['face_i']['label_category']
+          category_label = labels['face_i'][:, :, category_idx]
           label_hist += np.histogram(category_label, range(num_classes+1))[0]
-          if m%10==0:
-            print('%d  %d'%(m,n))
-          m += 1
-          n += category_label.size
+
+          batch_num += 1
+          point_num += np.sum(labels['valid_num_face'])
+          print('Total: %d  %d'%(batch_num, point_num))
+
       except:
-        print('Total: %d  %d'%(m,n))
         print(label_hist)
+        print(sys.exc_info()[0])
+
       dataset_summary = {}
-      dataset_summary['size'] = n
+      dataset_summary['size'] = batch_num
       dataset_summary['label_hist'] = label_hist
       write_dataset_summary(dataset_summary, tf_path)
       get_label_num_weights(dataset_summary, loss_lw_gama)
       return dataset_summary
+
+def write_dataset_summary(dataset_summary, data_dir):
+  import pickle, shutil
+  summary_path = os.path.join(data_dir, 'summary.pkl')
+  dataset_summary['intact'] = True
+  with open(summary_path, 'w') as sf:
+    pickle.dump(dataset_summary, sf)
+    print(summary_path)
+  print_script = os.path.join(BASE_DIR,'print_pkl.py')
+  shutil.copyfile(print_script,os.path.join(data_dir,'print_pkl.py'))
 
 
 
@@ -356,6 +284,8 @@ class MeshSampling():
   _full_edge_dis = 3
   _max_norm_dif_angle = 15.0
   _check_optial = True
+
+  _max_nf_perv = 10
 
   _vertex_eles = ['color', 'xyz', 'nxnynz', 'face_idx_per_vertex', \
                   'edges_per_vertex', 'edges_pv_empty_mask', 'fidx_pv_empty_mask',\
@@ -567,6 +497,7 @@ class MeshSampling():
     with tf.control_dependencies([check_vertex_num]):
       nface_per_v = tf.identity(nface_per_v)
     max_nf_perv = tf.reduce_max(nface_per_v)
+    max_nf_perv = tf.maximum(max_nf_perv, MeshSampling._max_nf_perv)
     mean_nf_perv = tf.reduce_mean(nface_per_v)
     min_nf_perv = tf.reduce_min(nface_per_v)
 
@@ -585,6 +516,9 @@ class MeshSampling():
     face_idx_per_vertex = tf.scatter_nd(vidx_fidxperv, vidx_fidx_flat_sorted[:,1]+1, \
                                     [num_vertex0, max_nf_perv]) - 1
     fidx_pv_empty_mask = tf.cast(tf.equal(face_idx_per_vertex, -1), tf.bool)
+
+    face_idx_per_vertex = face_idx_per_vertex[:, 0:MeshSampling._max_nf_perv]
+    fidx_pv_empty_mask = fidx_pv_empty_mask[:, 0:MeshSampling._max_nf_perv]
 
     # set -1 as 0
     face_idx_per_vertex += tf.cast(fidx_pv_empty_mask, tf.int32)
@@ -610,6 +544,7 @@ class MeshSampling():
                                      [num_vertex0, max_nf_perv, 2])-1
 
     edges_per_vertex = tf.reshape(edges_per_vertex, [num_vertex0, max_nf_perv*2])
+    edges_per_vertex = edges_per_vertex[:, 0:MeshSampling._max_nf_perv*2]
     edges_pv_empty_mask = tf.cast(tf.equal(edges_per_vertex, -1), tf.bool)
     # set -1 as 0
     edges_per_vertex += tf.cast(edges_pv_empty_mask, tf.int32)
@@ -928,5 +863,11 @@ class MeshSampling():
     '''
 
 
+
+if __name__ == '__main__':
+  dataset_name = 'MATTERPORT'
+  dset_path = '/DS/Matterport3D/Matterport3D_WHOLE_extracted/v1/scans'
+  tfrecord_path = '/DS/Matterport3D/MATTERPORT_TF/mesh_tfrecord'
+  get_dataset_summary(dataset_name, tfrecord_path)
 
 
