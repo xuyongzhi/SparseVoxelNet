@@ -10,8 +10,11 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(BASE_DIR)
 ROOT_DIR = os.path.dirname(BASE_DIR)
 
-Points_eles_order = ['xyz','nxnynz', 'color']
-Label_eles_order = ['label_category', 'label_instance', 'label_material', \
+Vertex_feles = ['xyz','nxnynz', 'color']
+Vertex_ieles = ['face_idx_per_vertex', 'fidx_pv_empty_mask', \
+                'edges_per_vertex','edges_pv_empty_mask',\
+                'same_normal_mask', 'same_category_mask']
+Face_ieles = ['label_category', 'label_instance', 'label_material', \
                     'label_raw_category', 'vertex_idx_per_face', 'label_simplity']
 
 MAX_FLOAT_DRIFT = 1e-6
@@ -53,6 +56,7 @@ class Raw_To_Tfrecord():
       self.block_stride = block_size * 0.5
     self.min_pn_inblock = min(self.num_point * 0.1, 2000)
     self.sampling_rates = []
+    self.dataset_meta = DatasetsMeta(self.dataset_name)
 
   def __call__(self, rawfns):
     bsfn0 = os.path.join(self.tfrecord_path, 'block_split_settings.txt')
@@ -69,6 +73,7 @@ class Raw_To_Tfrecord():
 
     self.fn = len(rawfns)
     #rawfns = rawfns[5577:]
+    rawfns.sort()
     for fi, rawfn in enumerate(rawfns):
       self.fi = fi
       region_name = os.path.splitext(os.path.basename(rawfn))[0]
@@ -100,11 +105,12 @@ class Raw_To_Tfrecord():
 
   def sort_eles(self, all_eles):
     # elements *************************
-    tmp = [e in Points_eles_order + Label_eles_order for e in all_eles]
+    tmp = [e in Vertex_feles + Vertex_ieles + Face_ieles for e in all_eles]
     assert sum(tmp) == len(tmp)
     self.eles_sorted = {}
-    self.eles_sorted['points'] = [e for e in Points_eles_order if e in all_eles]
-    self.eles_sorted['labels'] = [e for e in Label_eles_order if e in all_eles]
+    self.eles_sorted['vertex_f'] = [e for e in Vertex_feles if e in all_eles]
+    self.eles_sorted['vertex_i'] = [e for e in Vertex_ieles if e in all_eles]
+    self.eles_sorted['face_i'] = [e for e in Face_ieles if e in all_eles]
 
   def record_metas(self, raw_datas, dls):
     ele_idxs = {}
@@ -139,9 +145,9 @@ class Raw_To_Tfrecord():
     print('write ok: {}'.format(metas_fn))
     pass
 
-  def split_pcl(self, xyz):
+  def split_vertex(self, xyz):
     if type(self.block_size) == type(None):
-      return None
+      return [None], 1
 
     xyz_min = np.min(xyz, 0)
     xyz_max = np.max(xyz, 0)
@@ -161,11 +167,11 @@ class Raw_To_Tfrecord():
     top = bot + block_size
 
     block_num = bot.shape[0]
-    print('raw scope:\n{} \nblock_num:{}'.format(xyz_scope, block_num))
-    print('splited bot:\n{} splited top:\n{}'.format(bot, top))
+    #print('raw scope:\n{} \nblock_num:{}'.format(xyz_scope, block_num))
+    #print('splited bot:\n{} splited top:\n{}'.format(bot, top))
 
     if block_num == 1:
-      return None
+      return [None],  block_num
 
     if block_num>1:
       for i in range(block_num):
@@ -194,7 +200,7 @@ class Raw_To_Tfrecord():
         continue
       num_points_splited.append(num_point_i)
       splited_vidx.append(indices)
-    return splited_vidx
+    return splited_vidx, block_num
 
 
   @staticmethod
@@ -214,25 +220,6 @@ class Raw_To_Tfrecord():
     import pdb; pdb.set_trace()  # XXX BREAKPOINT
     pass
 
-  def sampling(self, dls):
-    if self.num_point == None:
-      return dls
-    print('org num:{} sampled num:{}'.format(dls['points'].shape[0], self.num_point))
-    num_point0 = dls['points'].shape[0]
-    sampling_rate = 1.0 * self.num_point / num_point0
-    point_sampling_indices = random_choice(np.arange(num_point0), self.num_point,\
-                                     keeporder=True, only_tile_last_one=False)
-    dls['points'] = np.take(dls['points'], point_sampling_indices, axis=0)
-    vertex_idx_per_face = Raw_To_Tfrecord.downsample_face(\
-              dls['labels'][:, self.ele_idxs['labels']['vertex_idx_per_face']],\
-              point_sampling_indices, num_point0)
-
-    import pdb; pdb.set_trace()  # XXX BREAKPOINT
-    self.sampling_rates.append(sampling_rate)
-    if len(self.sampling_rates) % 10 == 0:
-      ave_samplings_rate = np.mean(self.sampling_rates)
-      print('sampled num point/ real:{:.2f}'.format(ave_samplings_rate))
-    return dls
 
   def get_label_MODELNET40(self):
     # get label for MODELNET40
@@ -251,73 +238,78 @@ class Raw_To_Tfrecord():
     base_name = os.path.splitext(os.path.basename(rawfn))[0]
     base_name1 = os.path.basename(os.path.dirname(os.path.dirname(rawfn)))
     base_name = base_name1 + '_' + base_name
-    dataset_meta = DatasetsMeta(self.dataset_name)
 
     # ['label_material', 'label_category', 'vertex_idx_per_face', 'color',
     # 'xyz', 'nxnynz', 'label_raw_category', 'label_instance']
     raw_datas = parse_ply_file(rawfn)
 
-    splited_vidx = self.split_pcl(raw_datas['xyz'])
+    splited_vidx, block_num = self.split_vertex(raw_datas['xyz'])
+    valid_block_num = len(splited_vidx)
+    num_points_splited = [e.shape[0] if type(e)!=type(None) else raw_datas['xyz'].shape[0]\
+                          for e in splited_vidx]
 
-    sampled_datas = MeshSampling.main_split_sampling_rawmesh(
+    splited_sampled_datas, raw_vertex_nums = MeshSampling.eager_split_sampling_rawmesh(
                           raw_datas, self.num_point, splited_vidx)
 
 
     print('starting {} th file: {}'.format(self.fi, rawfn))
+    for bi in range(block_num):
+      tmp = '' if block_num==1 else '_'+str(bi)
+      tfrecord_fn = os.path.join(self.data_path, base_name)+tmp + '.tfrecord'
+      self.transfer_one_block(tfrecord_fn, splited_sampled_datas[bi], raw_vertex_nums[bi])
+    print('finish {} th file: {}'.format(self.fi, rawfn))
+    return block_num, valid_block_num, num_points_splited
+
+  def transfer_one_block(self, tfrecord_fn, block_sampled_datas, raw_vertex_num):
+    from tfrecord_util import bytes_feature
+
     if not hasattr(self, 'eles_sorted'):
-      self.sort_eles(raw_datas.keys())
+      self.sort_eles(block_sampled_datas.keys())
     #*************************************************************************
     dls = {}
     for item in self.eles_sorted:
       dls[item] = []
       for e in self.eles_sorted[item]:
-        data = raw_datas[e]
+        data = block_sampled_datas[e]
         dls[item].append( data )
       if len(dls[item]) >  0:
         dls[item] = np.concatenate(dls[item], -1)
 
     #*************************************************************************
     # convert to expample
-    dls['points'] = dls['points'].astype(np.float32, casting='same_kind')
-    dls['labels'] = dls['labels'].astype(np.int32, casting='same_kind')
+    assert dls['vertex_i'].dtype == np.int32
+    assert dls['vertex_f'].dtype == np.float32
+    assert dls['face_i'].dtype == np.int32
     if not hasattr(self, 'ele_idxs'):
-      self.record_metas(raw_datas, dls)
+      self.record_metas(block_sampled_datas, dls)
+      #print(self.ele_idxs)
 
-    max_category =  np.max(dls['labels'][:, self.ele_idxs['labels']['label_category']])
-    assert max_category < dataset_meta.num_classes, "max_category {} > {}".format(\
-                                          max_category, dataset_meta.num_classes)
+    max_category =  np.max(dls['face_i'][:, self.ele_idxs['face_i']['label_category']])
+    assert max_category < self.dataset_meta.num_classes, "max_category {} > {}".format(\
+                                          max_category, self.dataset_meta.num_classes)
 
-    import pdb; pdb.set_trace()  # XXX BREAKPOINT
-    assert valid_block_num==1, "split_pcl should split face as well"
-    block_num = len(dls_splited)
+    vertex_f_bin = dls['vertex_f'].tobytes()
+    vertex_i_shape_bin = np.array(dls['vertex_i'].shape, np.int32).tobytes()
+    vertex_i_bin = dls['vertex_i'].tobytes()
+    face_i_bin = dls['face_i'].tobytes()
 
-    for bk, ds0 in enumerate(dls_splited):
-      ds = self.sampling(ds0)
 
-      datas_bin = ds['points'].tobytes()
-      datas_shape_bin = np.array(ds['points'].shape, np.int32).tobytes()
-      labels_bin = ds['labels'].tobytes()
-      labels_shape_bin = np.array(ds['labels'].shape, np.int32).tobytes()
-      features_map = {
-        'points/encoded': bytes_feature(datas_bin),
-        #'points/shape':   bytes_feature(datas_shape_bin),
-        'labels/encoded': bytes_feature(labels_bin),
-        #'labels/shape':   bytes_feature(labels_shape_bin),
-        'valid_num':      int64_feature(num_points_splited[bk]) }
+    features_map = {
+      'vertex_f': bytes_feature(vertex_f_bin),
+      'vertex_i': bytes_feature(vertex_i_bin),
+      'face_i':   bytes_feature(face_i_bin),
+      #'valid_num':int64_feature(raw_vertex_num)
+    }
 
-      example = tf.train.Example(features=tf.train.Features(feature=features_map))
+    example = tf.train.Example(features=tf.train.Features(feature=features_map))
 
-      #*************************************************************************
-      tmp = '' if block_num==1 else '_'+str(bk)
-      tfrecord_fn = os.path.join(self.data_path, base_name)+tmp + '.tfrecord'
-      with tf.python_io.TFRecordWriter( tfrecord_fn ) as raw_tfrecord_writer:
-        raw_tfrecord_writer.write(example.SerializeToString())
+    #*************************************************************************
+    with tf.python_io.TFRecordWriter( tfrecord_fn ) as raw_tfrecord_writer:
+      raw_tfrecord_writer.write(example.SerializeToString())
 
-      if self.fi %50 ==0:
-        print('{}/{} write tfrecord OK: {}'.format(self.fi, self.fn, tfrecord_fn))
+    if self.fi %50 ==0:
+      print('{}/{} write tfrecord OK: {}'.format(self.fi, self.fn, tfrecord_fn))
 
-    import pdb; pdb.set_trace()  # XXX BREAKPOINT
-    return block_num, valid_block_num, num_points_splited
 
 
 def write_dataset_summary(dataset_summary, data_dir):
@@ -600,8 +592,8 @@ def gen_ply_onef(dataset_name, tf_path, filename, scene):
 def main_matterport():
   dataset_name = 'MATTERPORT'
   dset_path = '/DS/Matterport3D/Matterport3D_WHOLE_extracted/v1/scans'
-  num_point = {'MODELNET40':None, 'MATTERPORT':80000}
-  block_size = {'MODELNET40':None, 'MATTERPORT':np.array([2.5,2.5,2.5]) }
+  num_point = {'MODELNET40':None, 'MATTERPORT':150000}
+  block_size = {'MODELNET40':None, 'MATTERPORT':np.array([5.0, 5.0, 5.0]) }
 
   #raw_glob = os.path.join(dset_path, '*/*/region_segmentations/*.ply')
   raw_glob = os.path.join(dset_path, '17DRP5sb8fy/*/region_segmentations/*.ply')

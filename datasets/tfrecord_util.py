@@ -363,9 +363,28 @@ class MeshSampling():
   _face_eles = ['label_raw_category', 'label_instance', 'label_material', \
                 'label_category', 'vertex_idx_per_face', ]
 
+  _fi = 0
+
+  @staticmethod
+  def eager_split_sampling_rawmesh(raw_datas, _num_vertex_sp, splited_vidx):
+    start = MeshSampling._fi == 0
+    MeshSampling._fi += 1
+    if start:
+      tf.enable_eager_execution()
+    splited_sampled_datas, raw_vertex_nums = MeshSampling.main_split_sampling_rawmesh(
+                                      raw_datas, _num_vertex_sp, splited_vidx)
+    bn = len(splited_sampled_datas)
+    for bi in range(bn):
+      if isinstance(raw_vertex_nums[bi], tf.Tensor):
+        raw_vertex_nums[bi] = raw_vertex_nums[bi].numpy()
+
+      for item in splited_sampled_datas[bi]:
+        if isinstance(splited_sampled_datas[bi][item], tf.Tensor):
+          splited_sampled_datas[bi][item] = splited_sampled_datas[bi][item].numpy()
+    return splited_sampled_datas, raw_vertex_nums
+
   @staticmethod
   def main_split_sampling_rawmesh(raw_datas, _num_vertex_sp, splited_vidx):
-    tf.enable_eager_execution()
     num_vertex0 = raw_datas['xyz'].shape[0]
 
     is_show_shapes = True
@@ -405,14 +424,19 @@ class MeshSampling():
     #***************************************************************************
     # split mesh
     block_num = len(splited_vidx)
-    splited_datas = MeshSampling.split_vertex(raw_datas, splited_vidx)
+    if block_num==1:
+      splited_datas = [raw_datas]
+    else:
+      splited_datas = MeshSampling.split_vertex(raw_datas, splited_vidx)
 
     if IsGenply_Splited:
       for bi in range(block_num):
         MeshSampling.gen_mesh_ply_basic(splited_datas[bi], 'Splited' ,'Block_{}'.format(bi))
     #***************************************************************************
     # sampling
+    raw_vertex_nums = []
     for bi in range(block_num):
+      raw_vertex_nums.append(splited_datas[bi]['xyz'].shape[0])
       splited_datas[bi] = MeshSampling.sampling_mesh(
                                       _num_vertex_sp, splited_datas[bi])
     splited_sampled_datas = splited_datas
@@ -425,7 +449,7 @@ class MeshSampling():
     if is_show_shapes:
       MeshSampling.show_datas_shape(splited_sampled_datas, 'sampled datas')
 
-    return splited_sampled_datas
+    return splited_sampled_datas, raw_vertex_nums
 
   @staticmethod
   def split_vertex(raw_datas, splited_vidx):
@@ -634,7 +658,10 @@ class MeshSampling():
 
   @staticmethod
   def sampling_mesh( _num_vertex_sp, raw_datas):
-    num_vertex0 = raw_datas['xyz'].shape[0].value
+    if isinstance(raw_datas['xyz'], tf.Tensor):
+      num_vertex0 = raw_datas['xyz'].shape[0].value
+    else:
+      num_vertex0 = raw_datas['xyz'].shape[0]
     is_down_sampling = tf.less(_num_vertex_sp, num_vertex0)
     sampled_datas = tf.cond(is_down_sampling,
       lambda: MeshSampling.down_sampling_mesh(_num_vertex_sp, raw_datas),
@@ -644,7 +671,10 @@ class MeshSampling():
   @staticmethod
   def up_sampling_mesh( _num_vertex_sp, raw_datas):
     MeshSampling.show_datas_shape(raw_datas)
-    num_vertex0 = raw_datas['xyz'].shape[0].value
+    if isinstance(raw_datas['xyz'], tf.Tensor):
+      num_vertex0 = raw_datas['xyz'].shape[0].value
+    else:
+      num_vertex0 = raw_datas['xyz'].shape[0]
     duplicate_num = _num_vertex_sp - num_vertex0
 
     raw_datas['same_category_mask']  = tf.cast(raw_datas['same_category_mask'], tf.int32)
@@ -661,7 +691,10 @@ class MeshSampling():
 
   @staticmethod
   def down_sampling_mesh(_num_vertex_sp, raw_datas):
-    num_vertex0 = raw_datas['xyz'].shape[0].value
+    if isinstance(raw_datas['xyz'], tf.Tensor):
+      num_vertex0 = raw_datas['xyz'].shape[0].value
+    else:
+      num_vertex0 = raw_datas['xyz'].shape[0]
     vertex_sp_indices = MeshSampling.down_sampling_vertex(
                                 raw_datas['same_normal_mask'], _num_vertex_sp)
 
@@ -781,7 +814,7 @@ class MeshSampling():
 
     if MeshSampling._check_optial:
       max_vidx = tf.reduce_max(vertex_idx_per_face_new)
-      check0 = tf.assert_equal(max_vidx, _num_vertex_sp-1)
+      check0 = tf.assert_less_equal(max_vidx, _num_vertex_sp-1)
       with tf.control_dependencies([check0]):
         vertex_idx_per_face_new = tf.identity(vertex_idx_per_face_new)
 
