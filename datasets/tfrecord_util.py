@@ -82,7 +82,7 @@ def rm_some_labels(points, vertex_i, labels, dset_shape_idx):
     return points, labels
 
 
-def parse_pl_record(tfrecord_serialized, is_training, dset_shape_idx, bsg=None,\
+def parse_record(tfrecord_serialized, is_training, dset_shape_idx, \
                     is_rm_void_labels=False, gen_ply=False):
     from utils.aug_data_tf import aug_main, aug_views
     #if dset_shape_idx!=None:
@@ -119,6 +119,7 @@ def parse_pl_record(tfrecord_serialized, is_training, dset_shape_idx, bsg=None,\
     labels = {"face_i": face_i, "valid_num_face": valid_num_face}
 
     return features, labels
+
 
 def gather_labels_for_each_gb(points, labels, grouped_pindex0):
   #grouped_pindex0 = tf.squeeze(grouped_pindex0, 1)
@@ -232,7 +233,7 @@ def get_dataset_summary(dataset_name, tf_path, loss_lw_gama=-1):
     dataset = dataset.prefetch(buffer_size=batch_size)
     dataset = dataset.apply(
       tf.contrib.data.map_and_batch(
-        lambda value: parse_pl_record(value, is_training, dset_shape_idx),
+        lambda value: parse_record(value, is_training, dset_shape_idx),
         batch_size=batch_size,
         num_parallel_batches=1,
         drop_remainder=False))
@@ -267,6 +268,7 @@ def get_dataset_summary(dataset_name, tf_path, loss_lw_gama=-1):
       write_dataset_summary(dataset_summary, tf_path)
       get_label_num_weights(dataset_summary, loss_lw_gama)
       return dataset_summary
+
 
 def write_dataset_summary(dataset_summary, data_dir):
   import pickle, shutil
