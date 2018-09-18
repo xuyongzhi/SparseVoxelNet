@@ -211,7 +211,7 @@ def get_dataset_summary(dataset_name, tf_path, loss_lw_gama=-1):
   if dataset_summary['intact']:
     print('dataset_summary intact, no need to read')
     get_label_num_weights(dataset_summary, loss_lw_gama)
-    return dataset_summary
+    #return dataset_summary
 
   #data_path = os.path.join(tf_path, 'merged_data')
   data_path = os.path.join(tf_path, 'data')
@@ -227,7 +227,7 @@ def get_dataset_summary(dataset_name, tf_path, loss_lw_gama=-1):
                                       buffer_size=1024*100,
                                       num_parallel_reads=1)
 
-    batch_size = 1
+    batch_size = 2
     is_training = False
 
     dataset = dataset.prefetch(buffer_size=batch_size)
@@ -239,6 +239,7 @@ def get_dataset_summary(dataset_name, tf_path, loss_lw_gama=-1):
         drop_remainder=False))
     dataset = dataset.prefetch(buffer_size=tf.contrib.data.AUTOTUNE)
     dset_iterater = dataset.make_one_shot_iterator()
+    features_next, labels_next = dset_iterater.get_next()
 
     with tf.Session() as sess:
       batch_num = 0
@@ -247,8 +248,9 @@ def get_dataset_summary(dataset_name, tf_path, loss_lw_gama=-1):
       try:
       #if True:
         while(True):
-          features, labels = sess.run(dset_iterater.get_next())
+          features, labels = sess.run([features_next, labels_next])
 
+          import pdb; pdb.set_trace()  # XXX BREAKPOINT
           valid_num_face = labels['valid_num_face']
           category_idx = dset_shape_idx['indices']['face_i']['label_category']
           category_label = labels['face_i'][:, :, category_idx]
@@ -517,10 +519,9 @@ class MeshSampling():
 
     face_idx_per_vertex = tf.scatter_nd(vidx_fidxperv, vidx_fidx_flat_sorted[:,1]+1, \
                                     [num_vertex0, max_nf_perv]) - 1
-    fidx_pv_empty_mask = tf.cast(tf.equal(face_idx_per_vertex, -1), tf.bool)
-
     face_idx_per_vertex = face_idx_per_vertex[:, 0:MeshSampling._max_nf_perv]
-    fidx_pv_empty_mask = fidx_pv_empty_mask[:, 0:MeshSampling._max_nf_perv]
+    face_idx_per_vertex.set_shape([num_vertex0, MeshSampling._max_nf_perv])
+    fidx_pv_empty_mask = tf.cast(tf.equal(face_idx_per_vertex, -1), tf.bool)
 
     # set -1 as 0
     face_idx_per_vertex += tf.cast(fidx_pv_empty_mask, tf.int32)
@@ -547,6 +548,7 @@ class MeshSampling():
 
     edges_per_vertex = tf.reshape(edges_per_vertex, [num_vertex0, max_nf_perv*2])
     edges_per_vertex = edges_per_vertex[:, 0:MeshSampling._max_nf_perv*2]
+    edges_per_vertex.set_shape([num_vertex0, MeshSampling._max_nf_perv*2])
     edges_pv_empty_mask = tf.cast(tf.equal(edges_per_vertex, -1), tf.bool)
     # set -1 as 0
     edges_per_vertex += tf.cast(edges_pv_empty_mask, tf.int32)

@@ -292,10 +292,25 @@ def define_network_flags():
                           model_dir=os.path.join(ROOT_DIR,'results/mesh_seg'),
                           batch_size=4)
 
-def update_net_data_configs(flags_obj):
+  flags.DEFINE_string('feed_data','xyzs-nxnynz','xyzrsg-nxnynz-color')
+
+def parse_flags_update_configs(flags_obj):
   net_data_configs = {}
   net_data_configs['dataset_name'] = DATASET_NAME
   net_data_configs['dset_shape_idx'] = get_dset_shape_idxs(flags_obj.data_dir)
+
+  # check some flags
+  feed_data = flags_obj.feed_data.split('-')
+  assert feed_data[0][0:3] == 'xyz'
+  xyz_eles = feed_data[0][3:]
+  feed_data[0] = 'xyz'
+  assert len(xyz_eles)<=3
+
+  data_config = {}
+  data_config['feed_data'] = feed_data
+  data_config['xyz_eles'] = xyz_eles
+
+  net_data_configs['data_config'] = data_config
 
   return net_data_configs
 
@@ -308,7 +323,7 @@ def run_network(flags_obj):
   input_function = (flags_obj.use_synthetic_data and
                     get_synth_input_fn(flags_core.get_tf_dtype(flags_obj)) or
                     input_fn)
-  net_data_configs = update_net_data_configs(flags_obj)
+  net_data_configs = parse_flags_update_configs(flags_obj)
   net_run_loop.net_main(
       flags_obj, network_model_fn, input_function, net_data_configs)
 
