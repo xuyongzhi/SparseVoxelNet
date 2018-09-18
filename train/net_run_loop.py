@@ -201,10 +201,9 @@ def learning_rate_with_decay(
 
   return learning_rate_fn
 
-
 def net_model_fn( features, labels, mode, model_class,
                   net_data_configs,
-                  net_flag, weight_decay, learning_rate_fn, momentum,
+                  weight_decay, learning_rate_fn, momentum,
                   data_format, loss_scale,
                   loss_filter_fn=None, dtype=resnet_model.DEFAULT_DTYPE,
                   fine_tune=False):
@@ -224,7 +223,6 @@ def net_model_fn( features, labels, mode, model_class,
       `tf.estimator.ModeKeys.TRAIN`, `EVALUATE`, `PREDICT`
     model_class: a class representing a TensorFlow model that has a __call__
       function. We assume here that this is a subclass of ResnetModel.
-    net_flag: A single integer for the size of the ResNet model.
     weight_decay: weight decay loss rate used to regularize learned variables.
     learning_rate_fn: function that returns the current learning rate given
       the current global_step
@@ -250,7 +248,7 @@ def net_model_fn( features, labels, mode, model_class,
   # Checks that features/images have same data type being used for calculations.
   #assert features.dtype == dtype
 
-  model = model_class(net_flag, net_data_configs=net_data_configs,
+  model = model_class(net_data_configs=net_data_configs,
                       data_format=data_format, dtype=dtype)
 
   logits = model(features, mode == tf.estimator.ModeKeys.TRAIN)
@@ -418,7 +416,6 @@ def net_main(
   classifier = tf.estimator.Estimator(
       model_fn=model_function, model_dir=flags_obj.model_dir, config=run_config,
       warm_start_from=warm_start_settings, params={
-          'net_flag': int(flags_obj.net_flag),
           'data_format': flags_obj.data_format,
           'batch_size': flags_obj.batch_size,
           'loss_scale': flags_core.get_loss_scale(flags_obj),
@@ -430,7 +427,6 @@ def net_main(
   run_params = {
       'batch_size': flags_obj.batch_size,
       'dtype': flags_core.get_tf_dtype(flags_obj),
-      'net_flag': flags_obj.net_flag,
       'synthetic_data': flags_obj.use_synthetic_data,
       'train_epochs': flags_obj.train_epochs,
   }

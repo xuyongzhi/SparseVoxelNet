@@ -191,12 +191,11 @@ def get_synth_input_fn(dtype):
 class MeshnetModel(meshnet_model.Model):
   """Model class with appropriate defaults for Imagenet data."""
 
-  def __init__(self, net_flag, net_data_configs, data_format=None,
+  def __init__(self, net_data_configs, data_format=None,
                dtype=meshnet_model.DEFAULT_DTYPE):
     """These are the parameters that work for Imagenet data.
 
     Args:
-      net_flag: The number of convolutional layers needed in the model.
       data_format: Either 'channels_first' or 'channels_last', specifying which
         data format to use when setting up the model.
       num_classes: The number of output classes needed from the model. This
@@ -205,47 +204,10 @@ class MeshnetModel(meshnet_model.Model):
     """
 
     super(MeshnetModel, self).__init__(
-        net_flag=net_flag,
-        dset_metas=DsetMetas,
         net_data_configs=net_data_configs,
         data_format=data_format,
         dtype=dtype
     )
-
-
-def _get_block_sizes(net_flag):
-  """Retrieve the size of each block_layer in the ResNet model.
-
-  The number of block layers used for the Resnet model varies according
-  to the size of the model. This helper grabs the layer set we want, throwing
-  an error if a non-standard size has been selected.
-
-  Args:
-    net_flag: The number of convolutional layers needed in the model.
-
-  Returns:
-    A list of block sizes to use in building the model.
-
-  Raises:
-    KeyError: if invalid net_flag is received.
-  """
-  choices = {
-      18: [2, 2, 2, 2],
-      34: [3, 4, 6, 3],
-      50: [3, 4, 6, 3],
-      101: [3, 4, 23, 3],
-      152: [3, 8, 36, 3],
-      200: [3, 24, 36, 3]
-  }
-
-  try:
-    return choices[net_flag]
-  except KeyError:
-    err = ('Could not find layers for selected Resnet size.\n'
-           'Size received: {}; sizes allowed: {}.'.format(
-               net_flag, choices.keys()))
-    raise ValueError(err)
-
 
 def network_model_fn(features, labels, mode, params):
   """Our model_fn for ResNet to be used with our Estimator."""
@@ -270,7 +232,6 @@ def network_model_fn(features, labels, mode, params):
       mode=mode,
       model_class=MeshnetModel,
       net_data_configs=params['net_data_configs'],
-      net_flag=params['net_flag'],
       weight_decay=1e-4,
       learning_rate_fn=learning_rate_fn,
       momentum=0.9,
@@ -293,13 +254,18 @@ def define_network_flags():
                           batch_size=4)
 
   flags.DEFINE_string('feed_data','xyzs-nxnynz','xyzrsg-nxnynz-color')
+  flags.DEFINE_bool(name='residual', short_name='rs', default=False,
+      help=flags_core.help_wrap('Is use reidual architecture'))
 
 def parse_flags_update_configs(flags_obj):
   net_data_configs = {}
+  net_data_configs['net_flag'] = flags_obj.net_flag
   net_data_configs['dataset_name'] = DATASET_NAME
   net_data_configs['dset_shape_idx'] = get_dset_shape_idxs(flags_obj.data_dir)
+  net_data_configs['dset_metas'] = DsetMetas
 
-  # check some flags
+  #*****************************************************************************
+  # data_config
   feed_data = flags_obj.feed_data.split('-')
   assert feed_data[0][0:3] == 'xyz'
   xyz_eles = feed_data[0][3:]
@@ -307,10 +273,17 @@ def parse_flags_update_configs(flags_obj):
   assert len(xyz_eles)<=3
 
   data_config = {}
+  data_config['model_dir'] = flags_obj.model_dir
   data_config['feed_data'] = feed_data
   data_config['xyz_eles'] = xyz_eles
 
   net_data_configs['data_config'] = data_config
+
+  #*****************************************************************************
+  # net_configs
+  net_configs = {}
+  net_configs['residual'] = flags_obj.residual
+  net_data_configs['net_configs'] = net_configs
 
   return net_data_configs
 

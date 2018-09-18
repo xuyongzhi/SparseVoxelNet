@@ -6,6 +6,7 @@ from __future__ import print_function
 
 import tensorflow as tf
 from datasets.all_datasets_meta.datasets_meta import DatasetsMeta
+from models.conv_util import ResConvOps
 
 _BATCH_NORM_EPSILON = 1e-5
 _BATCH_NORM_EPSILON = 1e-4
@@ -14,10 +15,25 @@ DEFAULT_DTYPE = tf.float32
 CASTABLE_TYPES = (tf.float16,)
 ALLOWED_TYPES = (DEFAULT_DTYPE,) + CASTABLE_TYPES
 
-class Model(object):
-  def __init__(self, net_flag, dset_metas, net_data_configs, data_format, dtype):
+class Model(ResConvOps):
+  def __init__(self, net_data_configs, data_format, dtype):
     self.dset_shape_idx = net_data_configs['dset_shape_idx']
     self.data_config = net_data_configs['data_config']
+    self.dset_metas = net_data_configs['dset_metas']
+    self.net_flag = net_data_configs['net_flag']
+    super(Model, self).__init__(net_data_configs, format, dtype)
+
+    block_style = 'Regular'
+    if block_style == 'Regular':
+      self.block_fn = self.building_block_v2
+    elif block_style == 'Bottleneck':
+      self.block_fn = self.bottleneck_block_v2
+    elif block_style == 'Inception':
+      self.block_fn = self.inception_block_v2
+    elif block_style == 'PointNet':
+      self.block_fn = None
+    else:
+      raise NotImplementedError
 
   def parse_inputs(self, features):
     ds_idxs = self.dset_shape_idx['indices']
@@ -39,11 +55,12 @@ class Model(object):
     return points, face_idx_per_vertex, fidx_pv_empty_mask, edges_per_vertex, \
       edges_pv_empty_mask
 
-  def __call__(self, features, training):
+  def __call__(self, features, is_training):
     '''
     points: [B,N,C]
     edges_per_vertex: [B,N,10*2]
     '''
+    self.is_training = is_training
     points, face_idx_per_vertex, fidx_pv_empty_mask, edges_per_vertex, \
       edges_pv_empty_mask = self.parse_inputs(features)
 
@@ -51,11 +68,13 @@ class Model(object):
     batch_size = tf.shape(points)[0]
     num_vertex0 = points.shape[1].value
 
-    two_edge_vertices = Model.vertexF_2_envF(points, edges_per_vertex)
-    edges_012_global, edges_01_local, edge_2_local = Model.vertexF_2_edgeF(two_edge_vertices,
-                           tf.expand_dims( tf.expand_dims(points, 2),3))
-    import pdb; pdb.set_trace()  # XXX BREAKPOINT
-    pass
+    for scale in range(3):
+      two_edge_vertices = Model.vertexF_2_envF(points, edges_per_vertex)
+      edges = Model.vertexF_2_edgeF(two_edge_vertices,
+                            tf.expand_dims( tf.expand_dims(points, 2),3))
+      self.edge_encoder(scale, edges)
+      import pdb; pdb.set_trace()  # XXX BREAKPOINT
+      pass
 
 
   @staticmethod
@@ -91,9 +110,10 @@ class Model(object):
     '''
      two_edge_vertices: [B,N,10,2,C]
      base_vertex:       [B,N,1,1,C]
-     edges_012_global:  [B,N,3,C]
-     edges_01_local:    [B,N,2,C]
-     edge_2_local:      [B,N,1,C]
+
+     edges_012_global:  [B,N,10,3,C]
+     edges_01_local:    [B,N,10,2,C]
+     edge_2_local:      [B,N,10,1,C]
     '''
     tev_shape = two_edge_vertices.shape.as_list()
     bv_shape = base_vertex.shape.as_list()
@@ -101,16 +121,24 @@ class Model(object):
     assert tev_shape[3] == 2
     assert len(bv_shape) == 5
     assert bv_shape[2] == bv_shape[2] == 1
-    edges_01_local = two_edge_vertices - base_vertex
+    edges = {}
+    edges['edges_01_local'] = two_edge_vertices - base_vertex
     edges_01_global = (two_edge_vertices + base_vertex) / 2
-    edge_2_local = tf.abs(two_edge_vertices[:,:,:,0:1,:] - two_edge_vertices[:,:,:,1:2,:])
+    edges['edge_2_local'] = tf.abs(two_edge_vertices[:,:,:,0:1,:] - two_edge_vertices[:,:,:,1:2,:])
     edge_2_global = (two_edge_vertices[:,:,:,0:1,:] + two_edge_vertices[:,:,:,1:2,:])/2
 
-    edge_012_global = tf.concat([edges_01_global, edge_2_global], -2)
+    edges['edges_012_global'] = tf.concat([edges_01_global, edge_2_global], -2)
+    return edges
 
-    batch_size = tf.shape(two_edge_vertices)[0]
-    es = edge_012_global.shape.as_list()
-    edges_012_global = tf.reshape(edge_012_global, [batch_size, es[1]*es[2], es[3], es[4]])
-    edges_01_local = tf.reshape(edges_01_local, [batch_size, es[1]*es[2], 2, es[4]])
-    edge_2_local = tf.reshape(edge_2_local, [batch_size, es[1]*es[2], 1, es[4]])
-    return edges_012_global, edges_01_local, edge_2_local
+  def edge_encoder(self, scale, edges):
+    '''
+    '''
+    with tf.variable_scope('edge_encoder_%d'%(scale)):
+      block_fn = self.block_fn if scale!=0 else self.building_block_v2
+      for edge_flag in edges:
+        edges[edge_flag] = self.block_layer(scale, edges[edge_flag], block_params, block_fn,
+                  self.is_training, '{}'.format(edge_flag))
+        import pdb; pdb.set_trace()  # XXX BREAKPOINT
+        pass
+
+

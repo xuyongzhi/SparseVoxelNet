@@ -34,10 +34,8 @@ from __future__ import print_function
 import tensorflow as tf
 import numpy as np
 import os, sys
-import tf_util
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-ROOT_DIR = os.path.dirname(BASE_DIR)
-sys.path.append(os.path.join(ROOT_DIR,'utils'))
+#BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+#ROOT_DIR = os.path.dirname(BASE_DIR)
 
 DEBUG_TMP = False
 
@@ -46,9 +44,7 @@ _BATCH_NORM_EPSILON = 1e-4
 DEFAULT_VERSION = 2
 DEFAULT_DTYPE = tf.float32
 CASTABLE_TYPES = (tf.float16,)
-#CASTABLE_TYPES = (tf.float32,)
 ALLOWED_TYPES = (DEFAULT_DTYPE,) + CASTABLE_TYPES
-#ALLOWED_TYPES = (DEFAULT_DTYPE,)
 
 NoRes_InceptionReduction = True
 
@@ -155,19 +151,15 @@ class ResConvOps(object):
   _activation_size = 0
   _padding = {'s':'same', 'v':'valid' }
 
-  def __init__(self, data_net_configs, data_format):
+  def __init__(self, net_data_configs, data_format, dtype):
     self.data_format = data_format
-    self.data_net_configs= data_net_configs
-    self.residual = data_net_configs['residual']
-    self.voxel3d = 'V' in data_net_configs['model_flag']
+    self.net_data_configs= net_data_configs
+
+    self.residual = net_data_configs['net_configs']['residual']
     train_global_step = tf.train.get_or_create_global_step()
-    self.batch_norm_decay = data_net_configs['bndecay_fn'](train_global_step)
-    tf.summary.scalar('batch_norm_decay', self.batch_norm_decay)
-    self.use_bias = data_net_configs['use_bias']
-    self.shortcut_method = data_net_configs['shortcut'] #'C' 'PC' 'PZ'
     self.res_scale = 1.0
 
-    model_dir = data_net_configs['model_dir']
+    model_dir = net_data_configs['data_config']['model_dir']
     if ResConvOps._epoch==0:
       self.IsShowModel = True
       if not os.path.exists(model_dir):
@@ -178,7 +170,7 @@ class ResConvOps(object):
     ResConvOps._epoch += 1
 
   def log_model_summary(self):
-      dnc = self.data_net_configs
+      dnc = self.net_data_configs
 
       #*************************************************************************
       # key training parameters
@@ -876,7 +868,7 @@ class Model(ResConvOps):
 
   def __init__(self, model_flag, resnet_size, block_style,
                block_params, resnet_version=DEFAULT_VERSION,
-               data_format=None, dtype=DEFAULT_DTYPE, data_net_configs={}):
+               data_format=None, dtype=DEFAULT_DTYPE, net_data_configs={}):
     """Creates a model for classifying an image.
 
     Args:
@@ -910,11 +902,11 @@ class Model(ResConvOps):
     if not data_format:
       data_format = (
           'channels_first' if tf.test.is_built_with_cuda() else 'channels_last')
-    super(Model, self).__init__(data_net_configs, data_format)
+    super(Model, self).__init__(net_data_configs, data_format)
     self.model_flag = model_flag
     self.resnet_size = resnet_size
-    self.batch_size = data_net_configs['batch_size']//data_net_configs['num_gpus']
-    self.num_gpus = data_net_configs['num_gpus']
+    self.batch_size = net_data_configs['batch_size']//net_data_configs['num_gpus']
+    self.num_gpus = net_data_configs['num_gpus']
 
     self.resnet_version = resnet_version
     if resnet_version not in (1, 2):
@@ -943,7 +935,7 @@ class Model(ResConvOps):
     self.block_params = block_params
     self.dtype = dtype
     self.pre_activation = resnet_version == 2
-    self.data_net_configs = data_net_configs
+    self.net_data_configs = net_data_configs
     self.block_num_count = 0
 
     self._preprocess_configs()
@@ -959,13 +951,13 @@ class Model(ResConvOps):
         self.num_neighbors= None
     for key in ['dataset_name', 'feed_data', 'sg_settings', 'dset_shape_idxs',
                 'xyz_elements', 'datasets_meta']:
-      setattr(self, key, self.data_net_configs[key])
+      setattr(self, key, self.net_data_configs[key])
 
     tasks = {'MODELNET40': 'recognition', 'MATTERPORT': 'segmentation'}
     self.task = tasks[self.dataset_name]
     self.global_numpoint = self.dset_shape_idxs['shape']['points'][0]
-    self.net_num_scale = len(self.data_net_configs['block_params']['filters'])
-    self.sg_num_scale = len(self.data_net_configs['sg_settings']['width'])
+    self.net_num_scale = len(self.net_data_configs['block_params']['filters'])
+    self.sg_num_scale = len(self.net_data_configs['sg_settings']['width'])
     assert self.sg_num_scale == self.net_num_scale
     self.num_classes = self.datasets_meta.num_classes
 
@@ -979,11 +971,11 @@ class Model(ResConvOps):
     else:
       self.feed_data_idxs = np.sort([i for e in self.feed_data for i in self.data_idxs['points'][e] ])
 
-    self.use_xyz = self.data_net_configs['use_xyz']
+    self.use_xyz = self.net_data_configs['use_xyz']
     self.mean_grouping_position = True
 
     from utils.grouping_sampling_voxelization import BlockGroupSampling
-    log_path = self.data_net_configs['data_dir']+'/sg_log'
+    log_path = self.net_data_configs['data_dir']+'/sg_log'
     self.bsg = BlockGroupSampling(self.sg_settings, log_path)
 
 
@@ -1158,7 +1150,7 @@ class Model(ResConvOps):
     """
 
     #t00 = tf.timestamp()
-    if not self.data_net_configs['precpu_sg']:
+    if not self.net_data_configs['precpu_sg']:
       inputs_dic = self.pre_sampling_grouping(inputs_dic)
     else:
       inputs_dic = self.sg_in_inputpipeline(inputs_dic, self.sg_num_scale)
@@ -1321,7 +1313,7 @@ class Model(ResConvOps):
   def classifier(self, inputs, is_training, dense_features=[]):
     with tf.variable_scope('classifier'):
       #                     Fully connect layers
-      out_drop_rate=self.data_net_configs['drop_imo']['output']
+      out_drop_rate=self.net_data_configs['drop_imo']['output']
       for k,features in enumerate(dense_features):
         inputs = tf.layers.dense(inputs, features, None, True, KERNEL_INI )
         if self.IsShowModel: self.log( tensor_info(inputs, 'dense%d'%(k), 'dense0'))
