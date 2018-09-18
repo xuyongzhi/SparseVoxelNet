@@ -36,8 +36,6 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT_DIR = os.path.dirname(BASE_DIR)
 DATA_DIR = os.path.join(ROOT_DIR, 'data')
 
-_DEFAULT_IMAGE_SIZE = 224
-_NUM_CHANNELS = 3
 
 _NUM_IMAGES = {
     'train': 1281167,
@@ -180,6 +178,8 @@ def input_fn(is_training, data_dir, batch_size, num_epochs=1, num_gpus=None):
 
 
 def get_synth_input_fn(dtype):
+  _DEFAULT_IMAGE_SIZE = 224
+  _NUM_CHANNELS = 3
   return net_run_loop.get_synth_input_fn(
       _DEFAULT_IMAGE_SIZE, _DEFAULT_IMAGE_SIZE, _NUM_CHANNELS, _NUM_CLASSES,
       dtype=dtype)
@@ -191,7 +191,7 @@ def get_synth_input_fn(dtype):
 class MeshnetModel(meshnet_model.Model):
   """Model class with appropriate defaults for Imagenet data."""
 
-  def __init__(self, net_flag, data_format=None,
+  def __init__(self, net_flag, net_data_configs, data_format=None,
                dtype=meshnet_model.DEFAULT_DTYPE):
     """These are the parameters that work for Imagenet data.
 
@@ -206,7 +206,8 @@ class MeshnetModel(meshnet_model.Model):
 
     super(MeshnetModel, self).__init__(
         net_flag=net_flag,
-        dset_metas = DsetMetas,
+        dset_metas=DsetMetas,
+        net_data_configs=net_data_configs,
         data_format=data_format,
         dtype=dtype
     )
@@ -268,6 +269,7 @@ def network_model_fn(features, labels, mode, params):
       labels=labels,
       mode=mode,
       model_class=MeshnetModel,
+      net_data_configs=params['net_data_configs'],
       net_flag=params['net_flag'],
       weight_decay=1e-4,
       learning_rate_fn=learning_rate_fn,
@@ -276,7 +278,7 @@ def network_model_fn(features, labels, mode, params):
       loss_scale=params['loss_scale'],
       loss_filter_fn=None,
       dtype=params['dtype'],
-      fine_tune=params['fine_tune']
+      fine_tune=params['fine_tune'],
   )
 
 
@@ -284,11 +286,18 @@ def define_network_flags():
   net_run_loop.define_net_flags(
       net_flag_choices=['18', '34', '50', '101', '152', '200'])
   flags.adopt_module_key_flags(net_run_loop)
+  data_dir = os.path.join(DATA_DIR,'MATTERPORT_TF/mesh_tfrecord')
   flags_core.set_defaults(train_epochs=90,
-                          data_dir=os.path.join(DATA_DIR,'MATTERPORT_TF/mesh_tfrecord'),
+                          data_dir=data_dir,
                           model_dir=os.path.join(ROOT_DIR,'results/mesh_seg'),
                           batch_size=4)
 
+def update_net_data_configs(flags_obj):
+  net_data_configs = {}
+  net_data_configs['dataset_name'] = DATASET_NAME
+  net_data_configs['dset_shape_idx'] = get_dset_shape_idxs(flags_obj.data_dir)
+
+  return net_data_configs
 
 def run_network(flags_obj):
   """Run ResNet ImageNet training and eval loop.
@@ -299,10 +308,9 @@ def run_network(flags_obj):
   input_function = (flags_obj.use_synthetic_data and
                     get_synth_input_fn(flags_core.get_tf_dtype(flags_obj)) or
                     input_fn)
-
+  net_data_configs = update_net_data_configs(flags_obj)
   net_run_loop.net_main(
-      flags_obj, network_model_fn, input_function, DATASET_NAME,
-      shape=[_DEFAULT_IMAGE_SIZE, _DEFAULT_IMAGE_SIZE, _NUM_CHANNELS])
+      flags_obj, network_model_fn, input_function, net_data_configs)
 
 
 def main(_):

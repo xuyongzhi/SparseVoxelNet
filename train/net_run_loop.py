@@ -202,11 +202,12 @@ def learning_rate_with_decay(
   return learning_rate_fn
 
 
-def net_model_fn(features, labels, mode, model_class,
-                    net_flag, weight_decay, learning_rate_fn, momentum,
-                    data_format, loss_scale,
-                    loss_filter_fn=None, dtype=resnet_model.DEFAULT_DTYPE,
-                    fine_tune=False):
+def net_model_fn( features, labels, mode, model_class,
+                  net_data_configs,
+                  net_flag, weight_decay, learning_rate_fn, momentum,
+                  data_format, loss_scale,
+                  loss_filter_fn=None, dtype=resnet_model.DEFAULT_DTYPE,
+                  fine_tune=False):
   """Shared functionality for different resnet model_fns.
 
   Initializes the ResnetModel representing the model layers
@@ -249,8 +250,8 @@ def net_model_fn(features, labels, mode, model_class,
   # Checks that features/images have same data type being used for calculations.
   #assert features.dtype == dtype
 
-  model = model_class(net_flag, data_format,
-                      dtype=dtype)
+  model = model_class(net_flag, net_data_configs=net_data_configs,
+                      data_format=data_format, dtype=dtype)
 
   logits = model(features, mode == tf.estimator.ModeKeys.TRAIN)
 
@@ -369,7 +370,7 @@ def net_model_fn(features, labels, mode, model_class,
 
 
 def net_main(
-    flags_obj, model_function, input_function, dataset_name, shape=None):
+    flags_obj, model_function, input_function, net_data_configs, shape=None):
   """Shared main loop for ResNet Models.
 
   Args:
@@ -422,7 +423,8 @@ def net_main(
           'batch_size': flags_obj.batch_size,
           'loss_scale': flags_core.get_loss_scale(flags_obj),
           'dtype': flags_core.get_tf_dtype(flags_obj),
-          'fine_tune': flags_obj.fine_tune
+          'fine_tune': flags_obj.fine_tune,
+          'net_data_configs': net_data_configs
       })
 
   run_params = {
@@ -432,6 +434,7 @@ def net_main(
       'synthetic_data': flags_obj.use_synthetic_data,
       'train_epochs': flags_obj.train_epochs,
   }
+  dataset_name = net_data_configs['dataset_name']
   if flags_obj.use_synthetic_data:
     dataset_name = dataset_name + '-synthetic'
 
