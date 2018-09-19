@@ -41,41 +41,48 @@ class Model(ResConvOps):
           ele_data = tf.gather(features[g], ele_idx, axis=-1)
           return ele_data
 
-    points = [get_ele(e) for e in self.data_config['feed_data']]
-    points = tf.concat(points, -1)
+    vertices = [get_ele(e) for e in self.data_config['feed_data']]
+    vertices = tf.concat(vertices, -1)
 
     face_idx_per_vertex = get_ele('face_idx_per_vertex')
     fidx_pv_empty_mask = get_ele('fidx_pv_empty_mask')
     edges_per_vertex = get_ele('edges_per_vertex')
     edges_pv_empty_mask = get_ele('edges_pv_empty_mask')
 
-    return points, face_idx_per_vertex, fidx_pv_empty_mask, edges_per_vertex, \
+    return vertices, face_idx_per_vertex, fidx_pv_empty_mask, edges_per_vertex, \
       edges_pv_empty_mask
 
   def __call__(self, features, is_training):
     '''
-    points: [B,N,C]
+    vertices: [B,N,C]
     edges_per_vertex: [B,N,10*2]
     '''
     self.is_training = is_training
-    points, face_idx_per_vertex, fidx_pv_empty_mask, edges_per_vertex, \
+    vertices, face_idx_per_vertex, fidx_pv_empty_mask, edges_per_vertex, \
       edges_pv_empty_mask = self.parse_inputs(features)
 
     #
-    self.batch_size = tf.shape(points)[0]
-    self.num_vertex0 = points.shape[1].value
+    self.batch_size = tf.shape(vertices)[0]
+    self.num_vertex0 = vertices.shape[1].value
 
-    for scale in range(3):
-      two_edge_vertices = Model.vertexF_2_envF(points, edges_per_vertex)
+    vertices_scales = []
+    for scale in range(2):
+      two_edge_vertices = Model.vertexF_2_envF(vertices, edges_per_vertex)
       edges = Model.vertexF_2_edgeF(two_edge_vertices,
-                            tf.expand_dims( tf.expand_dims(points, 2),3))
-      self.edge_encoder(scale, edges)
-      import pdb; pdb.set_trace()  # XXX BREAKPOINT
-      pass
+                            tf.expand_dims( tf.expand_dims(vertices, 2),3))
+      edges = self.edge_encoder(scale, edges)
+      faces = self.edgeF_2_faceF(scale, edges)
+      vertices = self.faceF_2_vertexF(scale, faces, vertices)
+      vertices_scales.append(vertices)
+
+    vertices = tf.concat(vertices_scales, -1)
+    import pdb; pdb.set_trace()  # XXX BREAKPOINT
+    pass
+    return vertices
 
 
   @staticmethod
-  def vertexF_2_envF(points, edges_per_vertex):
+  def vertexF_2_envF(vertices, edges_per_vertex):
     '''
     vertex feature to two edge (neighbour) vertex feature
     edges_per_vertex: [B,N,10*2]
@@ -99,7 +106,7 @@ class Model(ResConvOps):
     edges_per_vertex = tf.concat([batch_idx, edges_per_vertex], -1)
     # the two edge vertices for each vertex
     # [B,N,10,2,C]
-    two_edge_vertices = tf.gather_nd(points, edges_per_vertex)
+    two_edge_vertices = tf.gather_nd(vertices, edges_per_vertex)
     return two_edge_vertices
 
   @staticmethod
@@ -119,53 +126,108 @@ class Model(ResConvOps):
     assert len(bv_shape) == 5
     assert bv_shape[2] == bv_shape[2] == 1
     edges = {}
-    edges['edges_01_local'] = two_edge_vertices - base_vertex
+    edges['e01l'] = two_edge_vertices - base_vertex
     edges_01_global = (two_edge_vertices + base_vertex) / 2
-    edges['edge_2_local'] = tf.abs(two_edge_vertices[:,:,:,0:1,:] - two_edge_vertices[:,:,:,1:2,:])
+    edges['e2l'] = tf.abs(two_edge_vertices[:,:,:,0:1,:] - two_edge_vertices[:,:,:,1:2,:])
     edge_2_global = (two_edge_vertices[:,:,:,0:1,:] + two_edge_vertices[:,:,:,1:2,:])/2
 
-    edges['edges_012_global'] = tf.concat([edges_01_global, edge_2_global], -2)
+    edges['e012g'] = tf.concat([edges_01_global, edge_2_global], -2)
     return edges
 
   def edge_encoder(self, scale, edges):
     '''
     '''
-    with tf.variable_scope('edge_encoder_%d'%(scale)):
-      block_fn = self.block_fn if scale!=0 else self.building_block_v2
-      block_params = BlockParas.edge_block_paras()
-      block_num = len(block_params)
-      for edge_flag in edges:
-        with tf.variable_scope(edge_flag):
-          for bi in range(block_num):
-            with tf.variable_scope('B%d'%(bi)):
-              edges[edge_flag] = self.block_layer(scale, edges[edge_flag],
-                                block_params[bi], block_fn,
-                                self.is_training, '{}_b{}'.format(edge_flag, bi))
-    return edges
-    import pdb; pdb.set_trace()  # XXX BREAKPOINT
-    pass
 
+    blocks_params = BlockParas.block_paras('edge')[scale]
+    for edge_flag in edges:
+      if self.IsShowModel:
+        self.log('\t\t\t******* %s *******'%(edge_flag))
+      edges[edge_flag] = self.blocks_layers(scale, edges[edge_flag],
+                  blocks_params, self.block_fn, self.is_training, edge_flag+'_s%d'%(scale))
+    e012l = tf.concat( [edges['e01l'], edges['e2l']], -2)
+    edges = e012l + edges['e012g']
+
+    if self.IsShowModel:
+      self.log('\n')
+    self.log_tensor_p(edges, 'add', 'edge encoder out')
+    return edges
+
+  def edgeF_2_faceF(self, scale, edges):
+    '''
+    edges: [B,N,face_num,3,C]
+    '''
+    faces_maxp = tf.reduce_max(edges, -2)
+    faces_meanp = tf.reduce_mean(edges, -2)
+    faces = tf.concat([faces_maxp, faces_meanp], -1)
+    blocks_params = BlockParas.block_paras('face')[scale]
+    faces = self.blocks_layers(scale, faces, blocks_params, self.block_fn,
+                         self.is_training, 'face_s%d'%(scale))
+    return faces
+
+  def faceF_2_vertexF(self, scale, faces, vertices):
+    new_vertices_maxp = tf.reduce_max(faces, -2)
+    new_vertices_meanp = tf.reduce_mean(faces, -2)
+    new_vertices = new_vertices_maxp
+    #new_vertices = tf.concat([new_vertices_maxp, new_vertices_meanp])
+
+    blocks_params = BlockParas.block_paras('vertex')[scale]
+    new_vertices = self.blocks_layers(scale, new_vertices, blocks_params,
+                            self.block_fn, self.is_training, 'vertex_s%d'%(scale))
+    return new_vertices
 
 import numpy as np
 class BlockParas():
+  @staticmethod
+  def block_paras(element):
+    block_sizes = {}
+    filters = {}
+
+    block_sizes['edge'] = [ [1],  [1] ]
+    filters['edge']     = [ [24], [32]]
+
+    block_sizes['face'] = [ [2],  [1] ]
+    filters['face']     = [ [32], [48]]
+
+    block_sizes['vertex']=[ [1],  [1] ]
+    filters['vertex']   = [ [48], [64]]
+
+    all_paras = {}
+    for item in block_sizes:
+      all_paras[item] = BlockParas.complete_scales_paras(block_sizes[item], filters[item])
+    return all_paras[element]
 
   @staticmethod
-  def edge_block_paras():
-    block_size  = np.array([1, 1])
-    filters     = np.array([24, 24])
+  def complete_scales_paras(block_size, filters):
+    scale_num = len(block_size)
+    scales_blocks_paras = []
+    for s in range(scale_num):
+      blocks_paras = BlockParas.complete_paras_1scale(block_size[s], filters[s])
+      scales_blocks_paras.append(blocks_paras)
+    return scales_blocks_paras
+
+  @staticmethod
+  def complete_paras_1scale(block_size, filters):
+    assert not isinstance(block_size[0], list)
+    block_size  = np.array(block_size)
+    filters     = np.array(filters)
     block_num = block_size.shape[0]
 
-    block_paras = {}
-    block_paras['block_sizes'] = block_size
-    block_paras['filters'] = filters
-    block_paras['kernels'], block_paras['strides'], block_paras['pad_stride1'] = \
+    blocks_paras = {}
+    blocks_paras['block_sizes'] = block_size
+    blocks_paras['filters'] = filters
+    blocks_paras['kernels'], blocks_paras['strides'], blocks_paras['pad_stride1'] = \
                                 BlockParas.get_1_kernel_block_paras(block_num)
-    block_paras = BlockParas.split_block_paras(block_paras)
+    blocks_paras = BlockParas.split_block_paras(blocks_paras)
 
-    return block_paras
+    return blocks_paras
 
   @staticmethod
   def split_block_paras(block_paras):
+    '''
+    from one dictionary  to one list
+    Orginal: one dictionary contianing list of len = block_num
+    Result: one list with len=block num, each element of the list is a dictionary for one block
+    '''
     block_num = block_paras['block_sizes'].shape[0]
     block_paras_splited = []
     for s in range(block_num):

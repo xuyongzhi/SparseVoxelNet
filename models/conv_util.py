@@ -287,7 +287,7 @@ bnd optimizer block_config\n'
         conv_str = 'conv1d'
       elif len(inputs.shape)==5:
         conv_str = 'conv3d'
-      layer_name = pre_indent+'/'.join(var_scope.split('/')[2:])
+      layer_name = pre_indent+'/'.join(var_scope.split('/')[1:])
       self.log( tensor_info(inputs, '%s (%d,%d,%s)'%
                     (conv_str, kernels, strides, pad_stride1), layer_name,
                     self.train_w_bytes(var_scope), self.batch_size) )
@@ -301,6 +301,10 @@ bnd optimizer block_config\n'
         pool_str += ' (%d,%d,%s)'%(kernels, strides, paddings)
       self.log(tensor_info(inputs, pool_str, layer_name,
                            batch_size=self.batch_size))
+
+  def log_dotted_line(self, name):
+    if self.IsShowModel:
+      self.log('---------------------- %s ----------------------'%(name))
 
   def show_layers_num_summary(self):
     self.log('block layers num:{}\nconv2d num:{}\nconv3d num:{}\nconv1d num:{}\ndense num:{}'.format(
@@ -339,6 +343,9 @@ bnd optimizer block_config\n'
     elif len(inputs.shape) == 4:
       conv_fn = tf.layers.conv2d
       self._conv2d_num += 1
+    elif len(inputs.shape) == 3:
+      conv_fn = tf.layers.conv1d
+      self._conv1d_num += 1
     else:
       import pdb; pdb.set_trace()  # XXX BREAKPOINT
       pass
@@ -347,7 +354,6 @@ bnd optimizer block_config\n'
     inputs, padding = self.padding2d3d(inputs, kernels, strides, pad_stride1)
 
     assert self.data_format == 'channels_last'
-    tf.layers.conv3d(inputs, filters, kernels)
     outputs = conv_fn(
         inputs=inputs, filters=filters, kernel_size=kernels, strides=strides,
         padding=padding, use_bias=self.use_bias,
@@ -757,8 +763,16 @@ bnd optimizer block_config\n'
             self.log_tensor_p(shortcut, 'padding', layer_name)
 
     else:
-      raise NotImplementedError, scm
+      raise NotImplementedError
     return shortcut
+
+  def blocks_layers(self, scale, inputs, blocks_params, block_fn, is_training, scope):
+    self.log_dotted_line(scope)
+    for bi in range(len(blocks_params)):
+      with tf.variable_scope(scope+'_b%d'%(bi)):
+        inputs = self.block_layer(scale, inputs, blocks_params[bi], block_fn,
+                                is_training, scope+'_b%d'%(bi))
+    return inputs
 
   def block_layer(self, scale, inputs, block_params, block_fn, is_training, name):
     """Creates one layer of block_size for the ResNet model.
