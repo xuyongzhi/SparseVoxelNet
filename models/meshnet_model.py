@@ -8,9 +8,6 @@ import tensorflow as tf
 from datasets.all_datasets_meta.datasets_meta import DatasetsMeta
 from models.conv_util import ResConvOps
 
-_BATCH_NORM_EPSILON = 1e-5
-_BATCH_NORM_EPSILON = 1e-4
-DEFAULT_VERSION = 2
 DEFAULT_DTYPE = tf.float32
 CASTABLE_TYPES = (tf.float16,)
 ALLOWED_TYPES = (DEFAULT_DTYPE,) + CASTABLE_TYPES
@@ -21,7 +18,7 @@ class Model(ResConvOps):
     self.data_config = net_data_configs['data_config']
     self.dset_metas = net_data_configs['dset_metas']
     self.net_flag = net_data_configs['net_flag']
-    super(Model, self).__init__(net_data_configs, format, dtype)
+    super(Model, self).__init__(net_data_configs, data_format, dtype)
 
     block_style = 'Regular'
     if block_style == 'Regular':
@@ -65,8 +62,8 @@ class Model(ResConvOps):
       edges_pv_empty_mask = self.parse_inputs(features)
 
     #
-    batch_size = tf.shape(points)[0]
-    num_vertex0 = points.shape[1].value
+    self.batch_size = tf.shape(points)[0]
+    self.num_vertex0 = points.shape[1].value
 
     for scale in range(3):
       two_edge_vertices = Model.vertexF_2_envF(points, edges_per_vertex)
@@ -135,10 +132,57 @@ class Model(ResConvOps):
     '''
     with tf.variable_scope('edge_encoder_%d'%(scale)):
       block_fn = self.block_fn if scale!=0 else self.building_block_v2
+      block_params = BlockParas.edge_block_paras()
+      block_num = len(block_params)
       for edge_flag in edges:
-        edges[edge_flag] = self.block_layer(scale, edges[edge_flag], block_params, block_fn,
-                  self.is_training, '{}'.format(edge_flag))
-        import pdb; pdb.set_trace()  # XXX BREAKPOINT
-        pass
+        with tf.variable_scope(edge_flag):
+          for bi in range(block_num):
+            with tf.variable_scope('B%d'%(bi)):
+              edges[edge_flag] = self.block_layer(scale, edges[edge_flag],
+                                block_params[bi], block_fn,
+                                self.is_training, '{}_b{}'.format(edge_flag, bi))
+    return edges
+    import pdb; pdb.set_trace()  # XXX BREAKPOINT
+    pass
+
+
+import numpy as np
+class BlockParas():
+
+  @staticmethod
+  def edge_block_paras():
+    block_size  = np.array([1, 1])
+    filters     = np.array([24, 24])
+    block_num = block_size.shape[0]
+
+    block_paras = {}
+    block_paras['block_sizes'] = block_size
+    block_paras['filters'] = filters
+    block_paras['kernels'], block_paras['strides'], block_paras['pad_stride1'] = \
+                                BlockParas.get_1_kernel_block_paras(block_num)
+    block_paras = BlockParas.split_block_paras(block_paras)
+
+    return block_paras
+
+  @staticmethod
+  def split_block_paras(block_paras):
+    block_num = block_paras['block_sizes'].shape[0]
+    block_paras_splited = []
+    for s in range(block_num):
+      block_para_s = {}
+      for item in block_paras:
+        block_para_s[item] = block_paras[item][s]
+      block_paras_splited.append(block_para_s)
+    return block_paras_splited
+
+
+  @staticmethod
+  def get_1_kernel_block_paras(block_num):
+    kernels = [1 for i in range(block_num)]
+    strides = [1 for i in range(block_num)]
+    paddings = ['v' for i in range(block_num)]
+    return kernels, strides, paddings
+
+
 
 
