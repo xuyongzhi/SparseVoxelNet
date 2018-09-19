@@ -32,26 +32,6 @@ class Model(ResConvOps):
     else:
       raise NotImplementedError
 
-  def parse_inputs(self, features):
-    ds_idxs = self.dset_shape_idx['indices']
-    def get_ele(ele):
-      for g in ds_idxs:
-        if ele in ds_idxs[g]:
-          ele_idx = ds_idxs[g][ele]
-          ele_data = tf.gather(features[g], ele_idx, axis=-1)
-          return ele_data
-
-    vertices = [get_ele(e) for e in self.data_config['feed_data']]
-    vertices = tf.concat(vertices, -1)
-
-    face_idx_per_vertex = get_ele('face_idx_per_vertex')
-    fidx_pv_empty_mask = get_ele('fidx_pv_empty_mask')
-    edges_per_vertex = get_ele('edges_per_vertex')
-    edges_pv_empty_mask = get_ele('edges_pv_empty_mask')
-
-    return vertices, face_idx_per_vertex, fidx_pv_empty_mask, edges_per_vertex, \
-      edges_pv_empty_mask
-
   def __call__(self, features, is_training):
     '''
     vertices: [B,N,C]
@@ -76,9 +56,50 @@ class Model(ResConvOps):
       vertices_scales.append(vertices)
 
     vertices = tf.concat(vertices_scales, -1)
-    import pdb; pdb.set_trace()  # XXX BREAKPOINT
-    pass
-    return vertices
+    simplicity_logits = self.simplicity_classifier(vertices)
+    simplicity_label = self.simplicity_label(features)
+    return simplicity_logits, simplicity_label
+
+
+  def simplicity_label(self, features):
+    min_same_norm_mask = 2
+    min_same_category_mask = 2
+    same_category_mask = self.get_ele(features, 'same_category_mask')
+    same_category_mask = tf.greater_equal(same_category_mask, min_same_category_mask)
+    same_normal_mask = self.get_ele(features, 'same_normal_mask')
+    same_normal_mask = tf.greater_equal(same_normal_mask, min_same_norm_mask)
+
+    simplicity_mask = tf.logical_and(same_normal_mask, same_category_mask)
+    simplicity_mask = tf.squeeze(simplicity_mask, -1)
+    simplicity_label = tf.cast(simplicity_mask, tf.int32)
+    return simplicity_label
+
+  def get_ele(self, features, ele):
+    ds_idxs = self.dset_shape_idx['indices']
+    for g in ds_idxs:
+      if ele in ds_idxs[g]:
+        ele_idx = ds_idxs[g][ele]
+        ele_data = tf.gather(features[g], ele_idx, axis=-1)
+        return ele_data
+    raise ValueError
+
+  def parse_inputs(self, features):
+
+    vertices = [self.get_ele(features,e) for e in self.data_config['feed_data']]
+    vertices = tf.concat(vertices, -1)
+
+    face_idx_per_vertex = self.get_ele(features, 'face_idx_per_vertex')
+    fidx_pv_empty_mask = self.get_ele(features, 'fidx_pv_empty_mask')
+    edges_per_vertex = self.get_ele(features, 'edges_per_vertex')
+    edges_pv_empty_mask = self.get_ele(features, 'edges_pv_empty_mask')
+
+    return vertices, face_idx_per_vertex, fidx_pv_empty_mask, edges_per_vertex, \
+      edges_pv_empty_mask
+
+  def simplicity_classifier(self, vertices):
+    dense_filters = [24, 2]
+    simplicity_logits = self.dense_block(vertices, dense_filters, self.is_training)
+    return simplicity_logits
 
 
   @staticmethod

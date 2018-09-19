@@ -256,6 +256,7 @@ def define_network_flags():
   flags.DEFINE_string('feed_data','xyzs-nxnynz','xyzrsg-nxnynz-color')
   flags.DEFINE_bool(name='residual', short_name='rs', default=False,
       help=flags_core.help_wrap('Is use reidual architecture'))
+  flags.DEFINE_string('drop_imo','005','dropout rate for input, middle and out')
 
 def parse_flags_update_configs(flags_obj):
   net_data_configs = {}
@@ -283,6 +284,7 @@ def parse_flags_update_configs(flags_obj):
   # net_configs
   net_configs = {}
   net_configs['residual'] = flags_obj.residual
+  net_configs['drop_imo'] = [0.1*int(e) for e in flags_obj.drop_imo]
   net_data_configs['net_configs'] = net_configs
 
   return net_data_configs

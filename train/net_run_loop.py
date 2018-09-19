@@ -251,16 +251,16 @@ def net_model_fn( features, labels, mode, model_class,
   model = model_class(net_data_configs=net_data_configs,
                       data_format=data_format, dtype=dtype)
 
-  logits = model(features, mode == tf.estimator.ModeKeys.TRAIN)
+  spl_logits, spl_labels = model(features, mode == tf.estimator.ModeKeys.TRAIN)
 
   # This acts as a no-op if the logits are already in fp32 (provided logits are
   # not a SparseTensor). If dtype is is low precision, logits must be cast to
   # fp32 for numerical stability.
-  logits = tf.cast(logits, tf.float32)
+  spl_logits = tf.cast(spl_logits, tf.float32)
 
   predictions = {
-      'classes': tf.argmax(logits, axis=1),
-      'probabilities': tf.nn.softmax(logits, name='softmax_tensor')
+      'spl_classes': tf.argmax(spl_logits, axis=-1),
+      'spl_probabilities': tf.nn.softmax(spl_logits, name='softmax_tensor')
   }
 
   if mode == tf.estimator.ModeKeys.PREDICT:
@@ -273,12 +273,12 @@ def net_model_fn( features, labels, mode, model_class,
         })
 
   # Calculate loss, which includes softmax cross entropy and L2 regularization.
-  cross_entropy = tf.losses.sparse_softmax_cross_entropy(
-      logits=logits, labels=labels)
+  spl_cross_entropy = tf.losses.sparse_softmax_cross_entropy(
+      logits=spl_logits, labels=spl_labels)
 
   # Create a tensor named cross_entropy for logging purposes.
-  tf.identity(cross_entropy, name='cross_entropy')
-  tf.summary.scalar('cross_entropy', cross_entropy)
+  tf.identity(spl_cross_entropy, name='cross_entropy')
+  tf.summary.scalar('cross_entropy', spl_cross_entropy)
 
   # If no loss_filter_fn is passed, assume we want the default behavior,
   # which is that batch_normalization variables are excluded from loss.
@@ -292,7 +292,7 @@ def net_model_fn( features, labels, mode, model_class,
       [tf.nn.l2_loss(tf.cast(v, tf.float32)) for v in tf.trainable_variables()
        if loss_filter_fn(v.name)])
   tf.summary.scalar('l2_loss', l2_loss)
-  loss = cross_entropy + l2_loss
+  loss = spl_cross_entropy + l2_loss
 
   if mode == tf.estimator.ModeKeys.TRAIN:
     global_step = tf.train.get_or_create_global_step()
@@ -324,6 +324,7 @@ def net_model_fn( features, labels, mode, model_class,
       # When computing fp16 gradients, often intermediate tensor values are
       # so small, they underflow to 0. To avoid this, we multiply the loss by
       # loss_scale to make these tensor values loss_scale times bigger.
+      raise NotImplementedError
       scaled_grad_vars = optimizer.compute_gradients(loss * loss_scale)
 
       if fine_tune:
@@ -345,19 +346,12 @@ def net_model_fn( features, labels, mode, model_class,
   else:
     train_op = None
 
-  accuracy = tf.metrics.accuracy(labels, predictions['classes'])
-  accuracy_top_5 = tf.metrics.mean(tf.nn.in_top_k(predictions=logits,
-                                                  targets=labels,
-                                                  k=5,
-                                                  name='top_5_op'))
-  metrics = {'accuracy': accuracy,
-             'accuracy_top_5': accuracy_top_5}
+  spl_accuracy = tf.metrics.accuracy(spl_labels, predictions['spl_classes'])
+  metrics = {'spl_accuracy': spl_accuracy,}
 
   # Create a tensor named train_accuracy for logging purposes
-  tf.identity(accuracy[1], name='train_accuracy')
-  tf.identity(accuracy_top_5[1], name='train_accuracy_top_5')
-  tf.summary.scalar('train_accuracy', accuracy[1])
-  tf.summary.scalar('train_accuracy_top_5', accuracy_top_5[1])
+  tf.identity(spl_accuracy[1], name='train_accuracy')
+  tf.summary.scalar('spl_accuracy', spl_accuracy[1])
 
   return tf.estimator.EstimatorSpec(
       mode=mode,
@@ -497,7 +491,7 @@ def net_main(
     benchmark_logger.log_evaluation_result(eval_results)
 
     if model_helpers.past_stop_threshold(
-        flags_obj.stop_threshold, eval_results['accuracy']):
+        flags_obj.stop_threshold, eval_results['spl_accuracy']):
       break
 
   if flags_obj.export_dir is not None:

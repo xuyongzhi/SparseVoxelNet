@@ -162,6 +162,7 @@ class ResConvOps(object):
     self.res_scale = 1.0
     self.use_bias = True
     self.block_style = 'Regular'
+    self.drop_imo = net_data_configs['net_configs']['drop_imo']
 
     self.batch_norm_decay = _BATCH_NORM_DECAY
 
@@ -333,7 +334,7 @@ bnd optimizer block_config\n'
     elif self.data_format == 'channels_first':
       return net.shape[1].value
 
-  def conv2d3d(self, inputs, filters, kernels, strides, pad_stride1):
+  def conv1d2d3d(self, inputs, filters, kernels, strides, pad_stride1):
     """Strided 2-D or 3-D convolution with explicit padding.
       pad_stride1:  only used when strides==1
     """
@@ -471,7 +472,7 @@ bnd optimizer block_config\n'
       for i in range(uncompress_times):
         #filters_i = int(self.get_feature_channels(inputs)*2) - 3*self.use_xyz
         filters_i = int(self.get_feature_channels(inputs)*2)
-        inputs = self.conv2d3d(inputs, filters_i, 1,1,'s')
+        inputs = self.conv1d2d3d(inputs, filters_i, 1,1,'s')
         self.log_tensor_c(inputs, 1,1,'s', tf.get_variable_scope().name)
     self.block_num_count += 1
     return inputs
@@ -526,7 +527,7 @@ bnd optimizer block_config\n'
       shortcut = projection_shortcut(inputs)
 
     with tf.variable_scope('c0'):
-      inputs = self.conv2d3d(inputs, filters, kernels, strides, pad_stride1)
+      inputs = self.conv1d2d3d(inputs, filters, kernels, strides, pad_stride1)
       self.log_tensor_c(inputs, kernels, strides, pad_stride1,
                         tf.get_variable_scope().name)
     if half_layer: return inputs
@@ -535,7 +536,7 @@ bnd optimizer block_config\n'
     with tf.variable_scope('c1'):
       if self.check_kernel_waste(inputs, kernels):
         kernels = 1
-      inputs = self.conv2d3d(inputs, filters, kernels, 1, 's')
+      inputs = self.conv1d2d3d(inputs, filters, kernels, 1, 's')
       self.log_tensor_c(inputs, kernels, 1, 's',
                         tf.get_variable_scope().name)
 
@@ -593,20 +594,20 @@ bnd optimizer block_config\n'
       shortcut = projection_shortcut(inputs)
 
     with tf.variable_scope('c0'):
-      inputs = self.conv2d3d(inputs, filters//4, 1, 1, 's')
+      inputs = self.conv1d2d3d(inputs, filters//4, 1, 1, 's')
       self.log_tensor_c(inputs, 1, 1, 's', tf.get_variable_scope().name)
 
     inputs = self.batch_norm(inputs, training, tf.nn.relu)
 
     with tf.variable_scope('c1'):
-      inputs = self.conv2d3d(inputs, filters//4, kernels, strides, pad_stride1)
+      inputs = self.conv1d2d3d(inputs, filters//4, kernels, strides, pad_stride1)
       self.log_tensor_c(inputs, kernels, strides, pad_stride1,
                         tf.get_variable_scope().name)
 
     inputs = self.batch_norm(inputs, training, tf.nn.relu)
 
     with tf.variable_scope('c2'):
-      inputs = self.conv2d3d(inputs, filters, 1, 1, 's')
+      inputs = self.conv1d2d3d(inputs, filters, 1, 1, 's')
       self.log_tensor_c(inputs, 1, 1, 's', tf.get_variable_scope().name)
 
     if self.residual:
@@ -627,7 +628,7 @@ bnd optimizer block_config\n'
     '''
     var_scope = tf.get_variable_scope().name
     if op[0] == 'conv':
-      net = self.conv2d3d(net, op[1], op[2], op[3], op[4])
+      net = self.conv1d2d3d(net, op[1], op[2], op[3], op[4])
       self.log_tensor_c(net, op[2], op[3], op[4], var_scope, pre_indent)
     elif op[0] == 'max':
       net = self.pool2d3d(net, 'max', op[1], op[2], op[3])
@@ -687,7 +688,7 @@ bnd optimizer block_config\n'
     layer_name = '/'.join(tf.get_variable_scope().name.split('/')[2:])
     self.log_tensor_p(inputs, 'inception concat', layer_name)
 
-    inputs = self.conv2d3d(inputs, block_params['filters'], 1, 1, 's')
+    inputs = self.conv1d2d3d(inputs, block_params['filters'], 1, 1, 's')
     self.log_tensor_c(inputs, 1, 1, 's', tf.get_variable_scope().name)
 
     if self.residual:
@@ -734,7 +735,7 @@ bnd optimizer block_config\n'
     if scm == 'C':
       # pad_stride1=='v: feature map size have to be reduced => kernels
       with tf.variable_scope('sc_C'):
-        shortcut = self.conv2d3d(inputs, filters_out_sc, kernel_sc, strides,
+        shortcut = self.conv1d2d3d(inputs, filters_out_sc, kernel_sc, strides,
                                  pad_stride1)
         self.log_tensor_c(shortcut, kernel_sc, strides,
                         pad_stride1, tf.get_variable_scope().name)
@@ -752,7 +753,7 @@ bnd optimizer block_config\n'
         channels_dif = filters_out_sc - self.get_feature_channels(shortcut)
         if channels_dif != 0:
           if scm[1] == 'C':
-            shortcut = self.conv2d3d(shortcut, filters_out_sc, 1, 1, 's')
+            shortcut = self.conv1d2d3d(shortcut, filters_out_sc, 1, 1, 's')
             self.log_tensor_c(shortcut, 1, 1, 's', tf.get_variable_scope().name)
           else:
             #assert channels_dif>0
@@ -833,11 +834,18 @@ bnd optimizer block_config\n'
     return tf.identity(inputs, name)
 
 
-  def feature_back_propagate(self, inputs):
-    outputs = tf.layers.conv2d(inputs, 128, 1, 1, 'v')
-    import pdb; pdb.set_trace()  # XXX BREAKPOINT
-    return outputs
-
+  def dense_block(self, inputs, filters, is_training):
+    out_drop_rate = self.drop_imo[2]
+    n = len(filters)
+    for i, f in enumerate(filters):
+      inputs = tf.layers.dense(inputs, f)
+      if self.IsShowModel: self.log_tensor_p(inputs, '', 'dense_%d'%(i))
+      if i!=n-1:
+        inputs = self.batch_norm(inputs, is_training, tf.nn.relu)
+        if out_drop_rate>0:
+          if self.IsShowModel: self.log('dropout {}'.format(out_drop_rate))
+          inputs = tf.layers.dropout(inputs, out_drop_rate, training=is_training)
+    return inputs
 
 def mytile(tensor, axis, eval_views):
   org_shape = tensor.shape.as_list()
