@@ -38,8 +38,8 @@ class Model(ResConvOps):
     edges_per_vertex: [B,N,10*2]
     '''
     self.is_training = is_training
-    vertices, face_idx_per_vertex, fidx_pv_empty_mask, edges_per_vertex, \
-      edges_pv_empty_mask = self.parse_inputs(features)
+    vertices, face_idx_per_vertex, fidx_pv_empty_mask, edges_per_vertex \
+      = self.parse_inputs(features)
 
     #
     self.batch_size = tf.shape(vertices)[0]
@@ -52,7 +52,7 @@ class Model(ResConvOps):
                             tf.expand_dims( tf.expand_dims(vertices, 2),3))
       edges = self.edge_encoder(scale, edges)
       faces = self.edgeF_2_faceF(scale, edges)
-      vertices = self.faceF_2_vertexF(scale, faces, vertices)
+      vertices = self.faceF_2_vertexF(scale, faces, fidx_pv_empty_mask, vertices)
       vertices_scales.append(vertices)
 
     vertices = tf.concat(vertices_scales, -1)
@@ -93,8 +93,7 @@ class Model(ResConvOps):
     edges_per_vertex = self.get_ele(features, 'edges_per_vertex')
     edges_pv_empty_mask = self.get_ele(features, 'edges_pv_empty_mask')
 
-    return vertices, face_idx_per_vertex, fidx_pv_empty_mask, edges_per_vertex, \
-      edges_pv_empty_mask
+    return vertices, face_idx_per_vertex, fidx_pv_empty_mask, edges_per_vertex
 
   def simplicity_classifier(self, vertices):
     dense_filters = [24, 2]
@@ -185,9 +184,16 @@ class Model(ResConvOps):
                          self.is_training, 'face_s%d'%(scale))
     return faces
 
-  def faceF_2_vertexF(self, scale, faces, vertices):
+  def faceF_2_vertexF(self, scale, faces, fidx_pv_empty_mask, vertices):
+    # max pool
     new_vertices_maxp = tf.reduce_max(faces, -2)
-    new_vertices_meanp = tf.reduce_mean(faces, -2)
+
+    # mean pool
+    fidx_pv_empty_mask = tf.cast(fidx_pv_empty_mask, tf.float32)
+    valid_face_num = tf.reduce_sum(fidx_pv_empty_mask, -1, keepdims=True)
+    face_weight = tf.expand_dims( fidx_pv_empty_mask / valid_face_num, -1)
+    new_vertices_meanp = tf.reduce_sum(faces * face_weight, -2)
+
     new_vertices = new_vertices_maxp
     #new_vertices = tf.concat([new_vertices_maxp, new_vertices_meanp])
 
