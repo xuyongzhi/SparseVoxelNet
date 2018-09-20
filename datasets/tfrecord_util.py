@@ -523,8 +523,13 @@ class MeshSampling():
     face_idx_per_vertex.set_shape([num_vertex0, MeshSampling._max_nf_perv])
     fidx_pv_empty_mask = tf.cast(tf.equal(face_idx_per_vertex, -1), tf.bool)
 
-    # set -1 as 0
-    face_idx_per_vertex += tf.cast(fidx_pv_empty_mask, tf.int32)
+    # set -1 as the first one
+    empty_indices = tf.cast(tf.where(fidx_pv_empty_mask), tf.int32)
+    the_first_face_dix = tf.gather(face_idx_per_vertex[:,0], empty_indices[:,0],axis=0)
+    tmp = tf.scatter_nd(empty_indices, the_first_face_dix+1, tf.shape(face_idx_per_vertex))
+    face_idx_per_vertex = face_idx_per_vertex + tmp
+    ## set -1 as 0
+    #face_idx_per_vertex += tf.cast(fidx_pv_empty_mask, tf.int32)
 
     #***************************************************************************
     # get neighbor verties
@@ -546,12 +551,19 @@ class MeshSampling():
     edges_per_vertex = tf.scatter_nd(vidx_fidxperv, edges_per_vertexs_flat+1,\
                                      [num_vertex0, max_nf_perv, 2])-1
 
-    edges_per_vertex = tf.reshape(edges_per_vertex, [num_vertex0, max_nf_perv*2])
-    edges_per_vertex = edges_per_vertex[:, 0:MeshSampling._max_nf_perv*2]
-    edges_per_vertex.set_shape([num_vertex0, MeshSampling._max_nf_perv*2])
+    edges_per_vertex = edges_per_vertex[:, 0:MeshSampling._max_nf_perv,:]
+    edges_per_vertex.set_shape([num_vertex0, MeshSampling._max_nf_perv, 2])
     edges_pv_empty_mask = tf.cast(tf.equal(edges_per_vertex, -1), tf.bool)
-    # set -1 as 0
-    edges_per_vertex += tf.cast(edges_pv_empty_mask, tf.int32)
+
+    # set -1 as the first one
+    the_first_edges_dix = tf.gather(edges_per_vertex[:,0,:], empty_indices[:,0])
+    tmp = tf.scatter_nd(empty_indices, the_first_edges_dix+1, tf.shape(edges_per_vertex))
+    edges_per_vertex += tmp
+
+    # reshape and flat to the same dims with other elements, to store in the
+    # same array
+    edges_per_vertex = tf.reshape(edges_per_vertex, [num_vertex0, MeshSampling._max_nf_perv*2])
+    edges_pv_empty_mask = tf.reshape(edges_pv_empty_mask, [num_vertex0, MeshSampling._max_nf_perv*2])
 
     return face_idx_per_vertex, fidx_pv_empty_mask, edges_per_vertex, edges_pv_empty_mask
 
