@@ -429,7 +429,7 @@ def net_main(
     dataset_name = dataset_name + '-synthetic'
 
   benchmark_logger = logger.get_benchmark_logger()
-  benchmark_logger.log_run_info('resnet', dataset_name, run_params,
+  benchmark_logger.log_run_info('meshnet', dataset_name, run_params,
                                 test_id=flags_obj.benchmark_test_id)
 
   train_hooks = hooks_helper.get_train_hooks(

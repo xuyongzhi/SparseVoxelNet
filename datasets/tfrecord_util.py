@@ -289,7 +289,7 @@ class MeshSampling():
   _max_norm_dif_angle = 15.0
   _check_optial = True
 
-  _max_nf_perv = 10
+  _max_nf_perv = 5
 
   _vertex_eles = ['color', 'xyz', 'nxnynz', 'face_idx_per_vertex', \
                   'edges_per_vertex', 'edges_pv_empty_mask', 'fidx_pv_empty_mask',\
@@ -367,8 +367,8 @@ class MeshSampling():
     #***************************************************************************
     #face idx per vetex, edges per vertyex
     face_idx_per_vertex, fidx_pv_empty_mask, edges_per_vertex, edges_pv_empty_mask = \
-                      MeshSampling.get_fidx_nbrv_per_vertex(
-                      raw_datas['vertex_idx_per_face'], num_vertex0)
+                    MeshSampling.get_fidx_nbrv_per_vertex(
+                                  raw_datas['vertex_idx_per_face'], num_vertex0)
     raw_datas['face_idx_per_vertex'] = face_idx_per_vertex
     raw_datas['fidx_pv_empty_mask'] = fidx_pv_empty_mask
     raw_datas['edges_per_vertex'] = edges_per_vertex
@@ -528,9 +528,11 @@ class MeshSampling():
     the_first_face_dix = tf.gather(face_idx_per_vertex[:,0], empty_indices[:,0],axis=0)
     tmp = tf.scatter_nd(empty_indices, the_first_face_dix+1, tf.shape(face_idx_per_vertex))
     face_idx_per_vertex = face_idx_per_vertex + tmp
-    ## set -1 as 0
-    #face_idx_per_vertex += tf.cast(fidx_pv_empty_mask, tf.int32)
 
+    check_no_bad_vertex = tf.assert_greater(tf.reduce_min(face_idx_per_vertex), -1,
+                          message="find vertex with no face, delete in sampling")
+    with tf.control_dependencies([check_no_bad_vertex]):
+      face_idx_per_vertex = tf.identity(face_idx_per_vertex)
     #***************************************************************************
     # get neighbor verties
     edges_per_vertexs_flat = tf.gather(tf.squeeze(vertex_idx_per_face,-1), vidx_fidx_flat_sorted[:,1])
@@ -650,6 +652,7 @@ class MeshSampling():
     else:
       num_vertex0 = raw_datas['xyz'].shape[0]
     is_down_sampling = _num_vertex_sp < num_vertex0
+    import pdb; pdb.set_trace()  # XXX BREAKPOINT
     if is_down_sampling:
       sampled_datas = MeshSampling.down_sampling_mesh(_num_vertex_sp, raw_datas.copy())
     else:

@@ -55,7 +55,7 @@ class Model(ResConvOps):
       vertices = self.faceF_2_vertexF(scale, faces, fidx_pv_empty_mask, vertices)
       vertices_scales.append(vertices)
 
-    vertices = tf.concat(vertices_scales, -1)
+    #vertices = tf.concat(vertices_scales, -1)
     simplicity_logits = self.simplicity_classifier(vertices)
     simplicity_label = self.simplicity_label(features)
     return simplicity_logits, simplicity_label

@@ -18,7 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os
+import os, glob
 
 from absl import app as absl_app
 from absl import flags
@@ -54,14 +54,15 @@ _NUM_CLASSES = DsetMetas.num_classes
 ###############################################################################
 def get_filenames(is_training, data_dir):
   """Return filenames for dataset."""
+  data_dir = os.path.join(data_dir, 'data')
   if is_training:
-    return [
-        os.path.join(data_dir, 'train-%05d-of-01024' % i)
-        for i in range(_NUM_TRAIN_FILES)]
+    fn_glob = os.path.join(data_dir, '*.tfrecord')
+    all_fnls = glob.glob(fn_glob)
+    assert len(all_fnls) > 0, fn_glob
+    print('\ngot {} training files\n'.format(len(all_fnls)))
+    return all_fnls
   else:
-    return [
-        os.path.join(data_dir, 'validation-%05d-of-00128' % i)
-        for i in range(128)]
+    return []
 
 
 def _parse_example_proto(example_serialized):
@@ -251,7 +252,7 @@ def define_network_flags():
   flags_core.set_defaults(train_epochs=90,
                           data_dir=data_dir,
                           model_dir=os.path.join(ROOT_DIR,'results/mesh_seg'),
-                          batch_size=4)
+                          batch_size=1)
 
   flags.DEFINE_string('feed_data','xyzs-nxnynz','xyzrsg-nxnynz-color')
   flags.DEFINE_bool(name='residual', short_name='rs', default=False,
