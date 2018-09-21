@@ -43,7 +43,7 @@ def random_choice(org_vector, sample_N, random_sampl_pro=None,
 
 
 class Raw_To_Tfrecord():
-  def __init__(self, dataset_name, tfrecord_path, num_point=None, block_size=None):
+  def __init__(self, dataset_name, tfrecord_path, num_point=None, block_size=None, ply_dir=None):
     self.dataset_name = dataset_name
     self.tfrecord_path = tfrecord_path
     self.data_path = os.path.join(self.tfrecord_path, 'data')
@@ -58,6 +58,8 @@ class Raw_To_Tfrecord():
     self.min_pn_inblock = min(self.num_point * 0.1, 2000)
     self.sampling_rates = []
     self.dataset_meta = DatasetsMeta(self.dataset_name)
+
+    self.ply_dir = ply_dir
 
   def __call__(self, rawfns):
     bsfn0 = os.path.join(self.tfrecord_path, 'block_split_settings.txt')
@@ -246,10 +248,10 @@ class Raw_To_Tfrecord():
     num_points_splited = [e.shape[0] if type(e)!=type(None) else raw_datas['xyz'].shape[0]\
                           for e in splited_vidx]
 
-    main_split_sampling_rawmesh = MeshSampling.eager_split_sampling_rawmesh
-    #main_split_sampling_rawmesh = MeshSampling.sess_split_sampling_rawmesh
+    #main_split_sampling_rawmesh = MeshSampling.eager_split_sampling_rawmesh
+    main_split_sampling_rawmesh = MeshSampling.sess_split_sampling_rawmesh
     splited_sampled_datas, raw_vertex_nums = main_split_sampling_rawmesh(
-                          raw_datas, self.num_point, splited_vidx)
+        raw_datas, self.num_point, splited_vidx, self.dataset_meta, self.ply_dir)
 
 
     print('starting {} th file: {}'.format(self.fi, rawfn))
@@ -352,10 +354,10 @@ def get_label_num_weights(dataset_summary, loss_lw_gama):
     plt.show()
 
 
-def main_write(dataset_name, rawh5_glob, tfrecord_path, num_point, block_size):
+def main_write(dataset_name, rawh5_glob, tfrecord_path, num_point, block_size, ply_dir):
   raw_fns = glob.glob(rawh5_glob)
 
-  raw_to_tf = Raw_To_Tfrecord(dataset_name, tfrecord_path, num_point, block_size)
+  raw_to_tf = Raw_To_Tfrecord(dataset_name, tfrecord_path, num_point, block_size, ply_dir)
   raw_to_tf(raw_fns)
 
 def split_fn_ls( tfrecordfn_ls, merged_n):
@@ -483,16 +485,19 @@ def gen_ply_onef(dataset_name, tf_path, filename, scene):
 def main_matterport():
   dataset_name = 'MATTERPORT'
   dset_path = '/DS/Matterport3D/Matterport3D_WHOLE_extracted/v1/scans'
-  num_point = {'MODELNET40':None, 'MATTERPORT':150000}
-  block_size = {'MODELNET40':None, 'MATTERPORT':np.array([5.0, 5.0, 5.0]) }
+  num_point = {'MODELNET40':None, 'MATTERPORT':100000}
+  block_size = {'MODELNET40':None, 'MATTERPORT':np.array([3.0, 3.0, 5.0]) }
 
   scene_name = '17DRP5sb8fy'
   scene_name = '2t7WUuJeko7'
-  raw_glob = os.path.join(dset_path, '{}/*/region_segmentations/region*.ply'.format(scene_name))
+  region_name = 'region*'
+  raw_glob = os.path.join(dset_path, '{}/*/region_segmentations/{}.ply'.format(
+                                scene_name, region_name))
   tfrecord_path = '/DS/Matterport3D/MATTERPORT_TF/mesh_tfrecord'
+  ply_dir = os.path.join(tfrecord_path, 'plys/{}/{}'.format(scene_name, region_name))
 
   main_write(dataset_name, raw_glob, tfrecord_path, num_point[dataset_name],\
-             block_size[dataset_name])
+             block_size[dataset_name], ply_dir)
 
   #main_merge_tfrecord(dataset_name, tfrecord_path)
 
