@@ -56,13 +56,13 @@ def get_filenames(is_training, data_dir):
   """Return filenames for dataset."""
   data_dir = os.path.join(data_dir, 'data')
   if is_training:
-    fn_glob = os.path.join(data_dir, '*.tfrecord')
-    all_fnls = glob.glob(fn_glob)
-    assert len(all_fnls) > 0, fn_glob
-    print('\ngot {} training files\n'.format(len(all_fnls)))
-    return all_fnls
+    fn_glob = os.path.join(data_dir, '17DRP5sb8fy*.tfrecord')
   else:
-    return []
+    fn_glob = os.path.join(data_dir, '2t7WUuJeko7*.tfrecord')
+  all_fnls = glob.glob(fn_glob)
+  assert len(all_fnls) > 0, fn_glob
+  print('\ngot {} training files for training={}\n'.format(len(all_fnls), is_training))
+  return all_fnls
 
 
 def _parse_example_proto(example_serialized):
@@ -252,7 +252,8 @@ def define_network_flags():
   flags_core.set_defaults(train_epochs=90,
                           data_dir=data_dir,
                           model_dir=os.path.join(ROOT_DIR,'results/mesh_seg'),
-                          batch_size=1)
+                          batch_size=2,
+                          num_gpus=1)
 
   flags.DEFINE_string('feed_data','xyzs-nxnynz','xyzrsg-nxnynz-color')
   flags.DEFINE_bool(name='residual', short_name='rs', default=False,
