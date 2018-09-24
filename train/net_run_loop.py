@@ -378,6 +378,10 @@ def net_main(
   """
 
   model_helpers.apply_clean(flags.FLAGS)
+  is_metriclog = True
+  if is_metriclog:
+    metric_logfn = os.path.join(flags_obj.model_dir, 'log_metric.txt')
+    metric_logf = open(metric_logfn, 'a')
 
   from tensorflow.contrib.memory_stats.ops import gen_memory_stats_ops
   max_memory_usage = gen_memory_stats_ops.max_bytes_in_use()
@@ -416,6 +420,7 @@ def net_main(
           'loss_scale': flags_core.get_loss_scale(flags_obj),
           'dtype': flags_core.get_tf_dtype(flags_obj),
           'fine_tune': flags_obj.fine_tune,
+          'examples_per_epoch': flags_obj.examples_per_epoch,
           'net_data_configs': net_data_configs
       })
 
@@ -445,7 +450,7 @@ def net_main(
             flags_obj.batch_size, flags_core.get_num_gpus(flags_obj)),
         num_epochs=num_epochs,
         num_gpus=flags_core.get_num_gpus(flags_obj),
-        examples_per_epoch = net_data_configs['data_configs']['examples_per_epoch']
+        examples_per_epoch = flags_obj.examples_per_epoch
         )
 
   def input_fn_eval():
@@ -481,13 +486,6 @@ def net_main(
     tf.logging.info('Starting cycle: %d/%d', cycle_index, int(n_loops))
 
     if num_train_epochs:
-      #train_spec = tf.estimator.TrainSpec(
-      #              input_fn=lambda: input_fn_train(num_train_epochs),
-      #              hooks=train_hooks, max_steps=flags_obj.max_train_steps)
-      #eval_spec = tf.estimator.EvalSpec(
-      #              input_fn=lambda: input_fn_train(num_train_epochs),
-      #              steps=flags_obj.max_train_steps)
-      #tf.estimator.train_and_evaluate(classifier, train_spec, eval_spec)
       classifier.train(input_fn=lambda: input_fn_train(num_train_epochs),
                        hooks=train_hooks, max_steps=flags_obj.max_train_steps)
 

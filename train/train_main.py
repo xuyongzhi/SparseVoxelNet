@@ -249,15 +249,19 @@ def network_model_fn(features, labels, mode, params):
   else:
     warmup = True
     base_lr = .128
-  base_lr = params['net_data_configs']['net_configs']['lr0']
-  batches_per_epoch = params['net_data_configs']['data_configs']['examples_per_epoch'] /\
+  ndc = params['net_data_configs']
+  base_lr = ndc['net_configs']['lr0']
+  batches_per_epoch = params['examples_per_epoch'] /\
                       params['batch_size']
+  boundary_epochs = ndc['net_configs']['lrd_boundary_epochs']
+  lrd_rate = ndc['net_configs']['lrd_rate']
+  decay_rates = [pow(lrd_rate, i) for i in range(len(boundary_epochs)+1)]
 
   learning_rate_fn = net_run_loop.learning_rate_with_decay(
       batch_size=params['batch_size'], batch_denom=params['batch_size'],
       batches_per_epoch=batches_per_epoch,
-      boundary_epochs=[30, 60, 80, 90],
-      decay_rates=[1, 0.1, 0.01, 0.001, 1e-4], warmup=warmup, base_lr=base_lr)
+      boundary_epochs=boundary_epochs,
+      decay_rates=decay_rates, warmup=warmup, base_lr=base_lr)
 
   return net_run_loop.net_model_fn(
       features=features,
@@ -276,12 +280,16 @@ def network_model_fn(features, labels, mode, params):
   )
 
 def parse_flags_update_configs(flags_obj):
+  flags_obj.max_train_steps = int(flags_obj.train_epochs * flags_obj.examples_per_epoch)
+
+  #*****************************************************************************
   net_data_configs = {}
   net_data_configs['net_flag'] = flags_obj.net_flag
   net_data_configs['dataset_name'] = DATASET_NAME
   net_data_configs['dset_shape_idx'] = get_dset_shape_idxs(flags_obj.data_dir)
   net_data_configs['dset_metas'] = DsetMetas
 
+  define_model_dir(flags_obj)
   #*****************************************************************************
   # data_config
   feed_data = flags_obj.feed_data.split('-')
@@ -295,8 +303,6 @@ def parse_flags_update_configs(flags_obj):
   data_configs['feed_data_eles'] = flags_obj.feed_data
   data_configs['feed_data'] = feed_data
   data_configs['xyz_eles'] = xyz_eles
-  update_examples_num(True, flags_obj.data_dir)
-  data_configs['examples_per_epoch'] = _NUM_EXAMPLES['train']
 
   net_data_configs['data_configs'] = data_configs
 
@@ -307,11 +313,57 @@ def parse_flags_update_configs(flags_obj):
   net_configs['drop_imo_str'] = flags_obj.drop_imo
   net_configs['drop_imo'] = [0.1*int(e) for e in flags_obj.drop_imo]
   net_configs['lr0'] = flags_obj.lr0
+  net_configs['lrd_rate'] = flags_obj.lrd_rate
+  lrde = flags_obj.lrd_epochs
+  net_configs['lrd_epochs'] = lrde
+  net_configs['lrd_boundary_epochs'] = range(lrde, flags_obj.train_epochs, lrde)
   net_configs['batch_size'] = flags_obj.batch_size
 
   net_data_configs['net_configs'] = net_configs
 
   return net_data_configs
+
+def define_model_dir(flags_obj):
+  def model_name():
+    if flags_obj.residual == 1:
+      modelname = 'R'
+      modelname += flags_obj.shortcut
+    else:
+      modelname = 'P'
+    modelname += flags_obj.net_flag
+    return modelname
+
+  logname =  model_name()
+
+  logname += '-'+flags_obj.feed_data
+  logname += '-Drop'+flags_obj.drop_imo
+  logname +='-Bs'+str(flags_obj.batch_size)
+  logname +=  '-Lr'+str(int(flags_obj.lr0*1000)) +\
+              '_' + str(int(10*flags_obj.lrd_rate)) + \
+              '_' + str(flags_obj.lrd_epochs)
+
+  model_dir = os.path.join(ROOT_DIR, 'results/meshsag', logname)
+  flags_obj.model_dir = model_dir
+
+  if not os.path.exists(model_dir):
+    os.makedirs(model_dir)
+  add_log_file(model_dir)
+  return model_dir
+
+def add_log_file(model_dir):
+  import logging
+  log = logging.getLogger('tensorflow')
+  log.setLevel(logging.DEBUG)
+
+  # create formatter and add it to the handlers
+  formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+
+  # create file handler which logs even debug messages
+  fh = logging.FileHandler(os.path.join(model_dir, 'hooks.log'))
+  fh.setLevel(logging.DEBUG)
+  fh.setFormatter(formatter)
+  log.addHandler(fh)
+
 
 
 def define_network_flags():
@@ -319,7 +371,7 @@ def define_network_flags():
       net_flag_choices=['18', '34', '50', '101', '152', '200'])
   flags.adopt_module_key_flags(net_run_loop)
   data_dir = os.path.join(DATA_DIR,'MATTERPORT_TF/mesh_tfrecord')
-  flags_core.set_defaults(train_epochs=90,
+  flags_core.set_defaults(train_epochs=150,
                           data_dir=data_dir,
                           model_dir=os.path.join(ROOT_DIR,'results/mesh_seg'),
                           batch_size=1,
@@ -327,11 +379,15 @@ def define_network_flags():
                           epochs_between_evals=2)
 
   flags.DEFINE_float('lr0', default=0.01, help="base lr")
+  flags.DEFINE_float('lrd_rate', default=0.1, help="learning rate decay rate")
+  flags.DEFINE_integer('lrd_epochs', default=20, help="learning_rate decay epoches")
   flags.DEFINE_string('feed_data','xyzs-nxnynz','xyzrsg-nxnynz-color')
   flags.DEFINE_bool(name='residual', short_name='rs', default=False,
       help=flags_core.help_wrap('Is use reidual architecture'))
   flags.DEFINE_string('drop_imo','000','dropout rate for input, middle and out')
 
+  update_examples_num(True, data_dir)
+  flags.DEFINE_integer('examples_per_epoch', default=_NUM_EXAMPLES['train'], help="")
 
 def run_network(flags_obj):
   """Run ResNet ImageNet training and eval loop.
