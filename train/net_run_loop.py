@@ -381,6 +381,9 @@ def net_main(
 
   model_helpers.apply_clean(flags.FLAGS)
 
+  from tensorflow.contrib.memory_stats.ops import gen_memory_stats_ops
+  max_memory_usage = gen_memory_stats_ops.max_bytes_in_use()
+
   # Using the Winograd non-fused algorithms provides a small performance boost.
   os.environ['TF_ENABLE_WINOGRAD_NONFUSED'] = '1'
 
@@ -469,6 +472,11 @@ def net_main(
     n_loops = math.ceil(flags_obj.train_epochs / flags_obj.epochs_between_evals)
     schedule = [flags_obj.epochs_between_evals for _ in range(int(n_loops))]
     schedule[-1] = flags_obj.train_epochs - sum(schedule[:-1])  # over counting.
+
+    classifier.train(input_fn=lambda: input_fn_train(1) ,hooks=train_hooks, max_steps=10)
+    with tf.Session() as sess:
+      max_memory_usage_v = sess.run(max_memory_usage)
+      tf.logging.info('\n\nmemory usage: %0.3f G\n\n'%(max_memory_usage_v*1.0/1e9))
 
   for cycle_index, num_train_epochs in enumerate(schedule):
     tf.logging.info('Starting cycle: %d/%d', cycle_index, int(n_loops))

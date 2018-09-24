@@ -283,7 +283,7 @@ def define_network_flags():
   flags_core.set_defaults(train_epochs=90,
                           data_dir=data_dir,
                           model_dir=os.path.join(ROOT_DIR,'results/mesh_seg'),
-                          batch_size=2,
+                          batch_size=4,
                           num_gpus=2,
                           epochs_between_evals=2)
 
