@@ -157,7 +157,7 @@ def get_synth_input_fn(height, width, num_channels, num_classes,
 # Functions for running training/eval/validation loops for the model.
 ################################################################################
 def learning_rate_with_decay(
-    batch_size, batch_denom, num_images, boundary_epochs, decay_rates,
+    batch_size, batch_denom, batches_per_epoch, boundary_epochs, decay_rates,
     base_lr=0.1, warmup=False):
   """Get a learning rate that decays step-wise as training progresses.
 
@@ -166,7 +166,6 @@ def learning_rate_with_decay(
     batch_denom: this value will be used to scale the base learning rate.
       `0.1 * batch size` is divided by this number, such that when
       batch_denom == batch_size, the initial learning rate will be 0.1.
-    num_images: total number of images that will be used for training.
     boundary_epochs: list of ints representing the epochs at which we
       decay the learning rate.
     decay_rates: list of floats representing the decay rates to be used
@@ -180,7 +179,6 @@ def learning_rate_with_decay(
     for training the next batch.
   """
   initial_learning_rate = base_lr * batch_size / batch_denom
-  batches_per_epoch = num_images / batch_size
 
   # Reduce the learning rate at certain epochs.
   # CIFAR-10: divide by 10 at epoch 100, 150, and 200
@@ -447,6 +445,7 @@ def net_main(
             flags_obj.batch_size, flags_core.get_num_gpus(flags_obj)),
         num_epochs=num_epochs,
         num_gpus=flags_core.get_num_gpus(flags_obj),
+        examples_per_epoch = net_data_configs['data_configs']['examples_per_epoch']
         )
 
   def input_fn_eval():

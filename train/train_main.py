@@ -18,7 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os, glob
+import os, glob, time
 
 from absl import app as absl_app
 from absl import flags
@@ -36,23 +36,22 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT_DIR = os.path.dirname(BASE_DIR)
 DATA_DIR = os.path.join(ROOT_DIR, 'data')
 
+_NUM_EXAMPLES_ALL = {}
+_NUM_EXAMPLES_ALL['MATTERPORT'] = {
+        'train': -1, 'validation':-1}
 
-_NUM_IMAGES = {
-    'train': 1281167,
-    'validation': 50000,
-}
-
-_NUM_TRAIN_FILES = 1024
-_SHUFFLE_BUFFER = 10000
+_NUM_TRAIN_FILES = 10
+_SHUFFLE_BUFFER = 1000
 
 DATASET_NAME = 'MATTERPORT'
+_NUM_EXAMPLES = _NUM_EXAMPLES_ALL[DATASET_NAME]
 DsetMetas = DatasetsMeta(DATASET_NAME)
 _NUM_CLASSES = DsetMetas.num_classes
 
 ###############################################################################
 # Data processing
 ###############################################################################
-def get_filenames(is_training, data_dir):
+def get_filenames_1(is_training, data_dir):
   """Return filenames for dataset."""
   data_dir = os.path.join(data_dir, 'data')
   if is_training:
@@ -64,6 +63,34 @@ def get_filenames(is_training, data_dir):
   print('\ngot {} training files for training={}\n'.format(len(all_fnls), is_training))
   return all_fnls
 
+def get_filenames(is_training, data_dir):
+  """Return filenames for dataset."""
+  return get_filenames_1(is_training, data_dir)
+
+  data_dir = os.path.join(data_dir, 'merged_data')
+  if is_training:
+    pre = 'train_'
+  else:
+    pre = 'test_'
+  fnls = glob.glob(os.path.join(data_dir, pre+'*.tfrecord'))
+  print('\nfound {} files, train:{}\n'.format(len(fnls), is_training))
+  return fnls
+
+
+def update_examples_num(is_training, data_dir):
+  all_fnls = get_filenames(is_training, data_dir)
+  tot = 'train' if is_training else 'validation'
+  _NUM_EXAMPLES[tot] = get_global_block_num(all_fnls)
+  print('update training global block num:{}'.format(_NUM_EXAMPLES[tot]))
+
+def get_global_block_num(fnls):
+  t0 = time.time()
+  c = 0
+  for fn in fnls:
+    for record in tf.python_io.tf_record_iterator(fn):
+      c += 1
+  print('\nget block num for {} files: {}, time:{}\n'.format(len(fnls), c, time.time()-t0))
+  return c
 
 def _parse_example_proto(example_serialized):
   """Parses an Example proto containing a training example of an image.
@@ -135,7 +162,8 @@ def _parse_example_proto(example_serialized):
   return features['image/encoded'], label, bbox
 
 
-def input_fn(is_training, data_dir, batch_size, num_epochs=1, num_gpus=None):
+def input_fn(is_training, data_dir, batch_size, num_epochs=1, num_gpus=None,
+             examples_per_epoch=None):
   """Input function which provides batches for train or eval.
 
   Args:
@@ -174,7 +202,7 @@ def input_fn(is_training, data_dir, batch_size, num_epochs=1, num_gpus=None):
       dset_shape_idx=dset_shape_idx,
       num_epochs=num_epochs,
       num_gpus=num_gpus,
-      examples_per_epoch=_NUM_IMAGES['train'] if is_training else None,
+      examples_per_epoch=examples_per_epoch if is_training else None,
   )
 
 
@@ -222,10 +250,13 @@ def network_model_fn(features, labels, mode, params):
     warmup = True
     base_lr = .128
   base_lr = params['net_data_configs']['net_configs']['lr0']
+  batches_per_epoch = params['net_data_configs']['data_configs']['examples_per_epoch'] /\
+                      params['batch_size']
 
   learning_rate_fn = net_run_loop.learning_rate_with_decay(
-      batch_size=params['batch_size'], batch_denom=256,
-      num_images=_NUM_IMAGES['train'], boundary_epochs=[30, 60, 80, 90],
+      batch_size=params['batch_size'], batch_denom=params['batch_size'],
+      batches_per_epoch=batches_per_epoch,
+      boundary_epochs=[30, 60, 80, 90],
       decay_rates=[1, 0.1, 0.01, 0.001, 1e-4], warmup=warmup, base_lr=base_lr)
 
   return net_run_loop.net_model_fn(
@@ -264,6 +295,8 @@ def parse_flags_update_configs(flags_obj):
   data_configs['feed_data_eles'] = flags_obj.feed_data
   data_configs['feed_data'] = feed_data
   data_configs['xyz_eles'] = xyz_eles
+  update_examples_num(True, flags_obj.data_dir)
+  data_configs['examples_per_epoch'] = _NUM_EXAMPLES['train']
 
   net_data_configs['data_configs'] = data_configs
 
@@ -274,9 +307,9 @@ def parse_flags_update_configs(flags_obj):
   net_configs['drop_imo_str'] = flags_obj.drop_imo
   net_configs['drop_imo'] = [0.1*int(e) for e in flags_obj.drop_imo]
   net_configs['lr0'] = flags_obj.lr0
-  net_data_configs['net_configs'] = net_configs
-
   net_configs['batch_size'] = flags_obj.batch_size
+
+  net_data_configs['net_configs'] = net_configs
 
   return net_data_configs
 
@@ -293,7 +326,7 @@ def define_network_flags():
                           num_gpus=1,
                           epochs_between_evals=2)
 
-  flags.DEFINE_float('lr0', default=0.1, help="base lr")
+  flags.DEFINE_float('lr0', default=0.01, help="base lr")
   flags.DEFINE_string('feed_data','xyzs-nxnynz','xyzrsg-nxnynz-color')
   flags.DEFINE_bool(name='residual', short_name='rs', default=False,
       help=flags_core.help_wrap('Is use reidual architecture'))
