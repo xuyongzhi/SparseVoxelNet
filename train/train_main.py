@@ -243,23 +243,6 @@ def network_model_fn(features, labels, mode, params):
       fine_tune=params['fine_tune'],
   )
 
-
-def define_network_flags():
-  net_run_loop.define_net_flags(
-      net_flag_choices=['18', '34', '50', '101', '152', '200'])
-  flags.adopt_module_key_flags(net_run_loop)
-  data_dir = os.path.join(DATA_DIR,'MATTERPORT_TF/mesh_tfrecord')
-  flags_core.set_defaults(train_epochs=90,
-                          data_dir=data_dir,
-                          model_dir=os.path.join(ROOT_DIR,'results/mesh_seg'),
-                          batch_size=2,
-                          num_gpus=1)
-
-  flags.DEFINE_string('feed_data','xyzs-nxnynz','xyzrsg-nxnynz-color')
-  flags.DEFINE_bool(name='residual', short_name='rs', default=False,
-      help=flags_core.help_wrap('Is use reidual architecture'))
-  flags.DEFINE_string('drop_imo','005','dropout rate for input, middle and out')
-
 def parse_flags_update_configs(flags_obj):
   net_data_configs = {}
   net_data_configs['net_flag'] = flags_obj.net_flag
@@ -290,6 +273,25 @@ def parse_flags_update_configs(flags_obj):
   net_data_configs['net_configs'] = net_configs
 
   return net_data_configs
+
+
+def define_network_flags():
+  net_run_loop.define_net_flags(
+      net_flag_choices=['18', '34', '50', '101', '152', '200'])
+  flags.adopt_module_key_flags(net_run_loop)
+  data_dir = os.path.join(DATA_DIR,'MATTERPORT_TF/mesh_tfrecord')
+  flags_core.set_defaults(train_epochs=90,
+                          data_dir=data_dir,
+                          model_dir=os.path.join(ROOT_DIR,'results/mesh_seg'),
+                          batch_size=2,
+                          num_gpus=2,
+                          epochs_between_evals=2)
+
+  flags.DEFINE_string('feed_data','xyzs-nxnynz','xyzrsg-nxnynz-color')
+  flags.DEFINE_bool(name='residual', short_name='rs', default=False,
+      help=flags_core.help_wrap('Is use reidual architecture'))
+  flags.DEFINE_string('drop_imo','000','dropout rate for input, middle and out')
+
 
 def run_network(flags_obj):
   """Run ResNet ImageNet training and eval loop.

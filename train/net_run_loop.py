@@ -16,7 +16,7 @@
 
   This module contains ResNet code which does not directly build layers. This
 includes dataset management, hyperparameter and optimizer code, and argument
-parsing. Code for defining the ResNet layers can be found in resnet_model.py.
+parsing. Code for defining the ResNet layers can be found in meshnet_model.py.
 """
 
 from __future__ import absolute_import
@@ -30,13 +30,13 @@ import os
 from absl import flags
 import tensorflow as tf
 
-from official.resnet import resnet_model
 from official.utils.flags import core as flags_core
 from official.utils.export import export
 from official.utils.logs import hooks_helper
 from official.utils.logs import logger
 from official.utils.misc import distribution_utils
 from official.utils.misc import model_helpers
+from models import meshnet_model
 # pylint: enable=g-bad-import-order
 
 
@@ -205,7 +205,7 @@ def net_model_fn( features, labels, mode, model_class,
                   net_data_configs,
                   weight_decay, learning_rate_fn, momentum,
                   data_format, loss_scale,
-                  loss_filter_fn=None, dtype=resnet_model.DEFAULT_DTYPE,
+                  loss_filter_fn=None, dtype=meshnet_model.DEFAULT_DTYPE,
                   fine_tune=False):
   """Shared functionality for different resnet model_fns.
 
