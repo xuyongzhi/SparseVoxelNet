@@ -166,7 +166,7 @@ class ResConvOps(object):
 
     self.batch_norm_decay = _BATCH_NORM_DECAY
 
-    model_dir = net_data_configs['data_config']['model_dir']
+    model_dir = net_data_configs['data_configs']['model_dir']
     if ResConvOps._epoch==0:
       self.IsShowModel = True
       if not os.path.exists(model_dir):
@@ -177,66 +177,45 @@ class ResConvOps(object):
     ResConvOps._epoch += 1
 
   def log_model_summary(self):
-      dnc = self.net_data_configs
+    if not self.IsShowModel:
+      return
 
-      #*************************************************************************
-      # key training parameters
-      res = 'R' if self.residual else 'P'
-      use_xyz_str = '' if dnc['use_xyz'] else 'Np'
-      key_para_names = 'model bs aug feed drop_imo loss_weight lr0_drate_depoch \
-bnd optimizer block_config\n'
-      key_paras_str = '\n\n{model_name} {bs} {aug} {feed_data_eles} \
-{drop_imo} {loss_weight} {lr0}_{lr_decay_rate}_{lr_decay_epochs} {bnd} {optimizer} par \
-{block_config}\n'.format(
-        model_name=dnc['model_name'],
-        bs=dnc['batch_size'],
-        feed_data_eles=dnc['feed_data_eles'].replace('nxnynz','n') + use_xyz_str,
-        aug=dnc['aug_types'],
-        drop_imo=dnc['drop_imo_str'],
-        loss_weight=dnc['loss_lw_gama'] if dnc['loss_lw_gama']>0 else 'No',
-        lr0=dnc['learning_rate0'],
-        lr_decay_rate=dnc['lr_decay_rate'],
-        lr_decay_epochs=dnc['lr_decay_epochs'],
-        bnd=dnc['batch_norm_decay0'],
-        optimizer=dnc['optimizer'][0:3],
-        block_config=dnc['block_config_str']
-        )
+    self.model_log_f.write('\n\n\n--------------------------------------------\n')
+    dnc = self.net_data_configs
+    net_configs = dnc['net_configs']
+    data_configs = dnc['data_configs']
 
-      self.key_paras_str = key_para_names + key_paras_str
+    #*************************************************************************
+    # key training parameters
+    res = 'R' if net_configs['residual'] else 'P'
+    key_para_names = 'model bs feed drop_imo lr0 \n'
+    key_paras_str = '{net_flag} {bs} {feed_data_eles} \
+{drop_imo}  {lr0}'.format(
+      net_flag=dnc['net_flag'],
+      bs=net_configs['batch_size'],
+      feed_data_eles=data_configs['feed_data_eles'].replace('nxnynz','n') ,
+      drop_imo=net_configs['drop_imo_str'],
+      lr0=net_configs['lr0'],
+      )
 
-      items_to_write = ['model_flag', 'block_config_str',  'aug_types', 'drop_imo', \
-        'feed_data', 'xyz_elements', 'num_gpus', 'batch_size',\
-        'optimizer',\
-        'learning_rate0', 'lr_decay_rate', 'batch_norm_decay0', 'lr_vals', \
-        'bndecay_vals', 'use_bias', 'shortcut',\
-        'weight_decay', 'resnet_size', 'data_dir', 'label_num_weights']
-      for item in items_to_write:
-        str_i = '%s:%s\n'%(item, dnc[item])
+    self.key_paras_str = key_para_names + key_paras_str
+    #*************************************************************************
+    config_group_to_write = ['net_configs', 'data_configs']
+    for gp in config_group_to_write:
+      gpc = self.net_data_configs[gp]
+      str_g = '\n%s\n'%(gp)
+      self.model_log_f.write(str_g)
+      print(str_g)
+      for item in gpc:
+        str_i = '\t%s:%s\n'%(item, gpc[item])
         self.model_log_f.write(str_i)
-        if self.IsShowModel:
-          print(str_i)
+        print(str_i)
 
-      #*************************************************************************
-      # write network block params
-      self.model_log_f.write('\nBlock parameters:\n')
-      block_params = dnc['block_params']
-      for ele in block_params:
-        if ele == 'icp_block_ops': continue
-        str_i ='%s:%s\n'%(ele,block_params[ele])
-        self.model_log_f.write(str_i)
-        if self.IsShowModel:
-          print(str_i)
-      self.model_log_f.write('\n--------------------------------------------\n')
+    #*************************************************************************
+    self.model_log_f.write('\n--------------------------------------------\n')
+    self.model_log_f.write(self.key_paras_str)
 
-      #*************************************************************************
-      # sampling grouping settings
-      self.model_log_f.write(dnc['sg_settings']['sg_str'])
-      self.model_log_f.write('\n--------------------------------------------\n')
-
-      self.model_log_f.write('\n--------------------------------------------\n')
-      self.model_log_f.write(self.key_paras_str)
-
-      self.model_log_f.flush()
+    self.model_log_f.flush()
 
   def train_w_bytes(self, scope=None):
     trainable_variables = tf.trainable_variables(scope)

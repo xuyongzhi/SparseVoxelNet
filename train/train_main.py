@@ -56,9 +56,9 @@ def get_filenames(is_training, data_dir):
   """Return filenames for dataset."""
   data_dir = os.path.join(data_dir, 'data')
   if is_training:
-    fn_glob = os.path.join(data_dir, '17DRP5sb8fy*.tfrecord')
+    fn_glob = os.path.join(data_dir, '17DRP5sb8fy_region0_0.tfrecord')
   else:
-    fn_glob = os.path.join(data_dir, '2t7WUuJeko7*.tfrecord')
+    fn_glob = os.path.join(data_dir, '2t7WUuJeko7_region0_0.tfrecord')
   all_fnls = glob.glob(fn_glob)
   assert len(all_fnls) > 0, fn_glob
   print('\ngot {} training files for training={}\n'.format(len(all_fnls), is_training))
@@ -221,6 +221,7 @@ def network_model_fn(features, labels, mode, params):
   else:
     warmup = True
     base_lr = .128
+  base_lr = params['net_data_configs']['net_configs']['lr0']
 
   learning_rate_fn = net_run_loop.learning_rate_with_decay(
       batch_size=params['batch_size'], batch_denom=256,
@@ -258,19 +259,24 @@ def parse_flags_update_configs(flags_obj):
   feed_data[0] = 'xyz'
   assert len(xyz_eles)<=3
 
-  data_config = {}
-  data_config['model_dir'] = flags_obj.model_dir
-  data_config['feed_data'] = feed_data
-  data_config['xyz_eles'] = xyz_eles
+  data_configs = {}
+  data_configs['model_dir'] = flags_obj.model_dir
+  data_configs['feed_data_eles'] = flags_obj.feed_data
+  data_configs['feed_data'] = feed_data
+  data_configs['xyz_eles'] = xyz_eles
 
-  net_data_configs['data_config'] = data_config
+  net_data_configs['data_configs'] = data_configs
 
   #*****************************************************************************
   # net_configs
   net_configs = {}
   net_configs['residual'] = flags_obj.residual
+  net_configs['drop_imo_str'] = flags_obj.drop_imo
   net_configs['drop_imo'] = [0.1*int(e) for e in flags_obj.drop_imo]
+  net_configs['lr0'] = flags_obj.lr0
   net_data_configs['net_configs'] = net_configs
+
+  net_configs['batch_size'] = flags_obj.batch_size
 
   return net_data_configs
 
@@ -283,10 +289,11 @@ def define_network_flags():
   flags_core.set_defaults(train_epochs=90,
                           data_dir=data_dir,
                           model_dir=os.path.join(ROOT_DIR,'results/mesh_seg'),
-                          batch_size=4,
-                          num_gpus=2,
+                          batch_size=1,
+                          num_gpus=1,
                           epochs_between_evals=2)
 
+  flags.DEFINE_float('lr0', default=0.1, help="base lr")
   flags.DEFINE_string('feed_data','xyzs-nxnynz','xyzrsg-nxnynz-color')
   flags.DEFINE_bool(name='residual', short_name='rs', default=False,
       help=flags_core.help_wrap('Is use reidual architecture'))

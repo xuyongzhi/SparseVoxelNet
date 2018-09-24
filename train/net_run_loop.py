@@ -482,6 +482,13 @@ def net_main(
     tf.logging.info('Starting cycle: %d/%d', cycle_index, int(n_loops))
 
     if num_train_epochs:
+      #train_spec = tf.estimator.TrainSpec(
+      #              input_fn=lambda: input_fn_train(num_train_epochs),
+      #              hooks=train_hooks, max_steps=flags_obj.max_train_steps)
+      #eval_spec = tf.estimator.EvalSpec(
+      #              input_fn=lambda: input_fn_train(num_train_epochs),
+      #              steps=flags_obj.max_train_steps)
+      #tf.estimator.train_and_evaluate(classifier, train_spec, eval_spec)
       classifier.train(input_fn=lambda: input_fn_train(num_train_epochs),
                        hooks=train_hooks, max_steps=flags_obj.max_train_steps)
 
@@ -493,14 +500,16 @@ def net_main(
     # eval (which is generally unimportant in those circumstances) to terminate.
     # Note that eval will run for max_train_steps each loop, regardless of the
     # global_step count.
-    eval_results = classifier.evaluate(input_fn=input_fn_eval,
-                                       steps=flags_obj.max_train_steps)
+    only_train = True
+    if not only_train:
+      eval_results = classifier.evaluate(input_fn=input_fn_eval,
+                                        steps=flags_obj.max_train_steps)
 
-    benchmark_logger.log_evaluation_result(eval_results)
+      benchmark_logger.log_evaluation_result(eval_results)
 
-    if model_helpers.past_stop_threshold(
-        flags_obj.stop_threshold, eval_results['spl_accuracy']):
-      break
+      if model_helpers.past_stop_threshold(
+          flags_obj.stop_threshold, eval_results['spl_accuracy']):
+        break
 
   if flags_obj.export_dir is not None:
     # Exports a saved model for the given classifier.

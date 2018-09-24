@@ -15,7 +15,7 @@ ALLOWED_TYPES = (DEFAULT_DTYPE,) + CASTABLE_TYPES
 class Model(ResConvOps):
   def __init__(self, net_data_configs, data_format, dtype):
     self.dset_shape_idx = net_data_configs['dset_shape_idx']
-    self.data_config = net_data_configs['data_config']
+    self.data_configs = net_data_configs['data_configs']
     self.dset_metas = net_data_configs['dset_metas']
     self.net_flag = net_data_configs['net_flag']
     super(Model, self).__init__(net_data_configs, data_format, dtype)
@@ -58,6 +58,7 @@ class Model(ResConvOps):
     #vertices = tf.concat(vertices_scales, -1)
     simplicity_logits = self.simplicity_classifier(vertices)
     simplicity_label = self.simplicity_label(features)
+    self.log_model_summary()
     return simplicity_logits, simplicity_label
 
 
@@ -85,7 +86,7 @@ class Model(ResConvOps):
 
   def parse_inputs(self, features):
 
-    vertices = [self.get_ele(features,e) for e in self.data_config['feed_data']]
+    vertices = [self.get_ele(features,e) for e in self.data_configs['feed_data']]
     vertices = tf.concat(vertices, -1)
 
     face_idx_per_vertex = self.get_ele(features, 'face_idx_per_vertex')
@@ -201,6 +202,7 @@ class Model(ResConvOps):
     new_vertices = self.blocks_layers(scale, new_vertices, blocks_params,
                             self.block_fn, self.is_training, 'vertex_s%d'%(scale))
     return new_vertices
+
 
 import numpy as np
 class BlockParas():
