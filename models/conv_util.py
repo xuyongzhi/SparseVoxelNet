@@ -177,7 +177,10 @@ class ResConvOps(object):
     if not self.IsShowModel:
       return
 
-    self.model_log_f.write('\n\n\n--------------------------------------------\n')
+    self.model_log_f.write('\n--------------------------------------------\n')
+    self.show_layers_num_summary()
+    self.model_log_f.write('\n\n--------------------------------------------\n')
+
     dnc = self.net_data_configs
     net_configs = dnc['net_configs']
     data_configs = dnc['data_configs']
@@ -210,6 +213,16 @@ class ResConvOps(object):
 
     #*************************************************************************
     self.model_log_f.write('\n--------------------------------------------\n')
+
+    total_w_num, total_w_bytes, train_w_shapes = self.train_w_bytes()
+    self.log('Total trainable weights: (%d %0.3fM)  Counted (%d %0.3fM)'%(
+      total_w_num, total_w_bytes/1e6, self._trainable_num,
+      self._trainable_bytes/pow(1024.0,2)))
+    self.log('Total activation size:%0.1fM'%\
+              (self._activation_size/pow(1024.0,2)))
+    self.log('------------------------------------------------------------\n\n')
+
+    #*************************************************************************
     self.model_log_f.write(self.key_paras_str)
 
     self.model_log_f.flush()
