@@ -157,8 +157,8 @@ def get_synth_input_fn(height, width, num_channels, num_classes,
 # Functions for running training/eval/validation loops for the model.
 ################################################################################
 def learning_rate_with_decay(
-    batch_size, batch_denom, batches_per_epoch, boundary_epochs, decay_rates,
-    base_lr=0.1, warmup=False):
+    batch_size, batch_denom, batches_per_epoch, boundary_epochs, lr_decay_rate,
+    base_lr=0.1, warmup=False, base_bnd=0.99, bnd_decay_rate=0.1, net_configs=None):
   """Get a learning rate that decays step-wise as training progresses.
 
   Args:
@@ -179,16 +179,21 @@ def learning_rate_with_decay(
     for training the next batch.
   """
   initial_learning_rate = base_lr * batch_size / batch_denom
+  initial_bnd_rate = base_bnd
 
   # Reduce the learning rate at certain epochs.
   # CIFAR-10: divide by 10 at epoch 100, 150, and 200
   # ImageNet: divide by 10 at epoch 30, 60, 80, and 90
   boundaries = [int(batches_per_epoch * epoch) for epoch in boundary_epochs]
-  vals = [initial_learning_rate * decay for decay in decay_rates]
+  n = len(boundaries)
+  lr_vals = [initial_learning_rate * pow(lr_decay_rate, i) for i in range(n+1)]
+  lr_vals = [max(l, 1e-5) for l in lr_vals]
+  bnd_vals = [(1-initial_bnd_rate) * pow(bnd_decay_rate, i) for i in range(n+1)]
+  bnd_vals = [min(1-d, 0.999) for d in bnd_vals]
 
   def learning_rate_fn(global_step):
     """Builds scaled learning rate function with 5 epoch warm up."""
-    lr = tf.train.piecewise_constant(global_step, boundaries, vals)
+    lr = tf.train.piecewise_constant(global_step, boundaries, lr_vals)
     if warmup:
       warmup_steps = int(batches_per_epoch * 5)
       warmup_lr = (
@@ -197,7 +202,14 @@ def learning_rate_with_decay(
       return tf.cond(global_step < warmup_steps, lambda: warmup_lr, lambda: lr)
     return lr
 
-  return learning_rate_fn
+  def bn_decay_fn(global_step):
+    bnd = tf.train.piecewise_constant(global_step, boundaries, bnd_vals)
+    return bnd
+
+  net_configs['boundaries'] = boundaries
+  net_configs['lr_vals'] = lr_vals
+  net_configs['bnd_vals'] = bnd_vals
+  return learning_rate_fn, bn_decay_fn
 
 def net_model_fn( features, labels, mode, model_class,
                   net_data_configs,

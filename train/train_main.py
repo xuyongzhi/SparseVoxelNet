@@ -250,18 +250,23 @@ def network_model_fn(features, labels, mode, params):
     warmup = True
     base_lr = .128
   ndc = params['net_data_configs']
-  base_lr = ndc['net_configs']['lr0']
+  net_configs = ndc['net_configs']
   batches_per_epoch = params['examples_per_epoch'] /\
                       params['batch_size']
   boundary_epochs = ndc['net_configs']['lrd_boundary_epochs']
-  lrd_rate = ndc['net_configs']['lrd_rate']
-  decay_rates = [pow(lrd_rate, i) for i in range(len(boundary_epochs)+1)]
 
-  learning_rate_fn = net_run_loop.learning_rate_with_decay(
+  learning_rate_fn, bn_decay_fn = net_run_loop.learning_rate_with_decay(
       batch_size=params['batch_size'], batch_denom=params['batch_size'],
       batches_per_epoch=batches_per_epoch,
       boundary_epochs=boundary_epochs,
-      decay_rates=decay_rates, warmup=warmup, base_lr=base_lr)
+      lr_decay_rate = net_configs['lrd_rate'],
+      warmup=warmup,
+      base_lr=net_configs['lr0'],
+      base_bnd = net_configs['bnd0'],
+      bnd_decay_rate = net_configs['bnd_decay'],
+      net_configs = net_configs)
+
+  net_configs['bn_decay_fn'] = bn_decay_fn
 
   return net_run_loop.net_model_fn(
       features=features,
@@ -317,6 +322,8 @@ def parse_flags_update_configs(flags_obj):
   lrde = flags_obj.lrd_epochs
   net_configs['lrd_epochs'] = lrde
   net_configs['lrd_boundary_epochs'] = range(lrde, flags_obj.train_epochs, lrde)
+  net_configs['bnd0'] = flags_obj.bnd0
+  net_configs['bnd_decay'] = flags_obj.bnd_decay
   net_configs['batch_size'] = flags_obj.batch_size
 
   net_data_configs['net_configs'] = net_configs
@@ -380,6 +387,8 @@ def define_network_flags():
 
   flags.DEFINE_float('lr0', default=0.01, help="base lr")
   flags.DEFINE_float('lrd_rate', default=0.1, help="learning rate decay rate")
+  flags.DEFINE_float('bnd0', default=0.8, help="base bnd")
+  flags.DEFINE_float('bnd_decay', default=0.1, help="")
   flags.DEFINE_integer('lrd_epochs', default=20, help="learning_rate decay epoches")
   flags.DEFINE_string('feed_data','xyzs-nxnynz','xyzrsg-nxnynz-color')
   flags.DEFINE_bool(name='residual', short_name='rs', default=False,

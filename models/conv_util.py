@@ -42,10 +42,6 @@ DEBUG_TMP = False
 _BATCH_NORM_DECAY = 0.997
 _BATCH_NORM_EPSILON = 1e-5
 
-#DEFAULT_DTYPE = tf.float32
-#CASTABLE_TYPES = (tf.float16,)
-#ALLOWED_TYPES = (DEFAULT_DTYPE,) + CASTABLE_TYPES
-
 NoRes_InceptionReduction = True
 
 KERNEL_INI = tf.variance_scaling_initializer()       # res official
@@ -164,7 +160,8 @@ class ResConvOps(object):
     self.block_style = 'Regular'
     self.drop_imo = net_data_configs['net_configs']['drop_imo']
 
-    self.batch_norm_decay = _BATCH_NORM_DECAY
+    #self.batch_norm_decay = _BATCH_NORM_DECAY
+    self.batch_norm_decay_fn = net_data_configs['net_configs']['bn_decay_fn']
 
     model_dir = net_data_configs['data_configs']['model_dir']
     if ResConvOps._epoch==0:
@@ -239,9 +236,12 @@ class ResConvOps(object):
     """Performs a batch normalization using a standard set of parameters."""
     # We set fused=True for a significant performance boost. See
     # https://www.tensorflow.org/performance/performance_guide#common_fused_ops
+    global_step = tf.train.get_or_create_global_step()
+    batch_norm_decay = self.batch_norm_decay_fn(global_step)
+    tf.summary.scalar('batch_norm_decay', batch_norm_decay)
     inputs = tf.layers.batch_normalization(
         inputs=inputs, axis=1 if self.data_format == 'channels_first' else -1,
-        momentum=self.batch_norm_decay , epsilon=_BATCH_NORM_EPSILON, center=True,
+        momentum=batch_norm_decay , epsilon=_BATCH_NORM_EPSILON, center=True,
         scale=True, training=training, fused=True)
 
     if activation!=None:
