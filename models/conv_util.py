@@ -251,7 +251,6 @@ class ResConvOps(object):
     # https://www.tensorflow.org/performance/performance_guide#common_fused_ops
     global_step = tf.train.get_or_create_global_step()
     batch_norm_decay = self.batch_norm_decay_fn(global_step)
-    tf.summary.scalar('batch_norm_decay', batch_norm_decay)
     inputs = tf.layers.batch_normalization(
         inputs=inputs, axis=1 if self.data_format == 'channels_first' else -1,
         momentum=batch_norm_decay , epsilon=_BATCH_NORM_EPSILON, center=True,

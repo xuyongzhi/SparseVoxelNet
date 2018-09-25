@@ -313,10 +313,14 @@ def net_model_fn( features, labels, mode, model_class,
     tf.identity(learning_rate, name='learning_rate')
     tf.summary.scalar('learning_rate', learning_rate)
 
-    optimizer = tf.train.MomentumOptimizer(
-        learning_rate=learning_rate,
-        momentum=momentum
-    )
+    optimizer_alg = net_data_configs['net_configs']['optimizer']
+    if optimizer_alg  == 'momentum':
+      optimizer = tf.train.MomentumOptimizer(
+          learning_rate=learning_rate,
+          momentum=momentum    )
+    elif optimizer_alg  == 'adam':
+      optimizer = tf.train.AdamOptimizer(
+        learning_rate=learning_rate )
 
     def _dense_grad_filter(gvs):
       """Only apply gradient updates to the final layer.

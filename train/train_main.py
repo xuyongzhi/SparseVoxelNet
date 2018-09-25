@@ -325,6 +325,7 @@ def parse_flags_update_configs(flags_obj):
   net_configs['bnd0'] = flags_obj.bnd0
   net_configs['bnd_decay'] = flags_obj.bnd_decay
   net_configs['batch_size'] = flags_obj.batch_size
+  net_configs['optimizer'] = flags_obj.optimizer
 
   net_data_configs['net_configs'] = net_configs
 
@@ -342,7 +343,8 @@ def define_model_dir(flags_obj):
 
   logname =  model_name()
 
-  logname += '-'+flags_obj.feed_data
+  logname += '-'+flags_obj.feed_data.replace('nxnynz', 'n')
+  logname += '-'+flags_obj.optimizer
   logname += '-Drop'+flags_obj.drop_imo
   logname +='-Bs'+str(flags_obj.batch_size)
   logname +=  '-Lr'+str(int(flags_obj.lr0*1000)) +\
@@ -383,9 +385,10 @@ def define_network_flags():
                           model_dir=os.path.join(ROOT_DIR,'results/mesh_seg'),
                           batch_size=1,
                           num_gpus=1,
-                          epochs_between_evals=2)
+                          epochs_between_evals=5)
 
-  flags.DEFINE_float('lr0', default=0.01, help="base lr")
+  flags.DEFINE_string('optimizer','adam','adam momentum')
+  flags.DEFINE_float('lr0', default=0.001, help="base lr")
   flags.DEFINE_float('lrd_rate', default=0.1, help="learning rate decay rate")
   flags.DEFINE_float('bnd0', default=0.8, help="base bnd")
   flags.DEFINE_float('bnd_decay', default=0.1, help="")
