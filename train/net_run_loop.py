@@ -211,7 +211,7 @@ def learning_rate_with_decay(
   net_configs['bnd_vals'] = bnd_vals
   return learning_rate_fn, bn_decay_fn
 
-def net_model_fn( features, labels, mode, model_class,
+def net_model_fn( vertex_datas, face_datas, mode, model_class,
                   net_data_configs,
                   weight_decay, learning_rate_fn, momentum,
                   data_format, loss_scale,
@@ -255,13 +255,10 @@ def net_model_fn( features, labels, mode, model_class,
     current mode.
   """
 
-  # Checks that features/images have same data type being used for calculations.
-  #assert features.dtype == dtype
-
   model = model_class(net_data_configs=net_data_configs,
                       data_format=data_format, dtype=dtype)
 
-  spl_logits, spl_labels = model(features, mode == tf.estimator.ModeKeys.TRAIN)
+  spl_logits, spl_labels = model(vertex_datas, face_datas, mode == tf.estimator.ModeKeys.TRAIN)
 
   # This acts as a no-op if the logits are already in fp32 (provided logits are
   # not a SparseTensor). If dtype is is low precision, logits must be cast to

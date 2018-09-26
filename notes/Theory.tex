@@ -523,7 +523,51 @@ The target:
 \subsubsection{learn higher level features on new point cloud}
 The mesh graph can be highly unbalanced. The weight for each edge may not be shared directly. 
 
-\section{Graph CNN: point, edge and face representation}
+\newpage
+\section{Triangular CNN: point, edge and face representation}
+
+\begin{tikzpicture}
+
+\draw 
+(0,4) node[anchor=south]{$v_0$}
+-- (2,0) node[anchor=north]{$v_1$} 
+-- (7,5) node[anchor=south]{$v_2$} 
+-- cycle
+(3,3) node[above]{c};
+\draw
+(3,3)--(0,4) node[midway, above]{$e_0$};
+\draw
+(3,3)--(7,5) node[midway, above]{$e_2$}
+(3,3)--(2,0) node[midway, left]{$e_1$};
+\end{tikzpicture}
+
+\subsection{Solution 1}
+\begin{itemize}
+	\item Only extract local feature on each layer. Try to get global feature by combining local features at last layer
+	\item Use face to connect vertices. Because each face has fixed number (3) of vertices. 
+	\item At layer 1, all 3 vertices are normalized in the face. So the face feature is only local feature. Because I cannot figure out what can be learned by applying weight on raw xyz directly. It should be not possible to learn global feature in the first layer.
+\end{itemize}
+\noindent
+
+(1) Vertex to edge
+$$ V:\ (Nv,Cv)$$
+$$ V_f:\ (Nf,3,Cv)$$
+$$ C_f:\ (Nf,1,Cv)$$
+$$ E = Vf-C_f:\ (Nf,3,Cv)$$
+$$ E = WE\ (Nf,3,Ce)$$
+(2) Edge to local face
+$$ F_{local} = \sum E;\  \max E;\  mean E :\ (Nf,Ce)$$
+$$ F_{global} = WC_f$$
+Do not use global face feature in the first layer.
+$$ F=[F_{local}, F_{global}] $$
+$$ F = WF: \ (Nf,Cf) $$
+(3) Face to vertex
+$$ F: (Nv, 9, Cf) $$
+$$ V = \sum F; \max F:\ (Nv,Cf) $$
+$$ V = W V:\ (Nv,Cv) $$
+
+
+
 \subsection{point representation}
 Operation:
 $$f_i^{l+1} = W_0f_i^l + \sum_{j\in N(i)}W_1 f_j^l$$
@@ -551,21 +595,40 @@ $$f_i^{l+1} = W_0f_i^l + \sum_{j\in N(i)}W_1 f_j^l$$
 	\item Naturally differentiate neighbour edges  
 \end{itemize}
 
-\subsection{solution 1: face conv}
+\newpage
+\subsection{solution 1: VEFV}
 Use point representation during feature extraction and down-sampling. Choose to predict point label or face label at last. 
 
-\begin{tikzpicture}
-\draw (0,4) node[anchor=south]{$v_2$}
--- (2,0) node[anchor=north]{$v_0$} node[midway, left] {$e_{02}$}
--- (4,4) node[anchor=south]{$v_1$} node[midway, right] {$e_{01}$}
--- cycle  node[midway, above] {$e_{12}$};
-\end{tikzpicture}
+
+
+\subsubsection{VEFV0}
 
 $$ V_0 -> E_0 -> F_0 -> V_1 -> E_1 -> F_1 -> V_2$$
 $$ E_{0i} = W_{e0}(V_i-V_0)+W_{e1}(\frac{V_i+V_0}{2}) \ i=(1,2)$$
 $$ E_{12} = W_{e2}(|V_2-V_1|)+W_{e1}(\frac{V_1+V_2}{2})$$
 $$ F = [max(E01, E02, E12), mean(E01, E02, E12)] $$
 $$ V_p^{l+1} = W_0 V_p^l + max_{q\in N(p)}\{F_q\}$$
+
+\par \noindent
+The memory consumption is large.
+
+\subsubsection{VEFV1}
+Only use two edges for each face. \par 
+$$ V_0(nv,3) -> E_0(nv,10,3) -> F_0(nv,10,) -> V_1 -> E_1 -> F_1 -> V_2$$
+$$ E = V-V_0 $$
+$$ E = W_eE $$
+$$F_g= \max_{j=0,1,2} V_j$$
+$$F_l= \max_{j=1,2} e_j$$
+$$ F = W_f [F_l, F_g] $$
+$$ V_p^{l+1} = W_{v} \max_{q\in N(p)}\{F_q\}$$
+
+
+\subsection{solution 2: VFV} 
+\subsubsection{VFV0}
+$$F_g=W_{gf} \max_{j=0,1,2} V_j$$
+$$F_l=\sum_{j=1,2}W_{lf}(V_j-V_0)$$
+$$ F=[f_g, f_l] $$
+$$ V_p^{l+1} = W_{v0} V_p^l + W_{v1} \max_{q\in N(p)}\{F_q\}$$
 
 
 

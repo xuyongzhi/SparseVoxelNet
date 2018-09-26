@@ -84,6 +84,29 @@ def tensor_info(tensor_ls, tensor_name_ls=None, layer_name=None,
   return tensor_sum
 
 
+def get_tensor_shape(tensor):
+  if isinstance(tensor, tf.Tensor):
+    shape = tensor.shape.as_list()
+    for i,s in enumerate(shape):
+      if s==None:
+        shape[i] = tf.shape(tensor)[i]
+    return shape
+  else:
+    return tensor.shape
+
+def gather_second_d(inputs, indices):
+  '''
+  Gather inputs by indices, indices is for the second dim.
+    inputs: (batch_size, n1, ...)
+  '''
+  idx_shape = get_tensor_shape(indices)
+  batch_idx = tf.reshape(tf.range(idx_shape[0]), [-1,1,1,1])
+  batch_idx = tf.tile(batch_idx, [1, idx_shape[1], idx_shape[2], 1])
+  indices = tf.expand_dims(indices, -1)
+  indices = tf.concat([batch_idx, indices], -1)
+  outputs = tf.gather_nd(inputs, indices)
+  return outputs
+
 def unique_nd( inputs, axis=-1, unit=3 ):
     org_inputs = inputs
     org_shape = inputs.shape
@@ -837,6 +860,7 @@ class ResConvOps(object):
           if self.IsShowModel: self.log('dropout {}'.format(out_drop_rate))
           inputs = tf.layers.dropout(inputs, out_drop_rate, training=is_training)
     return inputs
+
 
 def mytile(tensor, axis, eval_views):
   org_shape = tensor.shape.as_list()

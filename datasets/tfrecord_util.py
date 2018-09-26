@@ -79,10 +79,10 @@ def parse_record(tfrecord_serialized, is_training, dset_shape_idx, \
     valid_num_face = tfrecord_features['valid_num_face']
 
     #*************
-    features = {"vertex_i": vertex_i, "vertex_f": vertex_f}
-    labels = {"face_i": face_i, "valid_num_face": valid_num_face}
+    vertex_datas = {"vertex_i": vertex_i, "vertex_f": vertex_f}
+    face_datas = {"face_i": face_i, "valid_num_face": valid_num_face}
 
-    return features, labels
+    return vertex_datas, face_datas
 
 
 def gather_labels_for_each_gb(points, labels, grouped_pindex0):
@@ -253,13 +253,13 @@ class MeshSampling():
   _max_norm_dif_angle = 15.0
   _check_optial = True
 
-  _max_nf_perv = 5
+  _max_nf_perv = 9
 
-  _vertex_eles = ['color', 'xyz', 'nxnynz', 'face_idx_per_vertex', \
+  _vertex_eles = ['color', 'xyz', 'nxnynz', 'fidx_per_vertex', \
                   'edges_per_vertex', 'edges_pv_empty_mask', 'fidx_pv_empty_mask',\
                   'same_normal_mask', 'same_category_mask']
   _face_eles = ['label_raw_category', 'label_instance', 'label_material', \
-                'label_category', 'vertex_idx_per_face', ]
+                'label_category', 'vidx_per_face', ]
 
   _fi = 0
   _show_ave_num_face_perv = True
@@ -339,11 +339,11 @@ class MeshSampling():
       MeshSampling.gen_mesh_ply_basic(raw_datas, 'Raw', 'raw', ply_dir)
     #***************************************************************************
     #face idx per vetex, edges per vertyex
-    face_idx_per_vertex, fidx_pv_empty_mask, edges_per_vertex, \
+    fidx_per_vertex, fidx_pv_empty_mask, edges_per_vertex, \
       edges_pv_empty_mask, lonely_vertex_idx = \
                     MeshSampling.get_fidx_nbrv_per_vertex(
-                                  raw_datas['vertex_idx_per_face'], num_vertex0)
-    raw_datas['face_idx_per_vertex'] = face_idx_per_vertex
+                                  raw_datas['vidx_per_face'], num_vertex0)
+    raw_datas['fidx_per_vertex'] = fidx_per_vertex
     raw_datas['fidx_pv_empty_mask'] = fidx_pv_empty_mask
     raw_datas['edges_per_vertex'] = edges_per_vertex
     raw_datas['edges_pv_empty_mask'] = edges_pv_empty_mask
@@ -354,7 +354,7 @@ class MeshSampling():
     #***************************************************************************
     # same mask
     same_normal_mask, same_category_mask = MeshSampling.get_simplicity_label(
-                                    face_idx_per_vertex, fidx_pv_empty_mask,
+                                    fidx_per_vertex, fidx_pv_empty_mask,
                                     edges_per_vertex, edges_pv_empty_mask,
                                     raw_datas['nxnynz'],
                                     raw_datas['label_category'],
@@ -410,13 +410,13 @@ class MeshSampling():
 
     # get splited_fidx
     splited_fidx = []
-    vertex_idx_per_face_new_ls = []
+    vidx_per_face_new_ls = []
     for bi,block_vidx in enumerate(splited_vidx):
       with tf.variable_scope('spv_dsf_b%d'%(bi)):
-        face_sp_indices, vertex_idx_per_face_new = MeshSampling.down_sampling_face(\
-                  block_vidx, num_vertex0, raw_datas['vertex_idx_per_face'])
+        face_sp_indices, vidx_per_face_new = MeshSampling.down_sampling_face(\
+                  block_vidx, num_vertex0, raw_datas['vidx_per_face'])
       splited_fidx.append(face_sp_indices)
-      vertex_idx_per_face_new_ls.append(vertex_idx_per_face_new)
+      vidx_per_face_new_ls.append(vidx_per_face_new)
 
     # do split
     splited_datas = []
@@ -426,11 +426,11 @@ class MeshSampling():
         with tf.variable_scope('spv_b%d_V_%s'%(bi, item)):
           block_datas[item] = tf.gather( raw_datas[item], block_vidx )
       for item in MeshSampling._face_eles:
-        if item == 'vertex_idx_per_face':
+        if item == 'vidx_per_face':
           continue
         with tf.variable_scope('spv_b%d_F_%s'%(bi, item)):
           block_datas[item] = tf.gather( raw_datas[item], splited_fidx[bi])
-      block_datas['vertex_idx_per_face'] = vertex_idx_per_face_new_ls[bi]
+      block_datas['vidx_per_face'] = vidx_per_face_new_ls[bi]
       splited_datas.append(block_datas)
 
       #MeshSampling.show_datas_shape(block_datas, 'block %d'%(bi))
@@ -463,16 +463,16 @@ class MeshSampling():
     return shape_strs
 
   @staticmethod
-  def get_fidx_nbrv_per_vertex(vertex_idx_per_face, num_vertex0):
+  def get_fidx_nbrv_per_vertex(vidx_per_face, num_vertex0):
     '''
     Inputs: [F,3] []
     Output: [N, ?]
     '''
-    num_face = tf.shape(vertex_idx_per_face)[0]
+    num_face = tf.shape(vidx_per_face)[0]
     face_indices = tf.reshape(tf.range(0, num_face), [-1,1,1])
     face_indices = tf.tile(face_indices, [1, 3,1])
-    vertex_idx_per_face = tf.expand_dims(vertex_idx_per_face, 2)
-    vidx_fidx = tf.concat([vertex_idx_per_face, face_indices],  2)
+    vidx_per_face = tf.expand_dims(vidx_per_face, 2)
+    vidx_fidx = tf.concat([vidx_per_face, face_indices],  2)
     vidx_fidx = tf.reshape(vidx_fidx, [-1, 2])
 
     #***************************************************************************
@@ -506,25 +506,25 @@ class MeshSampling():
     # reshape
     vidx_fidxperv = tf.concat([vidx_fidx_flat_sorted[:,0:1], fidx_per_v_flat], 1)
 
-    face_idx_per_vertex = tf.scatter_nd(vidx_fidxperv, vidx_fidx_flat_sorted[:,1]+1, \
+    fidx_per_vertex = tf.scatter_nd(vidx_fidxperv, vidx_fidx_flat_sorted[:,1]+1, \
                                     [num_vertex0, max_nf_perv]) - 1
-    fidx_pv_empty_mask = tf.equal(face_idx_per_vertex, -1)
+    fidx_pv_empty_mask = tf.equal(fidx_per_vertex, -1)
 
     MeshSampling._show_ave_num_face_perv = True
     if MeshSampling._show_ave_num_face_perv:
       num_face_perv = tf.reduce_sum(tf.cast(fidx_pv_empty_mask, tf.int32), -1)
       ave_num_face_perv = tf.reduce_mean(num_face_perv)
-      face_idx_per_vertex = tf.Print(face_idx_per_vertex, [ave_num_face_perv],
+      fidx_per_vertex = tf.Print(fidx_per_vertex, [ave_num_face_perv],
                                      "\nave_num_face_perv: ")
 
-    face_idx_per_vertex = face_idx_per_vertex[:, 0:MeshSampling._max_nf_perv]
-    face_idx_per_vertex.set_shape([num_vertex0, MeshSampling._max_nf_perv])
+    fidx_per_vertex = fidx_per_vertex[:, 0:MeshSampling._max_nf_perv]
+    fidx_per_vertex.set_shape([num_vertex0, MeshSampling._max_nf_perv])
     fidx_pv_empty_mask = fidx_pv_empty_mask[:, 0:MeshSampling._max_nf_perv]
     fidx_pv_empty_mask.set_shape([num_vertex0, MeshSampling._max_nf_perv])
 
     #***************************************************************************
     # check is there any vertex belong to no faces
-    lonely_vertex_mask = tf.equal(face_idx_per_vertex[:,0], -1)
+    lonely_vertex_mask = tf.equal(fidx_per_vertex[:,0], -1)
     any_lonely_vertex = tf.reduce_any(lonely_vertex_mask)
 
     lonely_vertex_idx0 = tf.squeeze(tf.cast(tf.where(lonely_vertex_mask), tf.int32),1)
@@ -534,14 +534,14 @@ class MeshSampling():
 
     # set -1 as the first one
     empty_indices = tf.cast(tf.where(fidx_pv_empty_mask), tf.int32)
-    the_first_face_dix = tf.gather(face_idx_per_vertex[:,0], empty_indices[:,0],axis=0)
-    tmp = tf.scatter_nd(empty_indices, the_first_face_dix+1, tf.shape(face_idx_per_vertex))
-    face_idx_per_vertex = face_idx_per_vertex + tmp
+    the_first_face_dix = tf.gather(fidx_per_vertex[:,0], empty_indices[:,0],axis=0)
+    tmp = tf.scatter_nd(empty_indices, the_first_face_dix+1, tf.shape(fidx_per_vertex))
+    fidx_per_vertex = fidx_per_vertex + tmp
 
 
     #***************************************************************************
     # get neighbor verties
-    edges_per_vertexs_flat = tf.gather(tf.squeeze(vertex_idx_per_face,-1), vidx_fidx_flat_sorted[:,1])
+    edges_per_vertexs_flat = tf.gather(tf.squeeze(vidx_per_face,-1), vidx_fidx_flat_sorted[:,1])
 
     # remove self vertex
     self_mask = tf.equal(edges_per_vertexs_flat, vidx_fidx_flat_sorted[:,0:1])
@@ -575,15 +575,15 @@ class MeshSampling():
 
     #***********************
     # set face idx for the lonely vertex as 0, just avoid grammer error. but should not be used
-    face_idx_per_vertex += tf.cast(tf.expand_dims( lonely_vertex_mask, 1), tf.int32)
+    fidx_per_vertex += tf.cast(tf.expand_dims( lonely_vertex_mask, 1), tf.int32)
     edges_per_vertex += tf.cast(tf.expand_dims( lonely_vertex_mask, 1), tf.int32)
 
-    return face_idx_per_vertex, fidx_pv_empty_mask, edges_per_vertex, \
+    return fidx_per_vertex, fidx_pv_empty_mask, edges_per_vertex, \
             edges_pv_empty_mask, lonely_vertex_idx
 
 
   @staticmethod
-  def get_simplicity_label( face_idx_per_vertex, fidx_pv_empty_mask,
+  def get_simplicity_label( fidx_per_vertex, fidx_pv_empty_mask,
                         edges_per_vertex, edges_pv_empty_mask,
                         vertex_nxnynz, face_label_category, face_label_instance):
     '''
@@ -598,7 +598,7 @@ class MeshSampling():
     def get_same_category_mask():
       # get same_category_mask
       face_label_category_ = tf.squeeze(face_label_category, 1)
-      vertex_label_categories = tf.gather(face_label_category_, face_idx_per_vertex)
+      vertex_label_categories = tf.gather(face_label_category_, fidx_per_vertex)
 
       same_category_mask = tf.equal(vertex_label_categories, vertex_label_categories[:,0:1])
       same_category_mask = tf.logical_or(same_category_mask, fidx_pv_empty_mask)
@@ -652,8 +652,8 @@ class MeshSampling():
     return same_rates
 
   @staticmethod
-  def get_face_same_mask(vertex_same_mask, vertex_idx_per_face):
-    same_mask = tf.gather(vertex_same_mask, vertex_idx_per_face)
+  def get_face_same_mask(vertex_same_mask, vidx_per_face):
+    same_mask = tf.gather(vertex_same_mask, vidx_per_face)
     face_same_mask = tf.reduce_max(same_mask, 1)
     return face_same_mask
 
@@ -668,8 +668,8 @@ class MeshSampling():
     #keep_face_idx = tf.cast(tf.where(keep_face_mask), tf.int32)
     #keep_face_idx = tf.squeeze(keep_face_idx, 1)
 
-    face_idx_per_vertex = raw_datas['face_idx_per_vertex']
-    keep_vertex_mask = tf.gather(keep_face_mask, face_idx_per_vertex)
+    fidx_per_vertex = raw_datas['fidx_per_vertex']
+    keep_vertex_mask = tf.gather(keep_face_mask, fidx_per_vertex)
     keep_vertex_mask = tf.reduce_any(keep_vertex_mask, 1)
     keep_vertex_idx = tf.cast(tf.where(keep_vertex_mask), tf.int32)
     keep_vertex_idx = tf.squeeze(keep_vertex_idx, 1)
@@ -679,12 +679,12 @@ class MeshSampling():
 
     num_vertex0 = get_shape0(raw_datas['xyz'])
 
-    keep_face_idx, vertex_idx_per_face_new = MeshSampling.down_sampling_face(
+    keep_face_idx, vidx_per_face_new = MeshSampling.down_sampling_face(
                                 keep_vertex_idx,
-                                num_vertex0, raw_datas['vertex_idx_per_face'])
+                                num_vertex0, raw_datas['vidx_per_face'])
 
     raw_datas = MeshSampling.gather_datas(raw_datas, keep_vertex_idx,
-                                    keep_face_idx, vertex_idx_per_face_new)
+                                    keep_face_idx, vidx_per_face_new)
 
     # clean splited_vidx
     new_vidx_2_old_vidx = tf.scatter_nd(tf.expand_dims(keep_vertex_idx,-1), tf.range(tf.shape(keep_vertex_idx)[0])+1, [num_vertex0])-1
@@ -733,19 +733,19 @@ class MeshSampling():
     vertex_sp_indices = MeshSampling.down_sampling_vertex(
                                 raw_datas['same_normal_mask'], _num_vertex_sp)
 
-    face_sp_indices, vertex_idx_per_face_new = MeshSampling.down_sampling_face(
+    face_sp_indices, vidx_per_face_new = MeshSampling.down_sampling_face(
                                 vertex_sp_indices,
-                                num_vertex0, raw_datas['vertex_idx_per_face'])
+                                num_vertex0, raw_datas['vidx_per_face'])
     raw_datas = MeshSampling.gather_datas(raw_datas, vertex_sp_indices,
-                                    face_sp_indices, vertex_idx_per_face_new)
+                                    face_sp_indices, vidx_per_face_new)
     return raw_datas
 
   @staticmethod
-  def gather_datas(datas, vertex_sp_indices, face_sp_indices, vertex_idx_per_face_new):
+  def gather_datas(datas, vertex_sp_indices, face_sp_indices, vidx_per_face_new):
     num_vertex0 = get_shape0(datas['xyz'])
 
     for item in datas:
-      if item == 'vertex_idx_per_face':
+      if item == 'vidx_per_face':
         continue
       is_vertex_0 = tf.equal(tf.shape(datas[item])[0], num_vertex0)
       is_vertex = item in MeshSampling._vertex_eles
@@ -758,7 +758,7 @@ class MeshSampling():
                            lambda: face_sp_indices )
       datas[item] = tf.gather(datas[item], sp_indices)
 
-    datas['vertex_idx_per_face'] = vertex_idx_per_face_new
+    datas['vidx_per_face'] = vidx_per_face_new
     return datas
 
   @staticmethod
@@ -852,7 +852,7 @@ class MeshSampling():
     return vertex_sp_indices
 
   @staticmethod
-  def down_sampling_face(vertex_sp_indices, num_vertex0, vertex_idx_per_face):
+  def down_sampling_face(vertex_sp_indices, num_vertex0, vidx_per_face):
     if isinstance(vertex_sp_indices, tf.Tensor):
       _num_vertex_sp = tf.shape(vertex_sp_indices)[0]
     else:
@@ -860,22 +860,22 @@ class MeshSampling():
     vertex_sp_indices = tf.expand_dims(tf.cast(vertex_sp_indices, tf.int32),1)
     # scatter new vertex index
     raw_vidx_2_sp_vidx = tf.scatter_nd(vertex_sp_indices, tf.range(_num_vertex_sp)+1, [num_vertex0])-1
-    vertex_idx_per_face_new = tf.gather(raw_vidx_2_sp_vidx, vertex_idx_per_face)
+    vidx_per_face_new = tf.gather(raw_vidx_2_sp_vidx, vidx_per_face)
 
     # rm lost faces
-    remain_mask = tf.reduce_all(tf.greater(vertex_idx_per_face_new, -1),1)
+    remain_mask = tf.reduce_all(tf.greater(vidx_per_face_new, -1),1)
     face_sp_indices = tf.squeeze(tf.where(remain_mask), 1)
     face_sp_indices = tf.cast(face_sp_indices, tf.int32)
 
-    vertex_idx_per_face_new = tf.gather(vertex_idx_per_face_new, face_sp_indices)
+    vidx_per_face_new = tf.gather(vidx_per_face_new, face_sp_indices)
 
     if MeshSampling._check_optial:
-      max_vidx = tf.reduce_max(vertex_idx_per_face_new)
+      max_vidx = tf.reduce_max(vidx_per_face_new)
       check0 = tf.assert_less_equal(max_vidx, _num_vertex_sp-1)
       with tf.control_dependencies([check0]):
-        vertex_idx_per_face_new = tf.identity(vertex_idx_per_face_new)
+        vidx_per_face_new = tf.identity(vidx_per_face_new)
 
-    return face_sp_indices, vertex_idx_per_face_new
+    return face_sp_indices, vidx_per_face_new
 
 
   @staticmethod
@@ -887,7 +887,7 @@ class MeshSampling():
     for item in datas:
       if isinstance(datas[item], tf.Tensor):
         datas[item] = datas[item].numpy()
-    ply_util.gen_mesh_ply(ply_fn, datas['xyz'], datas['vertex_idx_per_face'],
+    ply_util.gen_mesh_ply(ply_fn, datas['xyz'], datas['vidx_per_face'],
                           datas['label_category'])
 
   @staticmethod
@@ -896,11 +896,11 @@ class MeshSampling():
       ply_dir = '/tmp'
     # face same mask for generating ply
     face_same_normal_mask = MeshSampling.get_face_same_mask(same_normal_mask,
-                                              raw_datas['vertex_idx_per_face'])
+                                              raw_datas['vidx_per_face'])
     face_same_category_mask = MeshSampling.get_face_same_mask(same_category_mask,
-                                              raw_datas['vertex_idx_per_face'])
+                                              raw_datas['vidx_per_face'])
     face_same_norm_cat_mask = MeshSampling.get_face_same_mask(same_norm_cat_mask,
-                                              raw_datas['vertex_idx_per_face'])
+                                              raw_datas['vidx_per_face'])
 
     # same rates
     same_norm_rates = MeshSampling.same_mask_rates(same_normal_mask, 'v_normal')
@@ -921,16 +921,16 @@ class MeshSampling():
     ply_util.gen_mesh_ply('{}/face_same_normal_{}degree.ply'.format(ply_dir,\
                                     int(MeshSampling._max_norm_dif_angle)),
                           raw_datas['xyz'],
-                          raw_datas['vertex_idx_per_face'],
+                          raw_datas['vidx_per_face'],
                           face_label = face_same_normal_mask)
 
     ply_util.gen_mesh_ply('{}/face_same_category.ply'.format(ply_dir), raw_datas['xyz'],
-                          raw_datas['vertex_idx_per_face'],
+                          raw_datas['vidx_per_face'],
                           face_label = face_same_category_mask)
     ply_util.gen_mesh_ply('{}/face_same_norm_{}degree_cat.ply'.format(ply_dir, \
                                       int(MeshSampling._max_norm_dif_angle)),
                           raw_datas['xyz'],
-                          raw_datas['vertex_idx_per_face'],
+                          raw_datas['vidx_per_face'],
                           face_label = face_same_norm_cat_mask)
 
 

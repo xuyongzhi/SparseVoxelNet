@@ -161,7 +161,7 @@ def parse_ply_file(ply_fn):
     datas['xyz'] = vertex_xyz           # (N,3)
     datas['nxnynz'] = vertex_nxnynz     # (N,3)
     datas['color'] = vertex_rgb         # (N,3)
-    datas['vertex_idx_per_face'] = vertex_idx_per_face  # (F,3)
+    datas['vidx_per_face'] = vertex_idx_per_face  # (F,3)
     datas['label_material'] = np.expand_dims(data_face['material_id'],1) # (F,1)
     datas['label_instance'] = np.expand_dims(data_face['segment_id'],1)
     datas['label_raw_category'] = np.expand_dims(data_face['category_id'],1)

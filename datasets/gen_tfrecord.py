@@ -11,11 +11,12 @@ sys.path.append(BASE_DIR)
 ROOT_DIR = os.path.dirname(BASE_DIR)
 
 Vertex_feles = ['xyz','nxnynz', 'color']
-Vertex_ieles = ['face_idx_per_vertex', 'fidx_pv_empty_mask', \
-                'edges_per_vertex','edges_pv_empty_mask',\
+Vertex_ieles = ['fidx_per_vertex', 'fidx_pv_empty_mask', \
                 'same_normal_mask', 'same_category_mask']
-Face_ieles = ['label_category', 'label_instance', 'label_material', \
-                    'label_raw_category', 'vertex_idx_per_face', 'label_simplity']
+                #'edges_per_vertex','edges_pv_empty_mask',\
+Face_ieles = ['vidx_per_face', 'label_category']
+              #'label_simplity']
+              #+ ['label_instance', 'label_material', 'label_raw_category'] \
 
 MAX_FLOAT_DRIFT = 1e-6
 DEBUG = False
@@ -108,12 +109,15 @@ class Raw_To_Tfrecord():
 
   def sort_eles(self, all_eles):
     # elements *************************
-    tmp = [e in Vertex_feles + Vertex_ieles + Face_ieles for e in all_eles]
-    assert sum(tmp) == len(tmp)
     self.eles_sorted = {}
     self.eles_sorted['vertex_f'] = [e for e in Vertex_feles if e in all_eles]
     self.eles_sorted['vertex_i'] = [e for e in Vertex_ieles if e in all_eles]
     self.eles_sorted['face_i'] = [e for e in Face_ieles if e in all_eles]
+
+  #def rm_notsave_eles(self):
+  #  for item in self.eles_sorted:
+  #    self.eles_sorted[item] = [e for e in self.eles_sorted[item] if e not in NotSave_eles]
+
 
   def record_shape_idx(self, raw_datas, dls):
     ele_idxs = {}
@@ -204,12 +208,12 @@ class Raw_To_Tfrecord():
 
 
   @staticmethod
-  def downsample_face(vertex_idx_per_face, point_sampling_indices, num_point0):
-    num_face0 = vertex_idx_per_face.shape[0]
+  def downsample_face(vidx_per_face, point_sampling_indices, num_point0):
+    num_face0 = vidx_per_face.shape[0]
     point_mask = np.zeros(num_point0, np.int8)
     point_mask[point_sampling_indices] = 1
     point_mask = point_mask.astype(np.bool)
-    face_vertex_mask = np.take(point_mask, vertex_idx_per_face)
+    face_vertex_mask = np.take(point_mask, vidx_per_face)
     face_vertex_mask = np.all(face_vertex_mask, 1)
     face_keep_indices = np.where(face_vertex_mask)[0]
     face_del_indices = np.where(np.logical_not(face_vertex_mask))[0]
@@ -239,7 +243,7 @@ class Raw_To_Tfrecord():
     base_name1 = os.path.basename(os.path.dirname(os.path.dirname(rawfn)))
     base_name = base_name1 + '_' + base_name
 
-    # ['label_material', 'label_category', 'vertex_idx_per_face', 'color',
+    # ['label_material', 'label_category', 'vidx_per_face', 'color',
     # 'xyz', 'nxnynz', 'label_raw_category', 'label_instance']
     raw_datas = parse_ply_file(rawfn)
 

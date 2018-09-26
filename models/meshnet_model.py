@@ -6,7 +6,7 @@ from __future__ import print_function
 
 import tensorflow as tf
 from datasets.all_datasets_meta.datasets_meta import DatasetsMeta
-from models.conv_util import ResConvOps
+from models.conv_util import ResConvOps, gather_second_d
 
 DEFAULT_DTYPE = tf.float32
 CASTABLE_TYPES = (tf.float16,)
@@ -31,43 +31,43 @@ class Model(ResConvOps):
       self.block_fn = None
     else:
       raise NotImplementedError
+    self.mesh_cnn = MeshCnn(self.blocks_layers, self.block_fn)
 
-  def __call__(self, features, is_training):
+  def __call__(self, features, labels, is_training):
     '''
     vertices: [B,N,C]
     edges_per_vertex: [B,N,10*2]
     '''
+    vertex_datas = features
+    face_datas = labels
     self.is_training = is_training
-    vertices, face_idx_per_vertex, fidx_pv_empty_mask, edges_per_vertex \
-      = self.parse_inputs(features)
+    vertices, fidx_per_vertex, fidx_pv_empty_mask, vidx_per_face, valid_num_face\
+                              = self.parse_inputs(vertex_datas, face_datas)
 
     #
-    self.batch_size = tf.shape(vertices)[0]
     self.num_vertex0 = vertices.shape[1].value
 
     vertices_scales = []
     for scale in range(2):
-      two_edge_vertices = Model.vertexF_2_envF(vertices, edges_per_vertex)
-      edges = Model.vertexF_2_edgeF(two_edge_vertices,
-                            tf.expand_dims( tf.expand_dims(vertices, 2),3))
-      edges = self.edge_encoder(scale, edges)
-      faces = self.edgeF_2_faceF(scale, edges)
-      vertices = self.faceF_2_vertexF(scale, faces, fidx_pv_empty_mask, vertices)
+      with tf.variable_scope('S%d'%(scale)):
+        vertices = self.mesh_cnn.update_vertex(scale, is_training, vertices,
+              vidx_per_face, valid_num_face, fidx_per_vertex, fidx_pv_empty_mask)
+
       vertices_scales.append(vertices)
 
     #vertices = tf.concat(vertices_scales, -1)
     simplicity_logits = self.simplicity_classifier(vertices)
-    simplicity_label = self.simplicity_label(features)
+    simplicity_label = self.simplicity_label(vertex_datas)
     self.log_model_summary()
     return simplicity_logits, simplicity_label
 
 
-  def simplicity_label(self, features):
+  def simplicity_label(self, vertex_datas):
     min_same_norm_mask = 2
     min_same_category_mask = 2
-    same_category_mask = self.get_ele(features, 'same_category_mask')
+    same_category_mask = self.get_ele(vertex_datas, 'same_category_mask')
     same_category_mask = tf.greater_equal(same_category_mask, min_same_category_mask)
-    same_normal_mask = self.get_ele(features, 'same_normal_mask')
+    same_normal_mask = self.get_ele(vertex_datas, 'same_normal_mask')
     same_normal_mask = tf.greater_equal(same_normal_mask, min_same_norm_mask)
 
     simplicity_mask = tf.logical_and(same_normal_mask, same_category_mask)
@@ -75,26 +75,30 @@ class Model(ResConvOps):
     simplicity_label = tf.cast(simplicity_mask, tf.int32)
     return simplicity_label
 
-  def get_ele(self, features, ele):
+  def get_ele(self, vertex_datas, ele):
     ds_idxs = self.dset_shape_idx['indices']
     for g in ds_idxs:
       if ele in ds_idxs[g]:
         ele_idx = ds_idxs[g][ele]
-        ele_data = tf.gather(features[g], ele_idx, axis=-1)
+        ele_data = tf.gather(vertex_datas[g], ele_idx, axis=-1)
         return ele_data
-    raise ValueError
+    raise ValueError, ele+' not found'
 
-  def parse_inputs(self, features):
+  def parse_inputs(self, vertex_datas, face_datas):
 
-    vertices = [self.get_ele(features,e) for e in self.data_configs['feed_data']]
+    vertices = [self.get_ele(vertex_datas,e) for e in self.data_configs['feed_data']]
     vertices = tf.concat(vertices, -1)
 
-    face_idx_per_vertex = self.get_ele(features, 'face_idx_per_vertex')
-    fidx_pv_empty_mask = self.get_ele(features, 'fidx_pv_empty_mask')
-    edges_per_vertex = self.get_ele(features, 'edges_per_vertex')
-    edges_pv_empty_mask = self.get_ele(features, 'edges_pv_empty_mask')
+    fidx_per_vertex = self.get_ele(vertex_datas, 'fidx_per_vertex')
+    fidx_pv_empty_mask = self.get_ele(vertex_datas, 'fidx_pv_empty_mask')
 
-    return vertices, face_idx_per_vertex, fidx_pv_empty_mask, edges_per_vertex
+    vidx_per_face = self.get_ele(face_datas, 'vidx_per_face')
+    valid_num_face = face_datas['valid_num_face']
+
+    self.batch_size = tf.shape(vertices)[0]
+    self.log_tensor_p(vertices, 'vertices', 'raw_input')
+    return vertices, fidx_per_vertex, fidx_pv_empty_mask, \
+          vidx_per_face, valid_num_face
 
   def simplicity_classifier(self, vertices):
     dense_filters = [24, 2]
@@ -102,109 +106,78 @@ class Model(ResConvOps):
     return simplicity_logits
 
 
-  @staticmethod
-  def vertexF_2_envF(vertices, edges_per_vertex):
+class MeshCnn():
+  def __init__(self, blocks_layers_fn=None, block_fn=None):
+    self.block_fn = block_fn
+    self.blocks_layers = blocks_layers_fn
+    self.use_face_global_scale0 = False
+
+  def update_vertex(self, scale, is_training, vertices,\
+                    vidx_per_face, valid_num_face, fidx_per_vertex, fidx_pv_empty_mask):
     '''
-    vertex feature to two edge (neighbour) vertex feature
-    edges_per_vertex: [B,N,10*2]
-    two_edge_vertices: [B,N,10,2,C]
+    Inputs:
+      vertices: (nv, cv)
+      vidx_per_face: (nf, 3)
+
+    Middle:
+      face_centroid: (nf, 1, cc)
+      edges: (nf, 3, ce)
+      faces: (nf, cf)
+
+    Out:
+      vertices: (nv, cvo)
     '''
-    epv_shape = edges_per_vertex.shape.as_list()
-    assert len(epv_shape) == 3
-    batch_size = tf.shape(edges_per_vertex)[0]
-    num_vertex0 = edges_per_vertex.shape[1].value
-    num_edges_perv = edges_per_vertex.shape[2].value
-    assert num_edges_perv %2 == 0
-    num_faces_perv = num_edges_perv // 2
+    self.scale = scale
+    self.is_training = is_training
+    face_centroid, edges = self.vertex_2_edge(vertices, vidx_per_face, valid_num_face)
+    edges = self.encoder(edges, 'edge')
+    face_centroid = self.encoder(face_centroid, 'centroid')
+    faces = self.edge_2_face(edges, face_centroid)
+    faces = self.encoder(faces, 'face')
+    vertices = self.face_2_vertex(faces, fidx_per_vertex, fidx_pv_empty_mask)
+    vertices = self.encoder(vertices, 'vertex')
+    return vertices
 
-    edges_per_vertex = tf.reshape(edges_per_vertex,
-                          [batch_size, num_vertex0, num_faces_perv, 2])
+  def vertex_2_edge(self, vertices, vidx_per_face, valid_num_face):
+    vertices_per_face = gather_second_d(vertices, vidx_per_face)
+    face_centroid = tf.reduce_mean(vertices_per_face, 2, keepdims=True) # (nf, 1, cv)
+    edges = vertices_per_face - face_centroid  # (nf, 3, cv)
+    return face_centroid, edges
 
-    # gather neighbor(edge) vertex features
-    batch_idx = tf.reshape(tf.range(batch_size), [-1,1,1,1,1])
-    batch_idx = tf.tile(batch_idx, [1, num_vertex0, num_faces_perv, 2,1])
-    edges_per_vertex = tf.expand_dims(edges_per_vertex, -1)
-    edges_per_vertex = tf.concat([batch_idx, edges_per_vertex], -1)
-    # the two edge vertices for each vertex
-    # [B,N,10,2,C]
-    two_edge_vertices = tf.gather_nd(vertices, edges_per_vertex)
-    return two_edge_vertices
+  def encoder(self, inputs, represent):
+    if not self.block_fn:
+      return inputs
+    assert represent in ['edge', 'centroid', 'face', 'vertex']
+    blocks_params = BlockParas.block_paras(represent)[self.scale]
+    outputs = self.blocks_layers(self.scale, inputs, blocks_params, self.block_fn,
+                               self.is_training, '%s_s%d'%(represent, self.scale) )
+    return outputs
 
-  @staticmethod
-  def vertexF_2_edgeF(two_edge_vertices, base_vertex):
-    '''
-     two_edge_vertices: [B,N,10,2,C]
-     base_vertex:       [B,N,1,1,C]
+  def edge_2_face(self, edges, face_centroid):
+    face_local0 = tf.reduce_max (edges, 2)
+    face_local1 = tf.reduce_mean(edges, 2)
+    #face_local = tf.concat([face_local0, face_local1], -1)
+    face_local = face_local0
 
-     edges_012_global:  [B,N,10,3,C]
-     edges_01_local:    [B,N,10,2,C]
-     edge_2_local:      [B,N,10,1,C]
-    '''
-    tev_shape = two_edge_vertices.shape.as_list()
-    bv_shape = base_vertex.shape.as_list()
-    assert len(tev_shape) == 5
-    assert tev_shape[3] == 2
-    assert len(bv_shape) == 5
-    assert bv_shape[2] == bv_shape[2] == 1
-    edges = {}
-    edges['e01l'] = two_edge_vertices - base_vertex
-    edges_01_global = (two_edge_vertices + base_vertex) / 2
-    edges['e2l'] = tf.abs(two_edge_vertices[:,:,:,0:1,:] - two_edge_vertices[:,:,:,1:2,:])
-    edge_2_global = (two_edge_vertices[:,:,:,0:1,:] + two_edge_vertices[:,:,:,1:2,:])/2
+    face_global = tf.squeeze(face_centroid, 2)
 
-    edges['e012g'] = tf.concat([edges_01_global, edge_2_global], -2)
-    return edges
-
-  def edge_encoder(self, scale, edges):
-    '''
-    '''
-
-    blocks_params = BlockParas.block_paras('edge')[scale]
-    for edge_flag in edges:
-      if self.IsShowModel:
-        self.log('\t\t\t******* %s *******'%(edge_flag))
-      edges[edge_flag] = self.blocks_layers(scale, edges[edge_flag],
-                  blocks_params, self.block_fn, self.is_training, edge_flag+'_s%d'%(scale))
-    e012l = tf.concat( [edges['e01l'], edges['e2l']], -2)
-    edges = e012l + edges['e012g']
-
-    if self.IsShowModel:
-      self.log('\n')
-    self.log_tensor_p(edges, 'add', 'edge encoder out')
-    return edges
-
-  def edgeF_2_faceF(self, scale, edges):
-    '''
-    edges: [B,N,face_num,3,C]
-    '''
-    faces_maxp = tf.reduce_max(edges, -2)
-    faces_meanp = tf.reduce_mean(edges, -2)
-    faces = tf.concat([faces_maxp, faces_meanp], -1)
-    blocks_params = BlockParas.block_paras('face')[scale]
-    faces = self.blocks_layers(scale, faces, blocks_params, self.block_fn,
-                         self.is_training, 'face_s%d'%(scale))
+    use_global = self.scale>0 or self.use_face_global_scale0
+    if use_global:
+      faces = tf.concat([face_local, face_global], -1)
+    else:
+      faces = face_local
     return faces
 
-  def faceF_2_vertexF(self, scale, faces, fidx_pv_empty_mask, vertices):
-    # max pool
-    new_vertices_maxp = tf.reduce_max(faces, -2)
-
-    # mean pool
-    fidx_pv_empty_mask = tf.cast(fidx_pv_empty_mask, tf.float32)
-    valid_face_num = tf.reduce_sum(fidx_pv_empty_mask, -1, keepdims=True)
-    face_weight = tf.expand_dims( fidx_pv_empty_mask / valid_face_num, -1)
-    new_vertices_meanp = tf.reduce_sum(faces * face_weight, -2)
-
-    new_vertices = new_vertices_maxp
-    #new_vertices = tf.concat([new_vertices_maxp, new_vertices_meanp])
-
-    blocks_params = BlockParas.block_paras('vertex')[scale]
-    new_vertices = self.blocks_layers(scale, new_vertices, blocks_params,
-                            self.block_fn, self.is_training, 'vertex_s%d'%(scale))
-    return new_vertices
+  def face_2_vertex(self, faces, fidx_per_vertex, fidx_pv_empty_mask):
+    vertices_flat = gather_second_d(faces, fidx_per_vertex)
+    vertices0 = tf.reduce_max(vertices_flat, 2)
+    vertices1 = tf.reduce_mean(vertices_flat, 2)
+    vertices = tf.concat([vertices0, vertices1], axis=-1) # (nv, 2cf)
+    return vertices
 
 
 import numpy as np
+
 class BlockParas():
   @staticmethod
   def block_paras(element):
@@ -219,6 +192,9 @@ class BlockParas():
 
     block_sizes['vertex']=[ [1],  [1] ]
     filters['vertex']   = [ [48], [64]]
+
+    block_sizes['centroid']=[ [1],  [1] ]
+    filters['centroid']   = [ [48], [64]]
 
     all_paras = {}
     for item in block_sizes:
@@ -273,7 +249,5 @@ class BlockParas():
     strides = [1 for i in range(block_num)]
     paddings = ['v' for i in range(block_num)]
     return kernels, strides, paddings
-
-
 
 

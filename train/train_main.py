@@ -55,7 +55,8 @@ def get_filenames_1(is_training, data_dir):
   """Return filenames for dataset."""
   data_dir = os.path.join(data_dir, 'data')
   if is_training:
-    fn_glob = os.path.join(data_dir, '17DRP5sb8fy_region0_0.tfrecord')
+    #fn_glob = os.path.join(data_dir, '17DRP5sb8fy_region0_0.tfrecord')
+    fn_glob = os.path.join(data_dir, '2t7WUuJeko7_region0_0.tfrecord')
   else:
     fn_glob = os.path.join(data_dir, '2t7WUuJeko7_region0_0.tfrecord')
   all_fnls = glob.glob(fn_glob)
@@ -269,8 +270,8 @@ def network_model_fn(features, labels, mode, params):
   net_configs['bn_decay_fn'] = bn_decay_fn
 
   return net_run_loop.net_model_fn(
-      features=features,
-      labels=labels,
+      vertex_datas=features,
+      face_datas=labels,
       mode=mode,
       model_class=MeshnetModel,
       net_data_configs=params['net_data_configs'],
