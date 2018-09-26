@@ -94,6 +94,7 @@ def get_tensor_shape(tensor):
   else:
     return tensor.shape
 
+
 def gather_second_d(inputs, indices):
   '''
   Gather inputs by indices, indices is for the second dim.
@@ -106,6 +107,7 @@ def gather_second_d(inputs, indices):
   indices = tf.concat([batch_idx, indices], -1)
   outputs = tf.gather_nd(inputs, indices)
   return outputs
+
 
 def unique_nd( inputs, axis=-1, unit=3 ):
     org_inputs = inputs
@@ -319,7 +321,7 @@ class ResConvOps(object):
 
   def log_dotted_line(self, name):
     if self.IsShowModel:
-      self.log('---------------------- %s ----------------------'%(name))
+      self.log('\n---------------------- %s ----------------------'%(name))
 
   def show_layers_num_summary(self):
     self.log('block layers num:{}\nconv2d num:{}\nconv3d num:{}\nconv1d num:{}\ndense num:{}'.format(
@@ -782,6 +784,7 @@ class ResConvOps(object):
     return shortcut
 
   def blocks_layers(self, scale, inputs, blocks_params, block_fn, is_training, scope):
+    self.log_tensor_p(inputs, '', scope)
     self.log_dotted_line(scope)
     for bi in range(len(blocks_params)):
       with tf.variable_scope(scope+'_b%d'%(bi)):

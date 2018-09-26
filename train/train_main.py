@@ -389,11 +389,11 @@ def define_network_flags():
                           epochs_between_evals=5)
 
   flags.DEFINE_string('optimizer','adam','adam momentum')
-  flags.DEFINE_float('lr0', default=0.001, help="base lr")
+  flags.DEFINE_float('lr0', default=0.01, help="base lr")
   flags.DEFINE_float('lrd_rate', default=0.1, help="learning rate decay rate")
   flags.DEFINE_float('bnd0', default=0.8, help="base bnd")
   flags.DEFINE_float('bnd_decay', default=0.1, help="")
-  flags.DEFINE_integer('lrd_epochs', default=20, help="learning_rate decay epoches")
+  flags.DEFINE_integer('lrd_epochs', default=30, help="learning_rate decay epoches")
   flags.DEFINE_string('feed_data','xyzs-nxnynz','xyzrsg-nxnynz-color')
   flags.DEFINE_bool(name='residual', short_name='rs', default=False,
       help=flags_core.help_wrap('Is use reidual architecture'))

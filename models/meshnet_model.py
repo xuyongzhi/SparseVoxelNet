@@ -185,16 +185,17 @@ class BlockParas():
     filters = {}
 
     block_sizes['edge'] = [ [1],  [1] ]
-    filters['edge']     = [ [24], [32]]
-
-    block_sizes['face'] = [ [2],  [1] ]
-    filters['face']     = [ [32], [48]]
-
-    block_sizes['vertex']=[ [1],  [1] ]
-    filters['vertex']   = [ [48], [64]]
+    filters['edge']     = [ [32], [32]]
 
     block_sizes['centroid']=[ [1],  [1] ]
-    filters['centroid']   = [ [48], [64]]
+    filters['centroid']   = [ [32], [32]]
+
+    block_sizes['face'] = [ [1, 1],  [1, 1] ]
+    filters['face']     = [ [64, 32], [64, 32]]
+
+    block_sizes['vertex']=[ [1],  [1] ]
+    filters['vertex']   = [ [64], [64]]
+
 
     all_paras = {}
     for item in block_sizes:
