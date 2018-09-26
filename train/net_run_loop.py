@@ -36,9 +36,8 @@ from official.utils.logs import hooks_helper
 from official.utils.logs import logger
 from official.utils.misc import distribution_utils
 from official.utils.misc import model_helpers
-from models import meshnet_model
 # pylint: enable=g-bad-import-order
-
+from models.meshnet_model import DEFAULT_DTYPE
 
 ################################################################################
 # Functions for input processing.
@@ -152,7 +151,6 @@ def get_synth_input_fn(height, width, num_channels, num_classes,
 
   return input_fn
 
-
 ################################################################################
 # Functions for running training/eval/validation loops for the model.
 ################################################################################
@@ -211,11 +209,12 @@ def learning_rate_with_decay(
   net_configs['bnd_vals'] = bnd_vals
   return learning_rate_fn, bn_decay_fn
 
-def net_model_fn( vertex_datas, face_datas, mode, model_class,
+
+def net_model_fn( features, labels, mode, model_class,
                   net_data_configs,
                   weight_decay, learning_rate_fn, momentum,
                   data_format, loss_scale,
-                  loss_filter_fn=None, dtype=meshnet_model.DEFAULT_DTYPE,
+                  loss_filter_fn=None, dtype=DEFAULT_DTYPE,
                   fine_tune=False):
   """Shared functionality for different resnet model_fns.
 
@@ -258,7 +257,7 @@ def net_model_fn( vertex_datas, face_datas, mode, model_class,
   model = model_class(net_data_configs=net_data_configs,
                       data_format=data_format, dtype=dtype)
 
-  spl_logits, spl_labels = model(vertex_datas, face_datas, mode == tf.estimator.ModeKeys.TRAIN)
+  spl_logits, spl_labels = model(features, mode == tf.estimator.ModeKeys.TRAIN)
 
   # This acts as a no-op if the logits are already in fp32 (provided logits are
   # not a SparseTensor). If dtype is is low precision, logits must be cast to
@@ -267,17 +266,24 @@ def net_model_fn( vertex_datas, face_datas, mode, model_class,
 
   predictions = {
       'spl_classes': tf.argmax(spl_logits, axis=-1),
-      'spl_probabilities': tf.nn.softmax(spl_logits, name='softmax_tensor')
+      'spl_probabilities': tf.nn.softmax(spl_logits, name='softmax_tensor'),
+      'spl_labels': spl_labels,
   }
 
   if mode == tf.estimator.ModeKeys.PREDICT:
     # Return the predictions and the specification for serving a SavedModel
+    from models.meshnet_model import ele_in_feature
+    dset_shape_idx = net_data_configs['dset_shape_idx']
+    xyz = ele_in_feature(features, 'xyz', dset_shape_idx)
+    vidx_per_face = ele_in_feature(features, 'vidx_per_face', dset_shape_idx)
+    predictions.update({'xyz': xyz, 'vidx_per_face': vidx_per_face,
+                       'valid_num_face': features['valid_num_face'] })
     return tf.estimator.EstimatorSpec(
         mode=mode,
         predictions=predictions,
-        export_outputs={
-            'predict': tf.estimator.export.PredictOutput(predictions)
-        })
+        #export_outputs={
+        #    'predict': tf.estimator.export.PredictOutput(predictions) }
+        )
 
   # Calculate loss, which includes softmax cross entropy and L2 regularization.
   spl_cross_entropy = tf.losses.sparse_softmax_cross_entropy(
@@ -365,11 +371,11 @@ def net_model_fn( vertex_datas, face_datas, mode, model_class,
   tf.summary.scalar('spl_accuracy', spl_accuracy[1])
 
   return tf.estimator.EstimatorSpec(
-      mode=mode,
-      predictions=predictions,
-      loss=loss,
-      train_op=train_op,
-      eval_metric_ops=metrics)
+          mode=mode,
+          predictions=predictions,
+          loss=loss,
+          train_op=train_op,
+          eval_metric_ops=metrics)
 
 
 def net_main(
@@ -474,7 +480,7 @@ def net_main(
         num_epochs=1,
         )
 
-  if flags_obj.eval_only or not flags_obj.train_epochs:
+  if flags_obj.eval_only or flags_obj.pred_ply or not flags_obj.train_epochs:
     # If --eval_only is set, perform a single loop with zero train epochs.
     schedule, n_loops = [0], 1
   else:
@@ -510,10 +516,14 @@ def net_main(
     # eval (which is generally unimportant in those circumstances) to terminate.
     # Note that eval will run for max_train_steps each loop, regardless of the
     # global_step count.
-    only_train = True
+    only_train = False and (not flags.eval_only)
     if not only_train:
       eval_results = classifier.evaluate(input_fn=input_fn_eval,
                                         steps=flags_obj.max_train_steps)
+
+      if flags_obj.pred_ply:
+        pred_generator = classifier.predict(input_fn=input_fn_eval)
+        gen_pred_ply(eval_results, pred_generator)
 
       benchmark_logger.log_evaluation_result(eval_results)
 
@@ -563,3 +573,24 @@ def define_net_flags(net_flag_choices=None):
     flags.DEFINE_string(**choice_kwargs)
   else:
     flags.DEFINE_enum(enum_values=net_flag_choices, **choice_kwargs)
+
+def gen_pred_ply(eval_results, pred_generator):
+  from utils.ply_util import gen_mesh_ply
+  pred_res_dir = '/tmp/pred_res'
+
+  for pred in pred_generator:
+    spl_classes = pred['spl_classes']
+    spl_probabilities = pred['spl_probabilities']
+    spl_labels = pred['spl_labels']
+    xyz = pred['xyz']
+    vidx_per_face = pred['vidx_per_face']
+    valid_num_face = pred['valid_num_face']
+    vidx_per_face = vidx_per_face[0:valid_num_face[0], :]
+
+    ply_fn = os.path.join(pred_res_dir, 'raw_mesh.ply')
+    gen_mesh_ply(ply_fn, xyz, vidx_per_face)
+    import pudb; pudb.set_trace()  # XXX BREAKPOINT
+    ply_fn = os.path.join(pred_res_dir, 'simplicity_pred.ply')
+    import pudb; pudb.set_trace()  # XXX BREAKPOINT
+    pass
+

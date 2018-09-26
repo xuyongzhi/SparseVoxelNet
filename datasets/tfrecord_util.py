@@ -79,10 +79,11 @@ def parse_record(tfrecord_serialized, is_training, dset_shape_idx, \
     valid_num_face = tfrecord_features['valid_num_face']
 
     #*************
-    vertex_datas = {"vertex_i": vertex_i, "vertex_f": vertex_f}
-    face_datas = {"face_i": face_i, "valid_num_face": valid_num_face}
+    features = {"vertex_i": vertex_i, "vertex_f": vertex_f, \
+                    "face_i": face_i, "valid_num_face": valid_num_face}
+    labels = []
 
-    return vertex_datas, face_datas
+    return features, labels
 
 
 def gather_labels_for_each_gb(points, labels, grouped_pindex0):

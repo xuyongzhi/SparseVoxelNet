@@ -56,9 +56,9 @@ def get_filenames_1(is_training, data_dir):
   data_dir = os.path.join(data_dir, 'data')
   if is_training:
     #fn_glob = os.path.join(data_dir, '17DRP5sb8fy_region0_0.tfrecord')
-    fn_glob = os.path.join(data_dir, '2t7WUuJeko7_region0_0.tfrecord')
+    fn_glob = os.path.join(data_dir, '2t7WUuJeko7_region1_0.tfrecord')
   else:
-    fn_glob = os.path.join(data_dir, '2t7WUuJeko7_region0_0.tfrecord')
+    fn_glob = os.path.join(data_dir, '2t7WUuJeko7_region1_0.tfrecord')
   all_fnls = glob.glob(fn_glob)
   assert len(all_fnls) > 0, fn_glob
   print('\ngot {} training files for training={}\n'.format(len(all_fnls), is_training))
@@ -270,8 +270,8 @@ def network_model_fn(features, labels, mode, params):
   net_configs['bn_decay_fn'] = bn_decay_fn
 
   return net_run_loop.net_model_fn(
-      vertex_datas=features,
-      face_datas=labels,
+      features=features,
+      labels=labels,
       mode=mode,
       model_class=MeshnetModel,
       net_data_configs=params['net_data_configs'],
@@ -398,6 +398,7 @@ def define_network_flags():
   flags.DEFINE_bool(name='residual', short_name='rs', default=False,
       help=flags_core.help_wrap('Is use reidual architecture'))
   flags.DEFINE_string('drop_imo','000','dropout rate for input, middle and out')
+  flags.DEFINE_bool(name='pred_ply', default=True, help ="")
 
   update_examples_num(True, data_dir)
   flags.DEFINE_integer('examples_per_epoch', default=_NUM_EXAMPLES['train'], help="")

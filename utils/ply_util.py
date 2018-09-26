@@ -273,25 +273,27 @@ def draw_blocks_by_bot_cen_top(ply_fn, bot_cen_top, random_crop=0):
 
 
 import  color_dic
-def gen_mesh_ply(ply_fn, vertices0, face_vertex_indices0, face_label=None,
+def gen_mesh_ply(ply_fn, vertices0, vidx_per_face, face_label=None, vertex_label=None,
                  extra='label_color_default'):
     '''
     '''
     vertices0 = np.reshape( vertices0, (-1,3) )
-    face_vertex_indices0 = np.reshape(face_vertex_indices0, (-1,3))
+    vidx_per_face = np.reshape(vidx_per_face, (-1,3))
     face_label = np.squeeze(face_label)
 
     num_vertex = vertices0.shape[0]
-    vertex = np.zeros( shape=(num_vertex) ).astype([('x', 'f8'), ('y', 'f8'),('z', 'f8')])
+    if vertex_label == None:
+      vertex = np.zeros( shape=(num_vertex) ).astype([('x', 'f8'), ('y', 'f8'),('z', 'f8')])
     for i in range(vertices0.shape[0]):
         vertex[i] = ( vertices0[i,0],vertices0[i,1],vertices0[i,2] )
 
     el_vertex = PlyElement.describe(vertex,'vertex')
 
     # define the order of the 8 vertexs for a box
-    num_face = face_vertex_indices0.shape[0]
-    if extra=='label_color_default':
-      color = np.take(color_dic.rgb_order, face_label, 0)
+    num_face = vidx_per_face.shape[0]
+    if face_label!=None:
+      if extra=='label_color_default':
+        color = np.take(color_dic.rgb_order, face_label, 0)
     else:
       color = np.ones([num_face,3], dtype=np.uint8) * 255
 
@@ -299,7 +301,7 @@ def gen_mesh_ply(ply_fn, vertices0, face_vertex_indices0, face_label=None,
                     dtype=[('vertex_indices', 'i4', (3,)),
                            ('red', 'u1'), ('green', 'u1'),('blue', 'u1')])
     for i in range(num_face):
-      face[i] = ( face_vertex_indices0[i], color[i,0], color[i,1], color[i,2] )
+      face[i] = ( vidx_per_face[i], color[i,0], color[i,1], color[i,2] )
     el_face = PlyElement.describe(face,'face')
 
     dirname = os.path.dirname(ply_fn)

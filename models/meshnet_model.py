@@ -8,9 +8,19 @@ import tensorflow as tf
 from datasets.all_datasets_meta.datasets_meta import DatasetsMeta
 from models.conv_util import ResConvOps, gather_second_d, mask_reduce_mean
 
+
 DEFAULT_DTYPE = tf.float32
 CASTABLE_TYPES = (tf.float16,)
 ALLOWED_TYPES = (DEFAULT_DTYPE,) + CASTABLE_TYPES
+
+def ele_in_feature(features, ele, dset_shape_idx):
+  ds_idxs = dset_shape_idx['indices']
+  for g in ds_idxs:
+    if ele in ds_idxs[g]:
+      ele_idx = ds_idxs[g][ele]
+      ele_data = tf.gather(features[g], ele_idx, axis=-1)
+      return ele_data
+  raise ValueError, ele+' not found'
 
 class Model(ResConvOps):
   def __init__(self, net_data_configs, data_format, dtype):
@@ -33,22 +43,20 @@ class Model(ResConvOps):
       raise NotImplementedError
     self.mesh_cnn = MeshCnn(self.blocks_layers, self.block_fn)
 
-  def __call__(self, features, labels, is_training):
+  def __call__(self, features,  is_training):
     '''
     vertices: [B,N,C]
     edges_per_vertex: [B,N,10*2]
     '''
-    vertex_datas = features
-    face_datas = labels
     self.is_training = is_training
     vertices, fidx_per_vertex, fidx_pv_empty_mask, vidx_per_face, valid_num_face\
-                              = self.parse_inputs(vertex_datas, face_datas)
+                              = self.parse_inputs(features)
 
     #
     self.num_vertex0 = vertices.shape[1].value
 
     vertices_scales = []
-    for scale in range(2):
+    for scale in range(BlockParas.scale_num):
       with tf.variable_scope('S%d'%(scale)):
         vertices = self.mesh_cnn.update_vertex(scale, is_training, vertices,
               vidx_per_face, valid_num_face, fidx_per_vertex, fidx_pv_empty_mask)
@@ -57,17 +65,17 @@ class Model(ResConvOps):
 
     #vertices = tf.concat(vertices_scales, -1)
     simplicity_logits = self.simplicity_classifier(vertices)
-    simplicity_label = self.simplicity_label(vertex_datas)
+    simplicity_label = self.simplicity_label(features)
     self.log_model_summary()
     return simplicity_logits, simplicity_label
 
 
-  def simplicity_label(self, vertex_datas):
+  def simplicity_label(self, features):
     min_same_norm_mask = 2
     min_same_category_mask = 2
-    same_category_mask = self.get_ele(vertex_datas, 'same_category_mask')
+    same_category_mask = self.get_ele(features, 'same_category_mask')
     same_category_mask = tf.greater_equal(same_category_mask, min_same_category_mask)
-    same_normal_mask = self.get_ele(vertex_datas, 'same_normal_mask')
+    same_normal_mask = self.get_ele(features, 'same_normal_mask')
     same_normal_mask = tf.greater_equal(same_normal_mask, min_same_norm_mask)
 
     simplicity_mask = tf.logical_and(same_normal_mask, same_category_mask)
@@ -75,25 +83,19 @@ class Model(ResConvOps):
     simplicity_label = tf.cast(simplicity_mask, tf.int32)
     return simplicity_label
 
-  def get_ele(self, datas, ele):
-    ds_idxs = self.dset_shape_idx['indices']
-    for g in ds_idxs:
-      if ele in ds_idxs[g]:
-        ele_idx = ds_idxs[g][ele]
-        ele_data = tf.gather(datas[g], ele_idx, axis=-1)
-        return ele_data
-    raise ValueError, ele+' not found'
+  def get_ele(self, features, ele):
+    return ele_in_feature(features, ele, self.dset_shape_idx)
 
-  def parse_inputs(self, vertex_datas, face_datas):
+  def parse_inputs(self, features):
 
-    vertices = [self.get_ele(vertex_datas,e) for e in self.data_configs['feed_data']]
+    vertices = [self.get_ele(features,e) for e in self.data_configs['feed_data']]
     vertices = tf.concat(vertices, -1)
 
-    fidx_per_vertex = self.get_ele(vertex_datas, 'fidx_per_vertex')
-    fidx_pv_empty_mask = self.get_ele(vertex_datas, 'fidx_pv_empty_mask')
+    fidx_per_vertex = self.get_ele(features, 'fidx_per_vertex')
+    fidx_pv_empty_mask = self.get_ele(features, 'fidx_pv_empty_mask')
 
-    vidx_per_face = self.get_ele(face_datas, 'vidx_per_face')
-    valid_num_face = face_datas['valid_num_face']
+    vidx_per_face = self.get_ele(features, 'vidx_per_face')
+    valid_num_face = features['valid_num_face']
 
     self.batch_size = tf.shape(vertices)[0]
     self.log_tensor_p(vertices, 'vertices', 'raw_input')
@@ -179,22 +181,23 @@ class MeshCnn():
 import numpy as np
 
 class BlockParas():
+  scale_num = 3
   @staticmethod
   def block_paras(element):
     block_sizes = {}
     filters = {}
 
-    block_sizes['edge'] = [ [1],  [1] ]
-    filters['edge']     = [ [32], [32]]
+    block_sizes['edge'] = [ [1],  [1], [1] ]
+    filters['edge']     = [ [32], [32], [64]]
 
-    block_sizes['centroid']=[ [1],  [1] ]
-    filters['centroid']   = [ [32], [32]]
+    block_sizes['centroid']=[ [1],  [1], [1] ]
+    filters['centroid']   = [ [32], [32], [64]]
 
-    block_sizes['face'] = [ [1, 1],  [1, 1] ]
-    filters['face']     = [ [64, 32], [64, 32]]
+    block_sizes['face'] = [ [1, 2],  [1, 2], [1, 2] ]
+    filters['face']     = [ [64, 32], [64, 32], [128, 128]]
 
-    block_sizes['vertex']=[ [1],  [1] ]
-    filters['vertex']   = [ [64], [64]]
+    block_sizes['vertex']=[ [1],  [1], [1] ]
+    filters['vertex']   = [ [64], [64], [128]]
 
 
     all_paras = {}
