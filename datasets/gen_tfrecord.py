@@ -500,14 +500,13 @@ def main_matterport():
   tfrecord_path = '/DS/Matterport3D/MATTERPORT_TF/mesh_tfrecord'
   ply_dir = os.path.join(tfrecord_path, 'plys/{}/{}'.format(scene_name, region_name))
 
-  main_write(dataset_name, raw_glob, tfrecord_path, num_point[dataset_name],\
-             block_size[dataset_name], ply_dir)
+  #main_write(dataset_name, raw_glob, tfrecord_path, num_point[dataset_name],\
+  #           block_size[dataset_name], ply_dir)
 
   #main_merge_tfrecord(dataset_name, tfrecord_path)
 
   #main_gen_ply(dataset_name, tfrecord_path)
 
-  #get_dataset_summary(dataset_name, tfrecord_path)
 
 
 if __name__ == '__main__':

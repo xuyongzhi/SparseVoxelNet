@@ -109,6 +109,21 @@ def gather_second_d(inputs, indices):
   return outputs
 
 
+def mask_reduce_mean(inputs, valid_mask, dim):
+  in_shape = inputs.shape.as_list()
+  mask_shape = valid_mask.shape.as_list()
+  assert len(in_shape) == len(mask_shape)+1
+  assert in_shape[0:-1] == mask_shape
+
+  valid_mask = tf.cast(valid_mask, tf.float32)
+  valid_num = tf.reduce_sum(valid_mask, -1, keepdims=True)
+  valid_mask /= valid_num
+  valid_mask = tf.expand_dims(valid_mask, -1)
+  inputs = inputs * valid_mask
+  inputs = tf.reduce_sum(inputs, dim)
+  return inputs
+
+
 def unique_nd( inputs, axis=-1, unit=3 ):
     org_inputs = inputs
     org_shape = inputs.shape

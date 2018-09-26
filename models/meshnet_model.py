@@ -6,7 +6,7 @@ from __future__ import print_function
 
 import tensorflow as tf
 from datasets.all_datasets_meta.datasets_meta import DatasetsMeta
-from models.conv_util import ResConvOps, gather_second_d
+from models.conv_util import ResConvOps, gather_second_d, mask_reduce_mean
 
 DEFAULT_DTYPE = tf.float32
 CASTABLE_TYPES = (tf.float16,)
@@ -75,12 +75,12 @@ class Model(ResConvOps):
     simplicity_label = tf.cast(simplicity_mask, tf.int32)
     return simplicity_label
 
-  def get_ele(self, vertex_datas, ele):
+  def get_ele(self, datas, ele):
     ds_idxs = self.dset_shape_idx['indices']
     for g in ds_idxs:
       if ele in ds_idxs[g]:
         ele_idx = ds_idxs[g][ele]
-        ele_data = tf.gather(vertex_datas[g], ele_idx, axis=-1)
+        ele_data = tf.gather(datas[g], ele_idx, axis=-1)
         return ele_data
     raise ValueError, ele+' not found'
 
@@ -101,7 +101,7 @@ class Model(ResConvOps):
           vidx_per_face, valid_num_face
 
   def simplicity_classifier(self, vertices):
-    dense_filters = [24, 2]
+    dense_filters = [32, 16, 2]
     simplicity_logits = self.dense_block(vertices, dense_filters, self.is_training)
     return simplicity_logits
 
@@ -110,7 +110,7 @@ class MeshCnn():
   def __init__(self, blocks_layers_fn=None, block_fn=None):
     self.block_fn = block_fn
     self.blocks_layers = blocks_layers_fn
-    self.use_face_global_scale0 = False
+    self.use_face_global_scale0 = True
 
   def update_vertex(self, scale, is_training, vertices,\
                     vidx_per_face, valid_num_face, fidx_per_vertex, fidx_pv_empty_mask):
@@ -171,7 +171,7 @@ class MeshCnn():
   def face_2_vertex(self, faces, fidx_per_vertex, fidx_pv_empty_mask):
     vertices_flat = gather_second_d(faces, fidx_per_vertex)
     vertices0 = tf.reduce_max(vertices_flat, 2)
-    vertices1 = tf.reduce_mean(vertices_flat, 2)
+    vertices1 = mask_reduce_mean(vertices_flat, 1-fidx_pv_empty_mask, 2)
     vertices = tf.concat([vertices0, vertices1], axis=-1) # (nv, 2cf)
     return vertices
 

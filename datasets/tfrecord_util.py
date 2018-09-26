@@ -169,6 +169,16 @@ def get_dset_shape_idxs(tf_path):
     return dset_shape_idx
 
 
+def get_ele(datas, ele, dset_shape_idx):
+  ds_idxs = dset_shape_idx['indices']
+  for g in ds_idxs:
+    if ele in ds_idxs[g]:
+      ele_idx = ds_idxs[g][ele]
+      ele_data = datas[g][..., ele_idx]
+      #ele_data = tf.gather(datas[g], ele_idx, axis=-1)
+      return ele_data
+  raise ValueError, ele+' not found'
+
 def get_dataset_summary(dataset_name, tf_path, loss_lw_gama=-1):
   dset_shape_idx = get_dset_shape_idxs(tf_path)
   dataset_summary = read_dataset_summary(tf_path)
@@ -209,12 +219,13 @@ def get_dataset_summary(dataset_name, tf_path, loss_lw_gama=-1):
       batch_num = 0
       point_num = 0
       label_hist = np.zeros(num_classes)
-      try:
-      #if True:
+      #try:
+      if True:
         while(True):
           features, labels = sess.run([features_next, labels_next])
 
-          import pdb; pdb.set_trace()  # XXX BREAKPOINT
+          fidx_pv_empty_mask = get_ele(features, 'fidx_pv_empty_mask',
+                                       dset_shape_idx)
           valid_num_face = labels['valid_num_face']
           category_idx = dset_shape_idx['indices']['face_i']['label_category']
           category_label = labels['face_i'][:, :, category_idx]
@@ -224,9 +235,9 @@ def get_dataset_summary(dataset_name, tf_path, loss_lw_gama=-1):
           point_num += np.sum(labels['valid_num_face'])
           print('Total: %d  %d'%(batch_num, point_num))
 
-      except:
-        print(label_hist)
-        print(sys.exc_info()[0])
+      #except:
+      #  print(label_hist)
+      #  print(sys.exc_info()[0])
 
       dataset_summary = {}
       dataset_summary['size'] = batch_num
@@ -945,6 +956,7 @@ if __name__ == '__main__':
   dataset_name = 'MATTERPORT'
   dset_path = '/DS/Matterport3D/Matterport3D_WHOLE_extracted/v1/scans'
   tfrecord_path = '/DS/Matterport3D/MATTERPORT_TF/mesh_tfrecord'
+  tfrecord_path = '/home/z/Research/SparseVoxelNet/data/MATTERPORT_TF/mesh_tfrecord'
   get_dataset_summary(dataset_name, tfrecord_path)
 
 
