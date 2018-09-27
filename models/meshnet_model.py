@@ -99,6 +99,11 @@ class Model(ResConvOps):
 
     self.batch_size = tf.shape(vertices)[0]
     self.log_tensor_p(vertices, 'vertices', 'raw_input')
+
+    cb0 = tf.assert_equal( self.batch_size, 1)
+    import pudb; pudb.set_trace()  # XXX BREAKPOINT
+    with tf.control_dependencies([cb0]):
+      vidx_per_face = vidx_per_face[:,0:valid_num_face[0,0],:]
     return vertices, fidx_per_vertex, fidx_pv_empty_mask, \
           vidx_per_face, valid_num_face
 
