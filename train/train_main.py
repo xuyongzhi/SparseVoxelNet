@@ -275,7 +275,7 @@ def network_model_fn(features, labels, mode, params):
       mode=mode,
       model_class=MeshnetModel,
       net_data_configs=params['net_data_configs'],
-      weight_decay=1e-4,
+      weight_decay=params['weight_decay'],
       learning_rate_fn=learning_rate_fn,
       momentum=0.9,
       data_format=params['data_format'],
@@ -307,6 +307,7 @@ def parse_flags_update_configs(flags_obj):
   data_configs['model_dir'] = flags_obj.model_dir
   data_configs['feed_data_eles'] = flags_obj.feed_data
   data_configs['feed_data'] = feed_data
+  data_configs['spl_label_wt'] = [0.2, 0.8]
 
   net_data_configs['data_configs'] = data_configs
 
@@ -327,6 +328,7 @@ def parse_flags_update_configs(flags_obj):
   net_configs['optimizer'] = flags_obj.optimizer
 
   net_data_configs['net_configs'] = net_configs
+
 
   return net_data_configs
 
@@ -350,6 +352,9 @@ def define_model_dir(flags_obj, net_data_configs):
   logname +=  '-Lr'+str(int(flags_obj.lr0*1000)) +\
               '_' + str(int(10*flags_obj.lrd_rate)) + \
               '_' + str(flags_obj.lrd_epochs)
+  wd = '%.E'%(flags_obj.weight_decay)
+  wd = -int(wd.split('E')[1])
+  logname += '-wd' + str(wd)
 
   model_dir = os.path.join(ROOT_DIR, 'results/meshsag', logname)
   flags_obj.model_dir = model_dir
@@ -384,10 +389,11 @@ def define_network_flags():
                           model_dir=os.path.join(ROOT_DIR,'results/mesh_seg'),
                           batch_size=1,
                           num_gpus=1,
-                          epochs_between_evals=5)
+                          epochs_between_evals=5,)
 
   flags.DEFINE_string('optimizer','adam','adam momentum')
-  flags.DEFINE_float('lr0', default=0.001, help="base lr")
+  flags.DEFINE_float('weight_decay', short_name='wd', default=1e-4, help="wd")
+  flags.DEFINE_float('lr0', default=0.01, help="base lr")
   flags.DEFINE_float('lrd_rate', default=0.1, help="learning rate decay rate")
   flags.DEFINE_float('bnd0', default=0.8, help="base bnd")
   flags.DEFINE_float('bnd_decay', default=0.1, help="")
