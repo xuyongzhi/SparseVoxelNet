@@ -588,7 +588,8 @@ def gen_pred_ply(eval_results, pred_generator):
     vidx_per_face = vidx_per_face[0:valid_num_face[0], :]
 
     ply_fn = os.path.join(pred_res_dir, 'raw_mesh.ply')
-    gen_mesh_ply(ply_fn, xyz, vidx_per_face)
+    import pudb; pudb.set_trace()  # XXX BREAKPOINT
+    gen_mesh_ply(ply_fn, xyz, vidx_per_face, vertex_label=spl_labels)
     import pudb; pudb.set_trace()  # XXX BREAKPOINT
     ply_fn = os.path.join(pred_res_dir, 'simplicity_pred.ply')
     import pudb; pudb.set_trace()  # XXX BREAKPOINT

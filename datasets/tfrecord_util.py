@@ -180,7 +180,7 @@ def get_ele(datas, ele, dset_shape_idx):
       return ele_data
   raise ValueError, ele+' not found'
 
-def get_dataset_summary(dataset_name, tf_path, loss_lw_gama=-1):
+def read_tfrecord(dataset_name, tf_path, loss_lw_gama=-1):
   dset_shape_idx = get_dset_shape_idxs(tf_path)
   dataset_summary = read_dataset_summary(tf_path)
   if dataset_summary['intact']:
@@ -195,6 +195,9 @@ def get_dataset_summary(dataset_name, tf_path, loss_lw_gama=-1):
 
   datasets_meta = DatasetsMeta(dataset_name)
   num_classes = datasets_meta.num_classes
+
+  gen_ply = True
+  ply_dir = os.path.join(tf_path, 'plys')
 
   with tf.Graph().as_default():
     dataset = tf.data.TFRecordDataset(filenames,
@@ -227,14 +230,31 @@ def get_dataset_summary(dataset_name, tf_path, loss_lw_gama=-1):
 
           fidx_pv_empty_mask = get_ele(features, 'fidx_pv_empty_mask',
                                        dset_shape_idx)
-          valid_num_face = labels['valid_num_face']
-          category_idx = dset_shape_idx['indices']['face_i']['label_category']
-          category_label = labels['face_i'][:, :, category_idx]
+          # generate label hist summary
+          valid_num_face = features['valid_num_face']
+          category_label = get_ele(features, 'label_category', dset_shape_idx)
           label_hist += np.histogram(category_label, range(num_classes+1))[0]
 
           batch_num += 1
-          point_num += np.sum(labels['valid_num_face'])
+          point_num += np.sum(valid_num_face)
           print('Total: %d  %d'%(batch_num, point_num))
+
+          if gen_ply:
+            xyz = get_ele(features, 'xyz', dset_shape_idx)
+            color = get_ele(features, 'color', dset_shape_idx)
+            same_category_mask = get_ele(features, 'same_category_mask', dset_shape_idx)
+            same_category_mask = same_category_mask > 2
+            same_normal_mask = get_ele(features, 'same_normal_mask', dset_shape_idx)
+            same_normal_mask = same_normal_mask > 2
+            vertex_simplicity = np.logical_and(same_normal_mask, same_category_mask).astype(np.int8)
+            valid_num_face = features['valid_num_face']
+            vidx_per_face = get_ele(features, 'vidx_per_face', dset_shape_idx)
+            for bi in range(batch_size):
+              ply_fn = os.path.join(ply_dir, 'batch_%d/b%d_raw_color.ply'%(batch_num, bi))
+              ply_util.gen_mesh_ply(ply_fn, xyz[bi], vidx_per_face[bi,0:valid_num_face[bi,0],:], vertex_color=color[bi])
+
+              ply_fn = os.path.join(ply_dir, 'batch_%d/b%d_simplicity.ply'%(batch_num, bi))
+              ply_util.gen_mesh_ply(ply_fn, xyz[bi], vidx_per_face[bi,0:valid_num_face[bi,0],:], vertex_label=vertex_simplicity[bi])
 
       #except:
       #  print(label_hist)
@@ -958,6 +978,6 @@ if __name__ == '__main__':
   dset_path = '/DS/Matterport3D/Matterport3D_WHOLE_extracted/v1/scans'
   tfrecord_path = '/DS/Matterport3D/MATTERPORT_TF/mesh_tfrecord'
   tfrecord_path = '/home/z/Research/SparseVoxelNet/data/MATTERPORT_TF/mesh_tfrecord'
-  get_dataset_summary(dataset_name, tfrecord_path)
+  read_tfrecord(dataset_name, tfrecord_path)
 
 

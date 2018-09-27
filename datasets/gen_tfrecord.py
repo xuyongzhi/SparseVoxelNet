@@ -494,7 +494,7 @@ def main_matterport():
 
   scene_name = '17DRP5sb8fy'
   scene_name = '2t7WUuJeko7'
-  region_name = 'region*'
+  region_name = 'region0'
   raw_glob = os.path.join(dset_path, '{}/*/region_segmentations/{}.ply'.format(
                                 scene_name, region_name))
   tfrecord_path = '/DS/Matterport3D/MATTERPORT_TF/mesh_tfrecord'
@@ -505,7 +505,7 @@ def main_matterport():
 
   #main_merge_tfrecord(dataset_name, tfrecord_path)
 
-  #main_gen_ply(dataset_name, tfrecord_path)
+  main_gen_ply(dataset_name, tfrecord_path)
 
 
 
