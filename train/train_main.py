@@ -286,6 +286,7 @@ def network_model_fn(features, labels, mode, params):
   )
 
 def parse_flags_update_configs(flags_obj):
+  from models.block_configs import block_configs
   flags_obj.max_train_steps = int(flags_obj.train_epochs * flags_obj.examples_per_epoch)
 
   #*****************************************************************************
@@ -294,21 +295,18 @@ def parse_flags_update_configs(flags_obj):
   net_data_configs['dataset_name'] = DATASET_NAME
   net_data_configs['dset_shape_idx'] = get_dset_shape_idxs(flags_obj.data_dir)
   net_data_configs['dset_metas'] = DsetMetas
+  net_data_configs['block_configs'] = block_configs(flags_obj.net_flag)
 
-  define_model_dir(flags_obj)
+  define_model_dir(flags_obj, net_data_configs)
   #*****************************************************************************
   # data_config
   feed_data = flags_obj.feed_data.split('-')
-  assert feed_data[0][0:3] == 'xyz'
-  xyz_eles = feed_data[0][3:]
-  feed_data[0] = 'xyz'
-  assert len(xyz_eles)<=3
+  assert feed_data[0] == 'xyz'
 
   data_configs = {}
   data_configs['model_dir'] = flags_obj.model_dir
   data_configs['feed_data_eles'] = flags_obj.feed_data
   data_configs['feed_data'] = feed_data
-  data_configs['xyz_eles'] = xyz_eles
 
   net_data_configs['data_configs'] = data_configs
 
@@ -332,7 +330,7 @@ def parse_flags_update_configs(flags_obj):
 
   return net_data_configs
 
-def define_model_dir(flags_obj):
+def define_model_dir(flags_obj, net_data_configs):
   def model_name():
     if flags_obj.residual == 1:
       modelname = 'R'
@@ -343,6 +341,7 @@ def define_model_dir(flags_obj):
     return modelname
 
   logname =  model_name()
+  logname += '_bc'+net_data_configs['block_configs']['block_flag']
 
   logname += '-'+flags_obj.feed_data.replace('nxnynz', 'n')
   logname += '-'+flags_obj.optimizer
@@ -375,7 +374,6 @@ def add_log_file(model_dir):
   log.addHandler(fh)
 
 
-
 def define_network_flags():
   net_run_loop.define_net_flags(
       net_flag_choices=['18', '34', '50', '101', '152', '200'])
@@ -389,16 +387,16 @@ def define_network_flags():
                           epochs_between_evals=5)
 
   flags.DEFINE_string('optimizer','adam','adam momentum')
-  flags.DEFINE_float('lr0', default=0.001, help="base lr")
+  flags.DEFINE_float('lr0', default=0.01, help="base lr")
   flags.DEFINE_float('lrd_rate', default=0.1, help="learning rate decay rate")
   flags.DEFINE_float('bnd0', default=0.8, help="base bnd")
   flags.DEFINE_float('bnd_decay', default=0.1, help="")
-  flags.DEFINE_integer('lrd_epochs', default=50, help="learning_rate decay epoches")
-  flags.DEFINE_string('feed_data','xyzs-nxnynz','xyzrsg-nxnynz-color')
+  flags.DEFINE_integer('lrd_epochs', default=30, help="learning_rate decay epoches")
+  flags.DEFINE_string('feed_data','xyz','xyzrsg-nxnynz-color')
   flags.DEFINE_bool(name='residual', short_name='rs', default=False,
       help=flags_core.help_wrap('Is use reidual architecture'))
   flags.DEFINE_string('drop_imo','000','dropout rate for input, middle and out')
-  flags.DEFINE_bool(name='pred_ply', default=True, help ="")
+  flags.DEFINE_bool(name='pred_ply', default=False, help ="")
 
   update_examples_num(True, data_dir)
   flags.DEFINE_integer('examples_per_epoch', default=_NUM_EXAMPLES['train'], help="")

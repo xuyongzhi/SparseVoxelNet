@@ -8,6 +8,7 @@ import tensorflow as tf
 from datasets.all_datasets_meta.datasets_meta import DatasetsMeta
 from models.conv_util import ResConvOps, gather_second_d, mask_reduce_mean
 
+DEBUG = True
 
 DEFAULT_DTYPE = tf.float32
 CASTABLE_TYPES = (tf.float16,)
@@ -28,6 +29,7 @@ class Model(ResConvOps):
     self.data_configs = net_data_configs['data_configs']
     self.dset_metas = net_data_configs['dset_metas']
     self.net_flag = net_data_configs['net_flag']
+    self.block_paras = BlockParas(net_data_configs['block_configs'])
     super(Model, self).__init__(net_data_configs, data_format, dtype)
 
     block_style = 'Regular'
@@ -41,7 +43,7 @@ class Model(ResConvOps):
       self.block_fn = None
     else:
       raise NotImplementedError
-    self.mesh_cnn = MeshCnn(self.blocks_layers, self.block_fn)
+    self.mesh_cnn = MeshCnn(self.blocks_layers, self.block_fn, self.block_paras)
 
   def __call__(self, features,  is_training):
     '''
@@ -56,7 +58,7 @@ class Model(ResConvOps):
     self.num_vertex0 = vertices.shape[1].value
 
     vertices_scales = []
-    for scale in range(BlockParas.scale_num):
+    for scale in range(self.block_paras.scale_num):
       with tf.variable_scope('S%d'%(scale)):
         vertices = self.mesh_cnn.update_vertex(scale, is_training, vertices,
               vidx_per_face, valid_num_face, fidx_per_vertex, fidx_pv_empty_mask)
@@ -100,10 +102,8 @@ class Model(ResConvOps):
     self.batch_size = tf.shape(vertices)[0]
     self.log_tensor_p(vertices, 'vertices', 'raw_input')
 
-    cb0 = tf.assert_equal( self.batch_size, 1)
-    import pudb; pudb.set_trace()  # XXX BREAKPOINT
-    with tf.control_dependencies([cb0]):
-      vidx_per_face = vidx_per_face[:,0:valid_num_face[0,0],:]
+    if DEBUG:
+      vidx_per_face = vidx_per_face[:,0:157589,:]
     return vertices, fidx_per_vertex, fidx_pv_empty_mask, \
           vidx_per_face, valid_num_face
 
@@ -114,10 +114,13 @@ class Model(ResConvOps):
 
 
 class MeshCnn():
-  def __init__(self, blocks_layers_fn=None, block_fn=None):
+  def __init__(self, blocks_layers_fn=None, block_fn=None, block_paras=None):
     self.block_fn = block_fn
     self.blocks_layers = blocks_layers_fn
-    self.use_face_global_scale0 = True
+    self.use_face_global_scale0 = False
+    self.e2fl_pool = ['max']
+    self.f2v_pool = ['max']
+    self.block_paras = block_paras
 
   def update_vertex(self, scale, is_training, vertices,\
                     vidx_per_face, valid_num_face, fidx_per_vertex, fidx_pv_empty_mask):
@@ -155,16 +158,18 @@ class MeshCnn():
     if not self.block_fn:
       return inputs
     assert represent in ['edge', 'centroid', 'face', 'vertex']
-    blocks_params = BlockParas.block_paras(represent)[self.scale]
+    blocks_params = self.block_paras.get_block_paras(represent, self.scale)
     outputs = self.blocks_layers(self.scale, inputs, blocks_params, self.block_fn,
                                self.is_training, '%s_s%d'%(represent, self.scale) )
     return outputs
 
   def edge_2_face(self, edges, face_centroid):
-    face_local0 = tf.reduce_max (edges, 2)
-    face_local1 = tf.reduce_mean(edges, 2)
-    #face_local = tf.concat([face_local0, face_local1], -1)
-    face_local = face_local0
+    face_local = []
+    if 'max' in self.e2fl_pool:
+      face_local.append( tf.reduce_max (edges, 2) )
+    if 'mean' in self.e2fl_pool:
+      face_local.append( tf.reduce_mean (edges, 2) )
+    face_local = tf.concat(face_local, -1)
 
     face_global = tf.squeeze(face_centroid, 2)
 
@@ -177,38 +182,30 @@ class MeshCnn():
 
   def face_2_vertex(self, faces, fidx_per_vertex, fidx_pv_empty_mask):
     vertices_flat = gather_second_d(faces, fidx_per_vertex)
-    vertices0 = tf.reduce_max(vertices_flat, 2)
-    vertices1 = mask_reduce_mean(vertices_flat, 1-fidx_pv_empty_mask, 2)
-    vertices = tf.concat([vertices0, vertices1], axis=-1) # (nv, 2cf)
+    vertices = []
+    if 'max' in self.f2v_pool:
+      vertices.append( tf.reduce_max(vertices_flat, 2) )
+    if 'mean' in self.f2v_pool:
+      vertices.append( mask_reduce_mean(vertices_flat, 1-fidx_pv_empty_mask, 2) )
+    vertices = tf.concat(vertices, axis=-1) # (nv, 2cf)
     return vertices
 
 
 import numpy as np
 
 class BlockParas():
-  scale_num = 3
-  @staticmethod
-  def block_paras(element):
-    block_sizes = {}
-    filters = {}
-
-    block_sizes['edge'] = [ [1],  [1], [1] ]
-    filters['edge']     = [ [32], [32], [64]]
-
-    block_sizes['centroid']=[ [1],  [1], [1] ]
-    filters['centroid']   = [ [32], [32], [64]]
-
-    block_sizes['face'] = [ [1, 2],  [1, 2], [1, 2] ]
-    filters['face']     = [ [64, 32], [64, 32], [128, 128]]
-
-    block_sizes['vertex']=[ [1],  [1], [1] ]
-    filters['vertex']   = [ [64], [64], [128]]
-
+  def __init__(self, block_configs):
+    block_sizes = block_configs['block_sizes']
+    filters = block_configs['filters']
+    self.scale_num = len(filters['vertex'])
 
     all_paras = {}
     for item in block_sizes:
       all_paras[item] = BlockParas.complete_scales_paras(block_sizes[item], filters[item])
-    return all_paras[element]
+    self.all_paras = all_paras
+
+  def get_block_paras(self, element, scale):
+    return self.all_paras[element][scale]
 
   @staticmethod
   def complete_scales_paras(block_size, filters):
