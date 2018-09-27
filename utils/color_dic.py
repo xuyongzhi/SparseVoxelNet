@@ -2,7 +2,8 @@
 import numpy as np
 
 color_2_rgb	= {
-  'Black' 		: (0,0,0),
+  'Red' 		  : (255,0,0),
+  'Yellow' 		: (255,255,0),
   'Maroon' 		: (128,0,0),
   'Green' 		: (0,128,0),
   'Olive' 		: (128,128,0),
@@ -11,13 +12,12 @@ color_2_rgb	= {
   'Teal' 		  : (0,128,128),
   'Silver' 		: (192,192,192),
   'Grey' 		  : (128,128,128),
-  'Red' 		  : (255,0,0),
   'Lime' 		  : (0,255,0),
-  'Yellow' 		: (255,255,0),
   'Blue' 		  : (0,0,255),
   'Fuchsia' 	: (255,0,255),
   'Aqua' 		  : (0,255,255),
   'White' 		: (255,255,255),
+  'Black' 		: (0,0,0),
 
   'NavyBlue'          : (0,0,95),
   'DarkGreen'         : (0,95,0),
@@ -48,8 +48,8 @@ color_2_rgb	= {
   'Grey78'				    : (198,198,198),
 }
 
-color_order_0 = ['Black','Green','Yellow','Blue','Red','Olive','Navy','Maroon',\
-                 'Purple','Teal','Silver','Grey','Lime','Fuchsia','Aqua','White']
+color_order_0 = ['Red','Green','Yellow','Blue','Red','Olive','Navy','Maroon',\
+                 'Purple','Teal','Silver','Grey','Lime','Fuchsia','Aqua','Black','White']
 
 color_order = color_order_0 + [c for c in color_2_rgb.keys() if c not in color_order_0]
 rgb_order = np.array([color_2_rgb[c] for c in color_order], dtype=np.uint8)

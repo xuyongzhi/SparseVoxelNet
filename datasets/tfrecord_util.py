@@ -196,7 +196,7 @@ def read_tfrecord(dataset_name, tf_path, loss_lw_gama=-1):
   datasets_meta = DatasetsMeta(dataset_name)
   num_classes = datasets_meta.num_classes
 
-  gen_ply = True
+  gen_ply = False
   ply_dir = os.path.join(tf_path, 'plys')
 
   with tf.Graph().as_default():

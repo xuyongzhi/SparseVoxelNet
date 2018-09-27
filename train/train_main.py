@@ -56,9 +56,9 @@ def get_filenames_1(is_training, data_dir):
   data_dir = os.path.join(data_dir, 'data')
   if is_training:
     #fn_glob = os.path.join(data_dir, '17DRP5sb8fy_region0_0.tfrecord')
-    fn_glob = os.path.join(data_dir, '2t7WUuJeko7_region1_0.tfrecord')
+    fn_glob = os.path.join(data_dir, '2t7WUuJeko7_region2_0.tfrecord')
   else:
-    fn_glob = os.path.join(data_dir, '2t7WUuJeko7_region1_0.tfrecord')
+    fn_glob = os.path.join(data_dir, '2t7WUuJeko7_region2_0.tfrecord')
   all_fnls = glob.glob(fn_glob)
   assert len(all_fnls) > 0, fn_glob
   print('\ngot {} training files for training={}\n'.format(len(all_fnls), is_training))
@@ -381,7 +381,7 @@ def define_network_flags():
       net_flag_choices=['18', '34', '50', '101', '152', '200'])
   flags.adopt_module_key_flags(net_run_loop)
   data_dir = os.path.join(DATA_DIR,'MATTERPORT_TF/mesh_tfrecord')
-  flags_core.set_defaults(train_epochs=150,
+  flags_core.set_defaults(train_epochs=90,
                           data_dir=data_dir,
                           model_dir=os.path.join(ROOT_DIR,'results/mesh_seg'),
                           batch_size=1,
@@ -389,11 +389,11 @@ def define_network_flags():
                           epochs_between_evals=5)
 
   flags.DEFINE_string('optimizer','adam','adam momentum')
-  flags.DEFINE_float('lr0', default=0.01, help="base lr")
+  flags.DEFINE_float('lr0', default=0.001, help="base lr")
   flags.DEFINE_float('lrd_rate', default=0.1, help="learning rate decay rate")
   flags.DEFINE_float('bnd0', default=0.8, help="base bnd")
   flags.DEFINE_float('bnd_decay', default=0.1, help="")
-  flags.DEFINE_integer('lrd_epochs', default=30, help="learning_rate decay epoches")
+  flags.DEFINE_integer('lrd_epochs', default=50, help="learning_rate decay epoches")
   flags.DEFINE_string('feed_data','xyzs-nxnynz','xyzrsg-nxnynz-color')
   flags.DEFINE_bool(name='residual', short_name='rs', default=False,
       help=flags_core.help_wrap('Is use reidual architecture'))

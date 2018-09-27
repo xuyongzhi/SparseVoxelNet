@@ -576,6 +576,7 @@ def define_net_flags(net_flag_choices=None):
 
 def gen_pred_ply(eval_results, pred_generator):
   from utils.ply_util import gen_mesh_ply
+  import numpy as np
   pred_res_dir = '/tmp/pred_res'
 
   for pred in pred_generator:
@@ -587,11 +588,23 @@ def gen_pred_ply(eval_results, pred_generator):
     valid_num_face = pred['valid_num_face']
     vidx_per_face = vidx_per_face[0:valid_num_face[0], :]
 
-    ply_fn = os.path.join(pred_res_dir, 'raw_mesh.ply')
-    import pudb; pudb.set_trace()  # XXX BREAKPOINT
+    num_vertex = xyz.shape[0]
+    true = spl_classes == spl_labels
+    spl_pos = spl_labels == 1
+    spl_neg = spl_labels == 0
+    pos_rate = 1.0 * np.sum(spl_pos) / num_vertex
+    spl_true_neg = np.logical_and(true, spl_neg).astype(np.int8)
+    spl_true_pos = np.logical_and(true, spl_pos).astype(np.int8)
+    spl_true_neg_rate = 1.0 * np.sum(spl_true_neg) / np.sum(spl_neg)
+    spl_true_pos_rate = 1.0 * np.sum(spl_true_pos) / np.sum(spl_pos)
+
+    print('\nspl pos_rate:{:.2f} true_neg_rate:{:.2f}, true_pos_rate:{:.2f}\n'.format(
+                pos_rate, spl_true_neg_rate, spl_true_pos_rate))
+
+    ply_fn = os.path.join(pred_res_dir, 'gt_simplicity.ply')
     gen_mesh_ply(ply_fn, xyz, vidx_per_face, vertex_label=spl_labels)
-    import pudb; pudb.set_trace()  # XXX BREAKPOINT
     ply_fn = os.path.join(pred_res_dir, 'simplicity_pred.ply')
+    gen_mesh_ply(ply_fn, xyz, vidx_per_face, vertex_label=spl_classes)
     import pudb; pudb.set_trace()  # XXX BREAKPOINT
     pass
 
