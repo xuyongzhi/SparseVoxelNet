@@ -516,7 +516,7 @@ def net_main(
     # eval (which is generally unimportant in those circumstances) to terminate.
     # Note that eval will run for max_train_steps each loop, regardless of the
     # global_step count.
-    only_train = False and (not flags.eval_only)
+    only_train = True and (not flags_obj.eval_only) and (not flags_obj.pred_ply)
     if not only_train:
       eval_results = classifier.evaluate(input_fn=input_fn_eval,
                                         steps=flags_obj.max_train_steps)
@@ -566,7 +566,7 @@ def define_net_flags(net_flag_choices=None):
                                 'the latest checkpoint.'))
 
   choice_kwargs = dict(
-      name='net_flag', short_name='nf', default='18',
+      name='net_flag', short_name='nf', default='3A',
       help=flags_core.help_wrap('The size of the ResNet model to use.'))
 
   if net_flag_choices is None:

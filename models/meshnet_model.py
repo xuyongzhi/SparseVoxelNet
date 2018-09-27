@@ -114,12 +114,10 @@ class Model(ResConvOps):
 
 
 class MeshCnn():
-  def __init__(self, blocks_layers_fn=None, block_fn=None, block_paras=None):
+  def __init__(self, blocks_layers_fn=None, block_fn=None, block_paras=None,
+                      ):
     self.block_fn = block_fn
     self.blocks_layers = blocks_layers_fn
-    self.use_face_global_scale0 = False
-    self.e2fl_pool = ['max']
-    self.f2v_pool = ['max']
     self.block_paras = block_paras
 
   def update_vertex(self, scale, is_training, vertices,\
@@ -165,15 +163,15 @@ class MeshCnn():
 
   def edge_2_face(self, edges, face_centroid):
     face_local = []
-    if 'max' in self.e2fl_pool:
+    if 'max' in self.block_paras.e2fl_pool:
       face_local.append( tf.reduce_max (edges, 2) )
-    if 'mean' in self.e2fl_pool:
+    if 'mean' in self.block_paras.e2fl_pool:
       face_local.append( tf.reduce_mean (edges, 2) )
     face_local = tf.concat(face_local, -1)
 
     face_global = tf.squeeze(face_centroid, 2)
 
-    use_global = self.scale>0 or self.use_face_global_scale0
+    use_global = self.scale>0 or self.block_paras.use_face_global_scale0
     if use_global:
       faces = tf.concat([face_local, face_global], -1)
     else:
@@ -183,9 +181,9 @@ class MeshCnn():
   def face_2_vertex(self, faces, fidx_per_vertex, fidx_pv_empty_mask):
     vertices_flat = gather_second_d(faces, fidx_per_vertex)
     vertices = []
-    if 'max' in self.f2v_pool:
+    if 'max' in self.block_paras.f2v_pool:
       vertices.append( tf.reduce_max(vertices_flat, 2) )
-    if 'mean' in self.f2v_pool:
+    if 'mean' in self.block_paras.f2v_pool:
       vertices.append( mask_reduce_mean(vertices_flat, 1-fidx_pv_empty_mask, 2) )
     vertices = tf.concat(vertices, axis=-1) # (nv, 2cf)
     return vertices
@@ -198,6 +196,9 @@ class BlockParas():
     block_sizes = block_configs['block_sizes']
     filters = block_configs['filters']
     self.scale_num = len(filters['vertex'])
+    self.e2fl_pool = block_configs['e2fl_pool']
+    self.f2v_pool = block_configs['f2v_pool']
+    self.use_face_global_scale0 = block_configs['use_face_global_scale0']
 
     all_paras = {}
     for item in block_sizes:

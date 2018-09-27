@@ -376,7 +376,7 @@ def add_log_file(model_dir):
 
 def define_network_flags():
   net_run_loop.define_net_flags(
-      net_flag_choices=['18', '34', '50', '101', '152', '200'])
+      net_flag_choices=['3A', '3B'])
   flags.adopt_module_key_flags(net_run_loop)
   data_dir = os.path.join(DATA_DIR,'MATTERPORT_TF/mesh_tfrecord')
   flags_core.set_defaults(train_epochs=90,
@@ -387,12 +387,12 @@ def define_network_flags():
                           epochs_between_evals=5)
 
   flags.DEFINE_string('optimizer','adam','adam momentum')
-  flags.DEFINE_float('lr0', default=0.01, help="base lr")
+  flags.DEFINE_float('lr0', default=0.001, help="base lr")
   flags.DEFINE_float('lrd_rate', default=0.1, help="learning rate decay rate")
   flags.DEFINE_float('bnd0', default=0.8, help="base bnd")
   flags.DEFINE_float('bnd_decay', default=0.1, help="")
   flags.DEFINE_integer('lrd_epochs', default=30, help="learning_rate decay epoches")
-  flags.DEFINE_string('feed_data','xyz','xyzrsg-nxnynz-color')
+  flags.DEFINE_string('feed_data','xyz-nxnynz','xyz-nxnynz-color')
   flags.DEFINE_bool(name='residual', short_name='rs', default=False,
       help=flags_core.help_wrap('Is use reidual architecture'))
   flags.DEFINE_string('drop_imo','000','dropout rate for input, middle and out')
