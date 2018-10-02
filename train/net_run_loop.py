@@ -287,6 +287,7 @@ def net_model_fn( features, labels, mode, model_class,
 
   # Calculate loss, which includes softmax cross entropy and L2 regularization.
   spl_label_w = tf.gather(net_data_configs['data_configs']['spl_label_wt'], spl_labels)
+  spl_label_w = 1.0
   spl_cross_entropy = tf.losses.sparse_softmax_cross_entropy(
       logits=spl_logits, labels=spl_labels, weights=spl_label_w)
 

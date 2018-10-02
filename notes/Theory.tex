@@ -523,7 +523,13 @@ The target:
 \subsubsection{learn higher level features on new point cloud}
 The mesh graph can be highly unbalanced. The weight for each edge may not be shared directly. 
 
-\newpage
+
+\section{Mesh CNN}
+Inspired by tangent convolution, alignment of KNN points is possible and can be quite useful to apply large kernel weights. Instead of using 1*1 conv for most graph cnns, I try to design a mesh convolution with large kernel size.
+\par
+The key aim is to align vertices. Actually, mesh already reduce 3D points to 2D dimension in manifold domain.
+
+
 \section{Triangular CNN: point, edge and face representation}
 
 \begin{tikzpicture}
@@ -541,6 +547,7 @@ The mesh graph can be highly unbalanced. The weight for each edge may not be sha
 (3,3)--(2,0) node[midway, left]{$e_1$};
 \end{tikzpicture}
 
+\newpage
 \subsection{Solution 1}
 \begin{itemize}
 	\item Only extract local feature on each layer. Try to get global feature by combining local features at last layer
