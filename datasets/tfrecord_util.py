@@ -39,6 +39,17 @@ def int64_feature(values):
   return tf.train.Feature(int64_list=tf.train.Int64List(value=values))
 
 
+def get_tensor_shape(tensor):
+  if isinstance(tensor, tf.Tensor):
+    shape = tensor.shape.as_list()
+    for i,s in enumerate(shape):
+      if s==None:
+        shape[i] = tf.shape(tensor)[i]
+    return shape
+  else:
+    return tensor.shape
+
+
 def get_shape0(t):
   if isinstance(t, tf.Tensor):
     s0 = t.shape[0].value
@@ -591,11 +602,17 @@ class MeshSampling():
     edges_per_vertex = tf.scatter_nd(vidx_fidxperv, edges_per_vertexs_flat+1,\
                                      [num_vertex0, max_nf_perv, 2])-1
 
-    edges_per_vertex = edges_per_vertex[:, 0:MeshSampling._max_nf_perv,:]
-    edges_per_vertex.set_shape([num_vertex0, MeshSampling._max_nf_perv, 2])
     edges_pv_empty_mask = tf.cast(tf.equal(edges_per_vertex, -1), tf.bool)
 
+    # sort edge vertices by path
+    edgev_per_vertex = MeshSampling.sort_edge_vertices(edges_per_vertex, edges_pv_empty_mask)
+    import pdb; pdb.set_trace()  # XXX BREAKPOINT
+
+    edges_per_vertex = edges_per_vertex[:, 0:MeshSampling._max_nf_perv,:]
+    edges_per_vertex.set_shape([num_vertex0, MeshSampling._max_nf_perv, 2])
+
     # set -1 as the first one
+    import pdb; pdb.set_trace()  # XXX BREAKPOINT
     the_first_edges_dix = tf.gather(edges_per_vertex[:,0,:], empty_indices[:,0])
     tmp = tf.scatter_nd(empty_indices, the_first_edges_dix+1, tf.shape(edges_per_vertex))
     edges_per_vertex += tmp
@@ -610,9 +627,148 @@ class MeshSampling():
     fidx_per_vertex += tf.cast(tf.expand_dims( lonely_vertex_mask, 1), tf.int32)
     edges_per_vertex += tf.cast(tf.expand_dims( lonely_vertex_mask, 1), tf.int32)
 
+    import pudb; pudb.set_trace()  # XXX BREAKPOINT
     return fidx_per_vertex, fidx_pv_empty_mask, edges_per_vertex, \
             edges_pv_empty_mask, lonely_vertex_idx
 
+
+
+  @staticmethod
+  def find_next_vertex(edgev_per_vertex, remain_edges_pv, e, round_id):
+      reshape = get_tensor_shape(remain_edges_pv)
+      vertex_num = reshape[0]
+      remain_vnum = reshape[1]
+      remain_edge_num = remain_vnum/2
+
+      last_v = edgev_per_vertex[:,-1:]
+      same_mask = tf.equal(last_v, remain_edges_pv)
+      remain_valid_mask = tf.greater_equal(remain_edges_pv, 0)
+      same_mask = tf.logical_and(same_mask, remain_valid_mask)
+
+      # There should be at most one vertex matches
+      same_nums = tf.reduce_sum(tf.cast(same_mask, tf.int32), -1)
+      max_same_num = tf.reduce_max(same_nums)
+      if round_id ==1:
+        if max_same_num.numpy()!=1:
+          not_finished_mask = tf.reduce_any(tf.greater(remain_edges_pv,-1),1)
+          not_finished_idx = tf.squeeze(tf.cast(tf.where(not_finished_mask), tf.int32),1)
+          failed_num = tf.shape(not_finished_idx)[0]
+          print('failed_num:{}'.format(failed_num))
+        #check_max_match = tf.assert_equal(max_same_num, 1, message="max_same_num:{}".format(max_same_num))
+        #with tf.control_dependencies([check_max_match]):
+        #  same_mask = tf.identity(same_mask)
+
+      # get the next vertex idx along the path
+      same_edge_idx_pv = tf.cast(tf.where(same_mask), tf.int32)
+      tmp = 1 - 2 * tf.mod(same_edge_idx_pv[:,1:2], 2)
+      tmp = tf.concat([tf.zeros(tf.shape(tmp), tf.int32), tmp], -1)
+      next_vid_in_e = same_edge_idx_pv + tmp
+
+      # open vertex: cannot find the next one
+      open_vertex_mask = tf.equal(same_nums, 0)
+      last_valid_mask = tf.squeeze(tf.greater_equal(last_v, 0), 1)
+      open_vertex_mask = tf.logical_and(open_vertex_mask, last_valid_mask)
+      open_vidx = tf.squeeze(tf.cast(tf.where(open_vertex_mask), tf.int32))
+      open_edge_num = tf.reduce_sum(tf.cast(open_vertex_mask, tf.int32))
+      #print('{} edge, {} round open_edge_num:{}'.format(e, round_id, open_edge_num))
+
+      # gen the mask to disable next edge
+      edge_idx = same_edge_idx_pv[:,1:2]/2
+      edge_idx = tf.concat([same_edge_idx_pv[:,0:1], edge_idx], 1)
+      next_edge_mask = tf.scatter_nd(edge_idx, tf.ones(tf.shape(edge_idx)[0], tf.int32), [vertex_num, remain_edge_num])
+      next_vertex_mask = tf.reshape(tf.tile(tf.expand_dims(next_edge_mask, -1), [1,1,2]), [vertex_num, -1])
+      return next_vid_in_e, open_vidx, next_vertex_mask, open_vertex_mask
+
+  @staticmethod
+  def sort_edge_vertices(edges_per_vertex, edges_pv_empty_mask):
+    eshape = get_tensor_shape(edges_per_vertex)
+    assert len(eshape) == 3
+    vertex_num = eshape[0]
+    edge_num = eshape[1]
+    edges_per_vertex = tf.reshape(edges_per_vertex, [vertex_num, -1])
+
+    def sort_one_edge(e, edgev_per_vertex, remain_edges_pv):
+      next_vid_in_e, open_vidx, next_vertex_mask, open_vertex_mask = MeshSampling.find_next_vertex(
+                            edgev_per_vertex, remain_edges_pv, e, 1)
+
+      second_round = True
+      if second_round:
+        edgev_pv_open = tf.gather(edgev_per_vertex, open_vidx)
+        #inverse edge vertice to find next vertex
+        edgev_pv_open = tf.reverse(edgev_pv_open, [1])
+        remain_edges_pv_open = tf.gather(remain_edges_pv, open_vidx)
+        next_vid_in_e_2, open_vidx_2, next_vertex_mask_2, open_vertex_mask_2 = MeshSampling.find_next_vertex(
+                              edgev_pv_open, remain_edges_pv_open, e, 2)
+        # if it is still open, should reach the end, just leave it and set -1 in
+        # next_vidx
+        tmp = tf.gather(open_vidx, next_vid_in_e_2[:,0:1])
+        next_vid_in_e_2 = tf.concat([tmp, next_vid_in_e_2[:,1:2]], 1)
+        next_vid_in_e = tf.concat([next_vid_in_e, next_vid_in_e_2], 0)
+
+      # gather the raw vertex in the scene
+      next_vertex_idx = tf.gather_nd(remain_edges_pv, next_vid_in_e)
+      next_vidx = tf.scatter_nd(next_vid_in_e[:,0:1], next_vertex_idx+1, [vertex_num])-1
+      next_vidx = tf.expand_dims(next_vidx, 1)
+
+      # update edgev_per_vertex
+      if second_round:
+        edgev_per_vertex_reversed = tf.scatter_nd(tf.expand_dims(open_vidx,-1), edgev_pv_open,
+                                                  [vertex_num, get_tensor_shape(edgev_pv_open)[1]])
+        edgev_per_vertex *= 1-tf.cast(tf.expand_dims(open_vertex_mask,1), tf.int32)
+        edgev_per_vertex += edgev_per_vertex_reversed
+      edgev_per_vertex = tf.concat([edgev_per_vertex, next_vidx], 1)
+
+      # update remain_edges_pv
+      if second_round:
+        next_vertex_mask_2 = tf.scatter_nd(tf.expand_dims(open_vidx,-1), next_vertex_mask_2, tf.shape(next_vertex_mask))
+        next_vertex_mask += next_vertex_mask_2
+      remain_edges_pv = (remain_edges_pv+2) * tf.cast(1-next_vertex_mask, tf.int32) - 2
+
+      e += 1
+      return e, edgev_per_vertex, remain_edges_pv
+
+
+    e = tf.constant(0)
+    edgev_per_vertex = edges_per_vertex[:,0:2]
+    remain_edges_pv = edges_per_vertex[:,2:]
+    cond = lambda e, edgev_per_vertex, remain_edges_pv: tf.less(e, edge_num)
+    e, edgev_per_vertex, remain_edges_pv = tf.while_loop(cond, sort_one_edge, [e, edgev_per_vertex, remain_edges_pv])
+
+    return edgev_per_vertex
+
+  @staticmethod
+  def sort_by_spectral(edges):
+    import pudb; pudb.set_trace()  # XXX BREAKPOINT
+    pass
+
+  @staticmethod
+  def US_sort_edge_vertices(edges_per_vertex, edges_pv_empty_mask):
+    eshape = get_tensor_shape(edges_per_vertex)
+    assert len(eshape) == 3
+    vertex_num = eshape[0]
+    ev_pv_num = eshape[1] / 2 + 3
+
+    def sort_one_vertex(v, new_edgev_per_vertex):
+      edges = edges_per_vertex[v]
+      v += 1
+      new_edgev = edges[0]
+      e = tf.constant(1)
+      cond_v = lambda e, new_edgev: tf.logical_or(tf.less(e, eshape[1]), tf.less(edges[e,0], 0))
+      def sort_basic(e, new_edgev):
+        # find the edge index with same vertex of new_edgev[-1], from the
+        # remaining
+        mask0 = tf.equal(new_edgev[-1], edges)
+        mask1 = tf.logical_and(mask0, )
+      new_edgev_per_vertex = tf.concat(new_edgev_per_vertex, new_edgev)
+      return v, new_edgev_per_vertex
+
+
+    v = tf.constant(0)
+    new_edgev_per_vertex = tf.zeros([0, ev_pv_num])
+    cond = lambda v, new_edgev_per_vertex: tf.less(v, vertex_num)
+    v, new_edgev_per_vertex = tf.while_loop(cond, sort_one_vertex, [v, new_edgev_per_vertex])
+    import pudb; pudb.set_trace()  # XXX BREAKPOINT
+    pass
 
   @staticmethod
   def get_simplicity_label( fidx_per_vertex, fidx_pv_empty_mask,
