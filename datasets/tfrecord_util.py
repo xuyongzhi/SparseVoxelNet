@@ -191,6 +191,7 @@ def get_ele(datas, ele, dset_shape_idx):
       return ele_data
   raise ValueError, ele+' not found'
 
+
 def read_tfrecord(dataset_name, tf_path, loss_lw_gama=-1):
   dset_shape_idx = get_dset_shape_idxs(tf_path)
   dataset_summary = read_dataset_summary(tf_path)
@@ -368,22 +369,29 @@ class MeshSampling():
           splited_sampled_datas[bi][item] = splited_sampled_datas[bi][item].numpy()
     return splited_sampled_datas, raw_vertex_nums
 
+
   @staticmethod
   def main_split_sampling_rawmesh(raw_datas, _num_vertex_sp, splited_vidx,
                                   dset_metas, ply_dir=None):
-    num_vertex0 = get_shape0(raw_datas['xyz'])
 
     is_show_shapes = False
     IsGenply_Raw = False
-    IsGenply_SameMask = False
     IsGenply_Cleaned = False
+    IsGenply_SameMask = False
     IsGenply_Splited = False
     IsGenply_SplitedSampled = False
 
     if IsGenply_Raw:
       MeshSampling.gen_mesh_ply_basic(raw_datas, 'Raw', 'raw', ply_dir)
     #***************************************************************************
+    # rm some labels
+    with tf.variable_scope('rm_some_labels0'):
+      raw_datas, splited_vidx = MeshSampling.rm_some_labels0(raw_datas, dset_metas, splited_vidx)
+    if IsGenply_Cleaned:
+      MeshSampling.gen_mesh_ply_basic(raw_datas, 'Cleaned', 'Cleaned', ply_dir)
+    #***************************************************************************
     #face idx per vetex, edges per vertyex
+    num_vertex0 = get_shape0(raw_datas['xyz'])
     fidx_per_vertex, fidx_pv_empty_mask, edgev_per_vertex, valid_ev_num_pv, \
      edges_per_vertex, edges_pv_empty_mask, lonely_vertex_idx = \
                     MeshSampling.get_fidx_nbrv_per_vertex(
@@ -414,12 +422,6 @@ class MeshSampling():
     if IsGenply_SameMask:
       MeshSampling.gen_ply_raw(raw_datas, same_normal_mask,
                                  same_category_mask, same_norm_cat_mask, ply_dir)
-    #***************************************************************************
-    # rm some labels
-    with tf.variable_scope('rm_some_labels'):
-      raw_datas, splited_vidx = MeshSampling.rm_some_labels(raw_datas, lonely_vertex_idx, dset_metas, splited_vidx)
-    if IsGenply_Cleaned:
-      MeshSampling.gen_mesh_ply_basic(raw_datas, 'Cleaned', 'Cleaned', ply_dir)
 
     #***************************************************************************
     # split mesh
@@ -450,6 +452,7 @@ class MeshSampling():
       MeshSampling.show_datas_shape(splited_sampled_datas, 'sampled datas')
 
     return splited_sampled_datas
+
 
   @staticmethod
   def split_vertex(raw_datas, splited_vidx):
@@ -565,9 +568,10 @@ class MeshSampling():
                                      "\nave_num_face_perv: ")
 
     fidx_per_vertex = fidx_per_vertex[:, 0:MeshSampling._max_nf_perv]
-    fidx_per_vertex.set_shape([num_vertex0, MeshSampling._max_nf_perv])
+    nv0 = num_vertex0 if not isinstance(num_vertex0, tf.Tensor) else None
+    fidx_per_vertex.set_shape([nv0, MeshSampling._max_nf_perv])
     fidx_pv_empty_mask = fidx_pv_empty_mask[:, 0:MeshSampling._max_nf_perv]
-    fidx_pv_empty_mask.set_shape([num_vertex0, MeshSampling._max_nf_perv])
+    fidx_pv_empty_mask.set_shape([nv0, MeshSampling._max_nf_perv])
 
     #***************************************************************************
     # check is there any vertex belong to no faces
@@ -621,7 +625,8 @@ class MeshSampling():
     #***************************************************************************
     # fixed shape of unsorted edges_per_vertex
     edges_per_vertex = edges_per_vertex[:, 0:MeshSampling._max_nf_perv,:]
-    edges_per_vertex.set_shape([num_vertex0, MeshSampling._max_nf_perv, 2])
+    nv0 = num_vertex0 if not isinstance(num_vertex0, tf.Tensor) else None
+    edges_per_vertex.set_shape([nv0, MeshSampling._max_nf_perv, 2])
     edges_pv_empty_mask = tf.cast(tf.equal(edges_per_vertex, -1), tf.bool)
 
     # set -1 as the first one
@@ -659,14 +664,13 @@ class MeshSampling():
       same_nums = tf.reduce_sum(tf.cast(same_mask, tf.int32), -1)
       max_same_num = tf.reduce_max(same_nums)
       if round_id ==1:
-        if max_same_num.numpy()!=1:
-          not_finished_mask = tf.reduce_any(tf.greater(remain_edges_pv,-1),1)
-          not_finished_idx = tf.squeeze(tf.cast(tf.where(not_finished_mask), tf.int32),1)
-          failed_num = tf.shape(not_finished_idx)[0]
-          same_mask = tf.Print(same_mask, [failed_num], message="failed_num")
-        #check_max_match = tf.assert_equal(max_same_num, 1, message="max_same_num:{}".format(max_same_num))
-        #with tf.control_dependencies([check_max_match]):
-        #  same_mask = tf.identity(same_mask)
+        not_finished_mask = tf.reduce_any(tf.greater(remain_edges_pv,-1),1)
+        not_finished_idx = tf.squeeze(tf.cast(tf.where(not_finished_mask), tf.int32),1)
+        failed_num = tf.shape(not_finished_idx)[0]
+        check_failed = tf.assert_less(failed_num, 5)
+        with tf.control_dependencies([failed_num]):
+          same_mask = tf.identity(same_mask)
+        same_mask = tf.Print(same_mask, [failed_num], message="failed_num")
 
       # get the next vertex idx along the path
       same_edge_idx_pv = tf.cast(tf.where(same_mask), tf.int32)
@@ -678,7 +682,7 @@ class MeshSampling():
       open_vertex_mask = tf.equal(same_nums, 0)
       last_valid_mask = tf.equal(e+1, valid_ev_num_pv)
       open_vertex_mask = tf.logical_and(open_vertex_mask, last_valid_mask)
-      open_vidx = tf.squeeze(tf.cast(tf.where(open_vertex_mask), tf.int32))
+      open_vidx = tf.squeeze(tf.cast(tf.where(open_vertex_mask), tf.int32),1)
       open_edge_num = tf.reduce_sum(tf.cast(open_vertex_mask, tf.int32))
       #print('{} edge, {} round open_edge_num:{}'.format(e, round_id, open_edge_num))
 
@@ -745,12 +749,12 @@ class MeshSampling():
       # if it reaches the end, loop the cycle
       is_loop_invalid = True
       if is_loop_invalid:
-        need_loop_vidx = tf.cast(tf.where(tf.less(valid_ev_num_pv, e+2)), tf.int32)
+        need_loop_vidx = tf.where(tf.less(valid_ev_num_pv, e+2))
         next_vid_in_e_loop = tf.gather(loop_vid_in_e_start, need_loop_vidx[:,0])
-        tmp = tf.SparseTensor(need_loop_vidx, tf.ones(tf.shape(need_loop_vidx)[0:1], tf.int32), tf.shape(loop_vid_in_e_start))
+        tmp = tf.SparseTensor(need_loop_vidx, tf.ones(tf.shape(need_loop_vidx)[0:1], tf.int32), tf.cast(tf.shape(loop_vid_in_e_start),tf.int64))
         loop_vid_in_e_start = tf.sparse_add(loop_vid_in_e_start, tmp)
         next_vid_in_e_loop = tf.expand_dims(next_vid_in_e_loop, 1)
-        next_vid_in_e_loop = tf.concat([need_loop_vidx, next_vid_in_e_loop], 1)
+        next_vid_in_e_loop = tf.concat([tf.cast(need_loop_vidx,tf.int32), next_vid_in_e_loop], 1)
         next_vertex_idx_loop = tf.gather_nd(edgev_per_vertex, next_vid_in_e_loop)
         next_vidx_loop = tf.scatter_nd(next_vid_in_e_loop[:,0:1], next_vertex_idx_loop+1, [vertex_num])
         next_vidx += tf.expand_dims(next_vidx_loop,1)
@@ -862,28 +866,23 @@ class MeshSampling():
     face_same_mask = tf.reduce_max(same_mask, 1)
     return face_same_mask
 
+
   @staticmethod
-  def rm_some_labels(raw_datas, lonely_vertex_idx, dset_metas, splited_vidx):
+  def rm_some_labels0(raw_datas, dset_metas, splited_vidx):
     unwanted_classes = ['void']
     unwanted_labels = tf.constant([[dset_metas.class2label[c] for c in unwanted_classes]], tf.int32)
 
     label_category = raw_datas['label_category']
     keep_face_mask = tf.not_equal(label_category, unwanted_labels)
     keep_face_mask = tf.reduce_all(keep_face_mask, 1)
-    #keep_face_idx = tf.cast(tf.where(keep_face_mask), tf.int32)
-    #keep_face_idx = tf.squeeze(keep_face_idx, 1)
+    keep_face_idx = tf.squeeze(tf.cast(tf.where(keep_face_mask), tf.int32),1)
 
-    fidx_per_vertex = raw_datas['fidx_per_vertex']
-    keep_vertex_mask = tf.gather(keep_face_mask, fidx_per_vertex)
-    keep_vertex_mask = tf.reduce_any(keep_vertex_mask, 1)
-    keep_vertex_idx = tf.cast(tf.where(keep_vertex_mask), tf.int32)
-    keep_vertex_idx = tf.squeeze(keep_vertex_idx, 1)
-
-    rm_face_num = tf.reduce_sum(tf.cast(keep_face_mask, tf.int32))
-    rm_vertex_num = tf.reduce_sum(tf.cast(keep_vertex_mask, tf.int32))
+    vidx_per_face = raw_datas['vidx_per_face']
+    keep_vidx = tf.gather(vidx_per_face, keep_face_idx)
+    keep_vidx = tf.reshape(keep_vidx, [-1])
+    keep_vertex_idx ,_ = tf.unique(keep_vidx)
 
     num_vertex0 = get_shape0(raw_datas['xyz'])
-
     keep_face_idx, vidx_per_face_new = MeshSampling.down_sampling_face(
                                 keep_vertex_idx,
                                 num_vertex0, raw_datas['vidx_per_face'])
@@ -899,6 +898,7 @@ class MeshSampling():
         keep_idx_i = tf.cast(tf.where(tf.greater(new_vidx_i, -1)), tf.int32)
         splited_vidx[i] = tf.squeeze(tf.gather(new_vidx_i, keep_idx_i),1)
     return raw_datas, splited_vidx
+
 
   @staticmethod
   def sampling_mesh( _num_vertex_sp, raw_datas):
@@ -1093,7 +1093,7 @@ class MeshSampling():
       if isinstance(datas[item], tf.Tensor):
         datas[item] = datas[item].numpy()
     ply_util.gen_mesh_ply(ply_fn, datas['xyz'], datas['vidx_per_face'],
-                          datas['label_category'])
+                          face_label=datas['label_category'])
 
   @staticmethod
   def gen_ply_raw(raw_datas, same_normal_mask, same_category_mask, same_norm_cat_mask, ply_dir):

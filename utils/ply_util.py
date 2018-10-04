@@ -316,7 +316,7 @@ def gen_mesh_ply(ply_fn, vertices0, vidx_per_face, face_label=None,
     # define the order of the 8 vertexs for a box
     num_face = vidx_per_face.shape[0]
     if is_face_color:
-      if face_label!=None:
+      if face_label is not None:
         if extra=='label_color_default':
           face_color = np.take(color_dic.rgb_order, face_label, 0)
       else:
@@ -331,7 +331,7 @@ def gen_mesh_ply(ply_fn, vertices0, vidx_per_face, face_label=None,
 
     for i in range(num_face):
       if is_face_color:
-        face[i] = ( vidx_per_face[i], color[i,0], color[i,1], color[i,2] )
+        face[i] = ( vidx_per_face[i], face_color[i,0], face_color[i,1], face_color[i,2] )
       else:
         face[i] = ( vidx_per_face[i], )
     el_face = PlyElement.describe(face,'face')
