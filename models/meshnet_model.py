@@ -6,9 +6,10 @@ from __future__ import print_function
 
 import tensorflow as tf
 from datasets.all_datasets_meta.datasets_meta import DatasetsMeta
-from models.conv_util import ResConvOps, gather_second_d, mask_reduce_mean
+from models.conv_util import ResConvOps, gather_second_d, mask_reduce_mean, \
+                get_tensor_shape
 
-DEBUG = True
+DEBUG = False
 
 DEFAULT_DTYPE = tf.float32
 CASTABLE_TYPES = (tf.float16,)
@@ -24,6 +25,7 @@ def ele_in_feature(features, ele, dset_shape_idx):
   raise ValueError, ele+' not found'
 
 class Model(ResConvOps):
+  CNN = 'FAN'
   def __init__(self, net_data_configs, data_format, dtype):
     self.dset_shape_idx = net_data_configs['dset_shape_idx']
     self.data_configs = net_data_configs['data_configs']
@@ -43,19 +45,41 @@ class Model(ResConvOps):
       self.block_fn = None
     else:
       raise NotImplementedError
-    self.mesh_cnn = MeshCnn(self.blocks_layers, self.block_fn, self.block_paras)
+    if self.CNN == 'TRIANGLE':
+      cnn_class = TriangleCnn
+    elif self.CNN == 'FAN':
+      cnn_class = FanCnn
+    self.mesh_cnn = cnn_class(self.blocks_layers, self.block_fn, self.block_paras)
 
   def __call__(self, features,  is_training):
     '''
     vertices: [B,N,C]
     edges_per_vertex: [B,N,10*2]
     '''
-    self.is_training = is_training
-    vertices, fidx_per_vertex, fidx_pv_empty_mask, vidx_per_face, valid_num_face\
-                              = self.parse_inputs(features)
+    if self.CNN == 'TRIANGLE':
+      self.main_triangle_cnn(features, is_training)
+    elif self.CNN == 'FAN':
+      self.main_fan_cnn(features, is_training)
 
-    #
-    self.num_vertex0 = vertices.shape[1].value
+  def main_fan_cnn(self, features, is_training):
+    self.is_training = is_training
+    inputs = self.parse_inputs(features)
+    vertices = inputs['vertices']
+    edgev_per_vertex = inputs['edgev_per_vertex']
+    valid_ev_num_pv = inputs['valid_ev_num_pv']
+
+    import pdb; pdb.set_trace()  # XXX BREAKPOINT
+    pass
+
+  def main_triangle_cnn(self, features, is_training):
+    self.is_training = is_training
+    inputs = self.parse_inputs(features)
+    vertices = inputs['vertices']
+    fidx_per_vertex = inputs['fidx_per_vertex']
+    fidx_pv_empty_mask = inputs['fidx_pv_empty_mask']
+    vidx_per_face = inputs['vidx_per_face']
+    valid_num_face = inputs['valid_num_face']
+
 
     vertices_scales = []
     for scale in range(self.block_paras.scale_num):
@@ -89,23 +113,26 @@ class Model(ResConvOps):
     return ele_in_feature(features, ele, self.dset_shape_idx)
 
   def parse_inputs(self, features):
-
+    inputs = {}
     vertices = [self.get_ele(features,e) for e in self.data_configs['feed_data']]
-    vertices = tf.concat(vertices, -1)
-
-    fidx_per_vertex = self.get_ele(features, 'fidx_per_vertex')
-    fidx_pv_empty_mask = self.get_ele(features, 'fidx_pv_empty_mask')
-
-    vidx_per_face = self.get_ele(features, 'vidx_per_face')
-    valid_num_face = features['valid_num_face']
-
-    self.batch_size = tf.shape(vertices)[0]
+    inputs['vertices'] = vertices = tf.concat(vertices, -1)
+    vshape = get_tensor_shape(vertices)
+    self.batch_size = vshape[0]
+    self.num_vertex0 = vshape[1]
     self.log_tensor_p(vertices, 'vertices', 'raw_input')
 
-    if DEBUG:
-      vidx_per_face = vidx_per_face[:,0:157589,:]
-    return vertices, fidx_per_vertex, fidx_pv_empty_mask, \
-          vidx_per_face, valid_num_face
+    if self.CNN == 'TRIANGLE':
+      inputs['fidx_per_vertex'] = self.get_ele(features, 'fidx_per_vertex')
+      inputs['fidx_pv_empty_mask'] = self.get_ele(features, 'fidx_pv_empty_mask')
+
+      inputs['vidx_per_face'] = self.get_ele(features, 'vidx_per_face')
+      inputs['valid_num_face'] = features['valid_num_face']
+
+    elif self.CNN == 'FAN':
+      inputs['edgev_per_vertex'] = self.get_ele(features, 'edgev_per_vertex')
+      inputs['valid_ev_num_pv'] = self.get_ele(features, 'valid_ev_num_pv')
+
+    return inputs
 
   def simplicity_classifier(self, vertices):
     dense_filters = [32, 16, 2]
@@ -113,7 +140,14 @@ class Model(ResConvOps):
     return simplicity_logits
 
 
-class MeshCnn():
+class FanCnn():
+  def __init__(self, blocks_layers_fn=None, block_fn=None, block_paras=None,
+                      ):
+    self.block_fn = block_fn
+    self.blocks_layers = blocks_layers_fn
+    self.block_paras = block_paras
+
+class TriangleCnn():
   def __init__(self, blocks_layers_fn=None, block_fn=None, block_paras=None,
                       ):
     self.block_fn = block_fn

@@ -208,7 +208,7 @@ def read_tfrecord(dataset_name, tf_path, loss_lw_gama=-1):
   datasets_meta = DatasetsMeta(dataset_name)
   num_classes = datasets_meta.num_classes
 
-  gen_ply = False
+  gen_ply = True
   ply_dir = os.path.join(tf_path, 'plys')
 
   with tf.Graph().as_default():
@@ -252,21 +252,27 @@ def read_tfrecord(dataset_name, tf_path, loss_lw_gama=-1):
           print('Total: %d  %d'%(batch_num, point_num))
 
           if gen_ply:
+            dset_idx = dset_shape_idx['indices']
             xyz = get_ele(features, 'xyz', dset_shape_idx)
             color = get_ele(features, 'color', dset_shape_idx)
-            same_category_mask = get_ele(features, 'same_category_mask', dset_shape_idx)
-            same_category_mask = same_category_mask > 2
-            same_normal_mask = get_ele(features, 'same_normal_mask', dset_shape_idx)
-            same_normal_mask = same_normal_mask > 2
-            vertex_simplicity = np.logical_and(same_normal_mask, same_category_mask).astype(np.int8)
             valid_num_face = features['valid_num_face']
             vidx_per_face = get_ele(features, 'vidx_per_face', dset_shape_idx)
             for bi in range(batch_size):
               ply_fn = os.path.join(ply_dir, 'batch_%d/b%d_raw_color.ply'%(batch_num, bi))
               ply_util.gen_mesh_ply(ply_fn, xyz[bi], vidx_per_face[bi,0:valid_num_face[bi,0],:], vertex_color=color[bi])
 
-              ply_fn = os.path.join(ply_dir, 'batch_%d/b%d_simplicity.ply'%(batch_num, bi))
-              ply_util.gen_mesh_ply(ply_fn, xyz[bi], vidx_per_face[bi,0:valid_num_face[bi,0],:], vertex_label=vertex_simplicity[bi])
+            if 'edgev_per_vertex' in dset_idx['vertex_i']:
+              edgev_per_vertex = get_ele(features, 'edgev_per_vertex', dset_shape_idx)
+
+            if 'same_category_mask' in dset_idx['vertex_i']:
+              same_category_mask = get_ele(features, 'same_category_mask', dset_shape_idx)
+              same_category_mask = same_category_mask > 2
+              same_normal_mask = get_ele(features, 'same_normal_mask', dset_shape_idx)
+              same_normal_mask = same_normal_mask > 2
+              vertex_simplicity = np.logical_and(same_normal_mask, same_category_mask).astype(np.int8)
+              for bi in range(batch_size):
+                ply_fn = os.path.join(ply_dir, 'batch_%d/b%d_simplicity.ply'%(batch_num, bi))
+                ply_util.gen_mesh_ply(ply_fn, xyz[bi], vidx_per_face[bi,0:valid_num_face[bi,0],:], vertex_label=vertex_simplicity[bi])
 
       #except:
       #  print(label_hist)
@@ -727,6 +733,7 @@ class MeshSampling():
         open_vidx_2 = tf.expand_dims(tf.gather(open_vidx, open_vidx_2),1)
         new_close_flag = tf.scatter_nd(open_vidx_2, is_close, [vertex_num])
         close_flag += new_close_flag
+        loop_vid_in_e_start += tf.maximum(new_close_flag,0)
 
         # if it is still open, should reach the end, just leave it and set -1 in
         # next_vidx
@@ -779,7 +786,7 @@ class MeshSampling():
     e = tf.constant(1)
     edgev_per_vertex = edges_per_vertex[:,0:2]
     remain_edges_pv = edges_per_vertex[:,2:]
-    loop_vid_in_e_start = tf.ones([vertex_num], tf.int32)*1 # assume the path close, so loop start from the second one
+    loop_vid_in_e_start = tf.ones([vertex_num], tf.int32)*0 # assume the path close, so loop start from the second one
     valid_ev_num_pv = tf.ones([vertex_num], tf.int32)*2
     close_flag = tf.zeros([vertex_num], tf.int32)
     cond = lambda e, edgev_per_vertex, remain_edges_pv, loop_vid_in_e_start, valid_ev_num_pv, close_flag: tf.less(e, edge_num)

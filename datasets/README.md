@@ -1,3 +1,4 @@
 
 **IMPORTANT**
-- [ ] reduce duplication in edges_per_vertex
+- [ ] consistent the direction of mesh norm
+- [ ] consistent the start vertex of path
