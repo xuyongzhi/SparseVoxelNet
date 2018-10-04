@@ -664,13 +664,18 @@ class MeshSampling():
       same_nums = tf.reduce_sum(tf.cast(same_mask, tf.int32), -1)
       max_same_num = tf.reduce_max(same_nums)
       if round_id ==1:
-        not_finished_mask = tf.reduce_any(tf.greater(remain_edges_pv,-1),1)
-        not_finished_idx = tf.squeeze(tf.cast(tf.where(not_finished_mask), tf.int32),1)
-        failed_num = tf.shape(not_finished_idx)[0]
-        check_failed = tf.assert_less(failed_num, 5)
-        with tf.control_dependencies([failed_num]):
-          same_mask = tf.identity(same_mask)
-        same_mask = tf.Print(same_mask, [failed_num], message="failed_num")
+        def check_one_component():
+          # some vertex are lost: more than one component
+          not_finished_mask = tf.reduce_any(tf.greater(remain_edges_pv,-1),1)
+          not_finished_idx = tf.squeeze(tf.cast(tf.where(not_finished_mask), tf.int32),1)
+          more_component = tf.shape(not_finished_idx)[0]
+          check_failed = tf.assert_less(more_component, 5)
+          #with tf.control_dependencies([check_failed]):
+          #  same_mask = tf.identity(same_mask)
+          #same_mask = tf.Print(same_mask, [more_component], message="more than one_component")
+          return more_component
+
+        tf.cond(tf.not_equal(max_same_num,1), check_one_component, lambda : 0)
 
       # get the next vertex idx along the path
       same_edge_idx_pv = tf.cast(tf.where(same_mask), tf.int32)
@@ -915,7 +920,7 @@ class MeshSampling():
 
   @staticmethod
   def up_sampling_mesh( _num_vertex_sp, raw_datas):
-    MeshSampling.show_datas_shape(raw_datas)
+    #MeshSampling.show_datas_shape(raw_datas)
     num_vertex0 = get_shape0(raw_datas['xyz'])
     duplicate_num = _num_vertex_sp - num_vertex0
     with tf.control_dependencies([tf.assert_greater(duplicate_num, 0, message="duplicate_num")]):

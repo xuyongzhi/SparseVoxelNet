@@ -247,8 +247,8 @@ class Raw_To_Tfrecord():
     num_points_splited = [e.shape[0] if type(e)!=type(None) else raw_datas['xyz'].shape[0]\
                           for e in splited_vidx]
 
-    #main_split_sampling_rawmesh = MeshSampling.eager_split_sampling_rawmesh
-    main_split_sampling_rawmesh = MeshSampling.sess_split_sampling_rawmesh
+    main_split_sampling_rawmesh = MeshSampling.eager_split_sampling_rawmesh
+    #main_split_sampling_rawmesh = MeshSampling.sess_split_sampling_rawmesh
     splited_sampled_datas, raw_vertex_nums = main_split_sampling_rawmesh(
         raw_datas, self.num_point, splited_vidx, self.dataset_meta, self.ply_dir)
 
@@ -489,7 +489,7 @@ def main_matterport():
 
   scene_name = '17DRP5sb8fy'
   #scene_name = '2t7WUuJeko7'
-  region_name = 'region0'
+  region_name = 'region*'
   raw_glob = os.path.join(dset_path, '{}/*/region_segmentations/{}.ply'.format(
                                 scene_name, region_name))
   tfrecord_path = '/DS/Matterport3D/MATTERPORT_TF/mesh_tfrecord'
