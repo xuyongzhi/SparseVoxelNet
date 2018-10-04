@@ -1,4 +1,4 @@
-import h5py, os, glob,sys
+import os, glob,sys
 import numpy as np
 import tensorflow as tf
 #from datasets.block_data_prep_util import Raw_H5f

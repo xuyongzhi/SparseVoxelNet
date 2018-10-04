@@ -296,9 +296,11 @@ class MeshSampling():
   _max_norm_dif_angle = 15.0
   _check_optial = True
 
+  _edgev_num = 12
+
   _max_nf_perv = 9
 
-  _vertex_eles = ['color', 'xyz', 'nxnynz', 'fidx_per_vertex', \
+  _vertex_eles = ['color', 'xyz', 'nxnynz', 'fidx_per_vertex', 'edgev_per_vertex', 'valid_ev_num_pv',\
                   'edges_per_vertex', 'edges_pv_empty_mask', 'fidx_pv_empty_mask',\
                   'same_normal_mask', 'same_category_mask']
   _face_eles = ['label_raw_category', 'label_instance', 'label_material', \
@@ -382,12 +384,14 @@ class MeshSampling():
       MeshSampling.gen_mesh_ply_basic(raw_datas, 'Raw', 'raw', ply_dir)
     #***************************************************************************
     #face idx per vetex, edges per vertyex
-    fidx_per_vertex, fidx_pv_empty_mask, edges_per_vertex, \
-      edges_pv_empty_mask, lonely_vertex_idx = \
+    fidx_per_vertex, fidx_pv_empty_mask, edgev_per_vertex, valid_ev_num_pv, \
+     edges_per_vertex, edges_pv_empty_mask, lonely_vertex_idx = \
                     MeshSampling.get_fidx_nbrv_per_vertex(
                                   raw_datas['vidx_per_face'], num_vertex0)
     raw_datas['fidx_per_vertex'] = fidx_per_vertex
     raw_datas['fidx_pv_empty_mask'] = fidx_pv_empty_mask
+    raw_datas['edgev_per_vertex'] = edgev_per_vertex
+    raw_datas['valid_ev_num_pv'] = valid_ev_num_pv
     raw_datas['edges_per_vertex'] = edges_per_vertex
     raw_datas['edges_pv_empty_mask'] = edges_pv_empty_mask
 
@@ -602,17 +606,25 @@ class MeshSampling():
     edges_per_vertex = tf.scatter_nd(vidx_fidxperv, edges_per_vertexs_flat+1,\
                                      [num_vertex0, max_nf_perv, 2])-1
 
-    edges_pv_empty_mask = tf.cast(tf.equal(edges_per_vertex, -1), tf.bool)
 
+    #***************************************************************************
     # sort edge vertices by path
-    edgev_per_vertex = MeshSampling.sort_edge_vertices(edges_per_vertex, edges_pv_empty_mask)
-    import pdb; pdb.set_trace()  # XXX BREAKPOINT
+    edgev_per_vertex, valid_ev_num_pv, close_flag = MeshSampling.sort_edge_vertices(edges_per_vertex)
+    valid_ev_num_ave = tf.reduce_mean(valid_ev_num_pv)
+    valid_ev_num_max = tf.reduce_max(valid_ev_num_pv)
+    close_num = tf.reduce_sum(tf.cast(tf.equal(close_flag, 1), tf.int32))
+    edgev_per_vertex = tf.Print(edgev_per_vertex, [valid_ev_num_ave, valid_ev_num_max], message="ave max valid_ev_num")
 
+    # randomly select a start vertex, then fix the shape
+    edgev_per_vertex = edgev_per_vertex[:, 0:MeshSampling._edgev_num]
+
+    #***************************************************************************
+    # fixed shape of unsorted edges_per_vertex
     edges_per_vertex = edges_per_vertex[:, 0:MeshSampling._max_nf_perv,:]
     edges_per_vertex.set_shape([num_vertex0, MeshSampling._max_nf_perv, 2])
+    edges_pv_empty_mask = tf.cast(tf.equal(edges_per_vertex, -1), tf.bool)
 
     # set -1 as the first one
-    import pdb; pdb.set_trace()  # XXX BREAKPOINT
     the_first_edges_dix = tf.gather(edges_per_vertex[:,0,:], empty_indices[:,0])
     tmp = tf.scatter_nd(empty_indices, the_first_edges_dix+1, tf.shape(edges_per_vertex))
     edges_per_vertex += tmp
@@ -627,10 +639,8 @@ class MeshSampling():
     fidx_per_vertex += tf.cast(tf.expand_dims( lonely_vertex_mask, 1), tf.int32)
     edges_per_vertex += tf.cast(tf.expand_dims( lonely_vertex_mask, 1), tf.int32)
 
-    import pudb; pudb.set_trace()  # XXX BREAKPOINT
-    return fidx_per_vertex, fidx_pv_empty_mask, edges_per_vertex, \
-            edges_pv_empty_mask, lonely_vertex_idx
-
+    return fidx_per_vertex, fidx_pv_empty_mask, edgev_per_vertex, valid_ev_num_pv,\
+             edges_per_vertex, edges_pv_empty_mask, lonely_vertex_idx
 
 
   @staticmethod
@@ -680,14 +690,14 @@ class MeshSampling():
       return next_vid_in_e, open_vidx, next_vertex_mask, open_vertex_mask
 
   @staticmethod
-  def sort_edge_vertices(edges_per_vertex, edges_pv_empty_mask):
+  def sort_edge_vertices(edges_per_vertex):
     eshape = get_tensor_shape(edges_per_vertex)
     assert len(eshape) == 3
     vertex_num = eshape[0]
     edge_num = eshape[1]
     edges_per_vertex = tf.reshape(edges_per_vertex, [vertex_num, -1])
 
-    def sort_one_edge(e, edgev_per_vertex, remain_edges_pv, loop_vid_in_e_start, valid_ev_num_pv):
+    def sort_one_edge(e, edgev_per_vertex, remain_edges_pv, loop_vid_in_e_start, valid_ev_num_pv, close_flag):
       next_vid_in_e, open_vidx, next_vertex_mask, open_vertex_mask = MeshSampling.find_next_vertex(
                       edgev_per_vertex, remain_edges_pv, valid_ev_num_pv, e, 1)
 
@@ -700,7 +710,15 @@ class MeshSampling():
         valid_ev_num_pv_open = tf.gather(valid_ev_num_pv, open_vidx)
         next_vid_in_e_2, open_vidx_2, next_vertex_mask_2, open_vertex_mask_2 = MeshSampling.find_next_vertex(
                       edgev_pv_open, remain_edges_pv_open, valid_ev_num_pv_open, e, 2)
-        open_vidx_2 = tf.gather(open_vidx, open_vidx_2)
+
+        # update close flag for second round open vertex
+        open_v_2 = tf.gather(edgev_pv_open, open_vidx_2)
+        is_close = tf.cast(tf.equal(open_v_2[:,0], open_v_2[:,-1]), tf.int32)
+        is_close = is_close * 2 -1
+        open_vidx_2 = tf.expand_dims(tf.gather(open_vidx, open_vidx_2),1)
+        new_close_flag = tf.scatter_nd(open_vidx_2, is_close, [vertex_num])
+        close_flag += new_close_flag
+
         # if it is still open, should reach the end, just leave it and set -1 in
         # next_vidx
         tmp = tf.gather(open_vidx, next_vid_in_e_2[:,0:1])
@@ -746,7 +764,7 @@ class MeshSampling():
       remain_edges_pv = (remain_edges_pv+2) * tf.cast(1-next_vertex_mask, tf.int32) - 2
 
       e += 1
-      return e, edgev_per_vertex, remain_edges_pv, loop_vid_in_e_start, valid_ev_num_pv
+      return e, edgev_per_vertex, remain_edges_pv, loop_vid_in_e_start, valid_ev_num_pv, close_flag
 
 
     e = tf.constant(1)
@@ -754,12 +772,14 @@ class MeshSampling():
     remain_edges_pv = edges_per_vertex[:,2:]
     loop_vid_in_e_start = tf.ones([vertex_num], tf.int32)*1 # assume the path close, so loop start from the second one
     valid_ev_num_pv = tf.ones([vertex_num], tf.int32)*2
-    cond = lambda e, edgev_per_vertex, remain_edges_pv, loop_vid_in_e_start, valid_ev_num_pv: tf.less(e, edge_num)
+    close_flag = tf.zeros([vertex_num], tf.int32)
+    cond = lambda e, edgev_per_vertex, remain_edges_pv, loop_vid_in_e_start, valid_ev_num_pv, close_flag: tf.less(e, edge_num)
 
-    e, edgev_per_vertex, remain_edges_pv, loop_vid_in_e_start, valid_ev_num_pv = tf.while_loop(cond, sort_one_edge, \
-                    [e, edgev_per_vertex, remain_edges_pv, loop_vid_in_e_start, valid_ev_num_pv])
+    e, edgev_per_vertex, remain_edges_pv, loop_vid_in_e_start, valid_ev_num_pv, close_flag = tf.while_loop(cond, sort_one_edge, \
+                    [e, edgev_per_vertex, remain_edges_pv, loop_vid_in_e_start, valid_ev_num_pv, close_flag])
+    valid_ev_num_pv = tf.expand_dims(valid_ev_num_pv, 1)
 
-    return edgev_per_vertex, valid_ev_num_pv
+    return edgev_per_vertex, valid_ev_num_pv, close_flag
 
   @staticmethod
   def sort_by_spectral(edges):
