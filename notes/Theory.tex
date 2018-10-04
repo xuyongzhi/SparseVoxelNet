@@ -524,10 +524,19 @@ The target:
 The mesh graph can be highly unbalanced. The weight for each edge may not be shared directly. 
 
 
-\section{Mesh CNN}
+\section{Fan CNN}
 Inspired by tangent convolution, alignment of KNN points is possible and can be quite useful to apply large kernel weights. Instead of using 1*1 conv for most graph cnns, I try to design a mesh convolution with large kernel size.
 \par
 The key aim is to align vertices. Actually, mesh already reduce 3D points to 2D dimension in manifold domain.
+
+Sort edges by path. Kernel size is the number of neighbour fans.
+
+$$ W_0 * V_i + W_1 *  \underset{j\in N(i)}{V_j} $$
+$$ [1,1]*[N,1,C^l] + [k,s]*[N,e,C^l] $$
+$$ [N,1,C^{l+1}]+ [N,h,C^{l+1}] $$ 
+$$ [N,h,C^{l+1}] $$
+$$ Norm\ Relu $$
+
 
 
 \section{Triangular CNN: point, edge and face representation}

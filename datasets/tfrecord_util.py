@@ -695,7 +695,7 @@ class MeshSampling():
       edge_idx = same_edge_idx_pv[:,1:2]/2
       edge_idx = tf.concat([same_edge_idx_pv[:,0:1], edge_idx], 1)
       next_edge_mask = tf.scatter_nd(edge_idx, tf.ones(tf.shape(edge_idx)[0], tf.int32), [vertex_num, remain_edge_num])
-      next_vertex_mask = tf.reshape(tf.tile(tf.expand_dims(next_edge_mask, -1), [1,1,2]), [vertex_num, -1])
+      next_vertex_mask = tf.reshape(tf.tile(tf.expand_dims(next_edge_mask, -1), [1,1,2]), [vertex_num, reshape[1]])
       return next_vid_in_e, open_vidx, next_vertex_mask, open_vertex_mask
 
   @staticmethod
