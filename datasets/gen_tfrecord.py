@@ -318,7 +318,7 @@ class Raw_To_Tfrecord():
     with tf.python_io.TFRecordWriter( tfrecord_fn ) as raw_tfrecord_writer:
       raw_tfrecord_writer.write(example.SerializeToString())
 
-    if self.fi %50 ==0:
+    if self.fi %5 ==0:
       print('{}/{} write tfrecord OK: {}'.format(self.fi, self.fn, tfrecord_fn))
 
 
@@ -490,8 +490,8 @@ def main_matterport():
   block_size = {'MODELNET40':None, 'MATTERPORT':np.array([3.0, 3.0, 5.0]) }
 
   scene_name = '17DRP5sb8fy'
-  #scene_name = '2t7WUuJeko7'
-  region_name = 'region0'
+  scene_name = '2t7WUuJeko7'
+  region_name = 'region*'
   raw_glob = os.path.join(dset_path, '{}/*/region_segmentations/{}.ply'.format(
                                 scene_name, region_name))
   tfrecord_path = '/DS/Matterport3D/MATTERPORT_TF/mesh_tfrecord'

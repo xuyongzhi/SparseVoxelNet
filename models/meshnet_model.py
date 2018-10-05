@@ -68,6 +68,11 @@ class Model(ResConvOps):
     edgev_per_vertex = inputs['edgev_per_vertex']
     valid_ev_num_pv = inputs['valid_ev_num_pv']
 
+    vertices_scales = []
+    for scale in range(self.block_paras.scale_num):
+      with tf.variable_scope('S%d'%(scale)):
+        vertices = self.mesh_cnn.update_vertex(scale, is_training, vertices,
+              edgev_per_vertex, valid_ev_num_pv)
     import pdb; pdb.set_trace()  # XXX BREAKPOINT
     pass
 
@@ -146,6 +151,12 @@ class FanCnn():
     self.block_fn = block_fn
     self.blocks_layers = blocks_layers_fn
     self.block_paras = block_paras
+
+  def update_vertex(self, scale, is_training, vertices,\
+                    edgev_per_vertex, valid_ev_num_pv):
+    edgev = gather_second_d(vertices, edgev_per_vertex)
+    import pdb; pdb.set_trace()  # XXX BREAKPOINT
+    pass
 
 class TriangleCnn():
   def __init__(self, blocks_layers_fn=None, block_fn=None, block_paras=None,
