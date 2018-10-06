@@ -286,7 +286,7 @@ def network_model_fn(features, labels, mode, params):
   )
 
 def parse_flags_update_configs(flags_obj):
-  from models.block_configs import block_configs
+  from models.block_configs_fancnn import block_configs
   flags_obj.max_train_steps = int(flags_obj.train_epochs * flags_obj.examples_per_epoch)
 
   #*****************************************************************************

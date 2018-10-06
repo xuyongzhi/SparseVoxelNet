@@ -257,17 +257,16 @@ def net_model_fn( features, labels, mode, model_class,
   model = model_class(net_data_configs=net_data_configs,
                       data_format=data_format, dtype=dtype)
 
-  spl_logits, spl_labels = model(features, mode == tf.estimator.ModeKeys.TRAIN)
+  logits, label_weight = model(features, mode == tf.estimator.ModeKeys.TRAIN)
 
   # This acts as a no-op if the logits are already in fp32 (provided logits are
   # not a SparseTensor). If dtype is is low precision, logits must be cast to
   # fp32 for numerical stability.
-  spl_logits = tf.cast(spl_logits, tf.float32)
+  logits = tf.cast(logits, tf.float32)
 
   predictions = {
-      'spl_classes': tf.argmax(spl_logits, axis=-1),
-      'spl_probabilities': tf.nn.softmax(spl_logits, name='softmax_tensor'),
-      'spl_labels': spl_labels,
+      'classes': tf.argmax(logits, axis=-1),
+      'probabilities': tf.nn.softmax(logits, name='softmax_tensor'),
   }
 
   if mode == tf.estimator.ModeKeys.PREDICT:
@@ -286,14 +285,12 @@ def net_model_fn( features, labels, mode, model_class,
         )
 
   # Calculate loss, which includes softmax cross entropy and L2 regularization.
-  spl_label_w = tf.gather(net_data_configs['data_configs']['spl_label_wt'], spl_labels)
-  spl_label_w = 1.0
-  spl_cross_entropy = tf.losses.sparse_softmax_cross_entropy(
-      logits=spl_logits, labels=spl_labels, weights=spl_label_w)
+  cross_entropy = tf.losses.sparse_softmax_cross_entropy(
+      logits=logits, labels=labels, weights=label_weight)
 
   # Create a tensor named cross_entropy for logging purposes.
-  tf.identity(spl_cross_entropy, name='cross_entropy')
-  tf.summary.scalar('cross_entropy', spl_cross_entropy)
+  tf.identity(cross_entropy, name='cross_entropy')
+  tf.summary.scalar('cross_entropy', cross_entropy)
 
   # If no loss_filter_fn is passed, assume we want the default behavior,
   # which is that batch_normalization variables are excluded from loss.
@@ -307,7 +304,7 @@ def net_model_fn( features, labels, mode, model_class,
       [tf.nn.l2_loss(tf.cast(v, tf.float32)) for v in tf.trainable_variables()
        if loss_filter_fn(v.name)])
   tf.summary.scalar('l2_loss', l2_loss)
-  loss = spl_cross_entropy + l2_loss
+  loss = cross_entropy + l2_loss
 
   if mode == tf.estimator.ModeKeys.TRAIN:
     global_step = tf.train.get_or_create_global_step()
@@ -365,12 +362,12 @@ def net_model_fn( features, labels, mode, model_class,
   else:
     train_op = None
 
-  spl_accuracy = tf.metrics.accuracy(spl_labels, predictions['spl_classes'])
-  metrics = {'spl_accuracy': spl_accuracy,}
+  accuracy = tf.metrics.accuracy(labels, predictions['classes'])
+  metrics = {'accuracy': accuracy,}
 
   # Create a tensor named train_accuracy for logging purposes
-  tf.identity(spl_accuracy[1], name='train_accuracy')
-  tf.summary.scalar('spl_accuracy', spl_accuracy[1])
+  tf.identity(accuracy[1], name='train_accuracy')
+  tf.summary.scalar('accuracy', accuracy[1])
 
   return tf.estimator.EstimatorSpec(
           mode=mode,
@@ -531,7 +528,7 @@ def net_main(
       benchmark_logger.log_evaluation_result(eval_results)
 
       if model_helpers.past_stop_threshold(
-          flags_obj.stop_threshold, eval_results['spl_accuracy']):
+          flags_obj.stop_threshold, eval_results['accuracy']):
         break
 
   if flags_obj.export_dir is not None:
@@ -583,18 +580,18 @@ def gen_pred_ply(eval_results, pred_generator):
   pred_res_dir = '/tmp/pred_res'
 
   for pred in pred_generator:
-    spl_classes = pred['spl_classes']
-    spl_probabilities = pred['spl_probabilities']
-    spl_labels = pred['spl_labels']
+    classes = pred['classes']
+    probabilities = pred['probabilities']
+    labels = pred['labels']
     xyz = pred['xyz']
     vidx_per_face = pred['vidx_per_face']
     valid_num_face = pred['valid_num_face']
     vidx_per_face = vidx_per_face[0:valid_num_face[0], :]
 
     num_vertex = xyz.shape[0]
-    true = spl_classes == spl_labels
-    spl_pos = spl_labels == 1
-    spl_neg = spl_labels == 0
+    true = classes == labels
+    spl_pos = labels == 1
+    spl_neg = labels == 0
     pos_rate = 1.0 * np.sum(spl_pos) / num_vertex
     spl_true_neg = np.logical_and(true, spl_neg).astype(np.int8)
     spl_true_pos = np.logical_and(true, spl_pos).astype(np.int8)
@@ -605,9 +602,9 @@ def gen_pred_ply(eval_results, pred_generator):
                 pos_rate, spl_true_neg_rate, spl_true_pos_rate))
 
     ply_fn = os.path.join(pred_res_dir, 'gt_simplicity.ply')
-    gen_mesh_ply(ply_fn, xyz, vidx_per_face, vertex_label=spl_labels)
+    gen_mesh_ply(ply_fn, xyz, vidx_per_face, vertex_label=labels)
     ply_fn = os.path.join(pred_res_dir, 'simplicity_pred.ply')
-    gen_mesh_ply(ply_fn, xyz, vidx_per_face, vertex_label=spl_classes)
+    gen_mesh_ply(ply_fn, xyz, vidx_per_face, vertex_label=classes)
     import pudb; pudb.set_trace()  # XXX BREAKPOINT
     pass
 

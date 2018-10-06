@@ -92,7 +92,7 @@ def parse_record(tfrecord_serialized, is_training, dset_shape_idx, \
     #*************
     features = {"vertex_i": vertex_i, "vertex_f": vertex_f, \
                     "face_i": face_i, "valid_num_face": valid_num_face}
-    labels = []
+    labels = tf.squeeze(get_ele(features, 'label_category', dset_shape_idx),1)
 
     return features, labels
 
@@ -186,8 +186,10 @@ def get_ele(datas, ele, dset_shape_idx):
   for g in ds_idxs:
     if ele in ds_idxs[g]:
       ele_idx = ds_idxs[g][ele]
-      ele_data = datas[g][..., ele_idx]
-      #ele_data = tf.gather(datas[g], ele_idx, axis=-1)
+      if isinstance(datas[g], tf.Tensor):
+        ele_data = tf.gather(datas[g], ele_idx, axis=-1)
+      else:
+        ele_data = datas[g][..., ele_idx]
       return ele_data
   raise ValueError, ele+' not found'
 

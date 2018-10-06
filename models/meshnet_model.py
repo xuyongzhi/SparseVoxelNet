@@ -34,21 +34,12 @@ class Model(ResConvOps):
     self.block_paras = BlockParas(net_data_configs['block_configs'])
     super(Model, self).__init__(net_data_configs, data_format, dtype)
 
-    block_style = 'Regular'
-    if block_style == 'Regular':
-      self.block_fn = self.building_block_v2
-    elif block_style == 'Bottleneck':
-      self.block_fn = self.bottleneck_block_v2
-    elif block_style == 'Inception':
-      self.block_fn = self.inception_block_v2
-    elif block_style == 'PointNet':
-      self.block_fn = None
-    else:
-      raise NotImplementedError
     if self.CNN == 'TRIANGLE':
       cnn_class = TriangleCnn
+      self.block_fn = self.inception_block_v2
     elif self.CNN == 'FAN':
       cnn_class = FanCnn
+      self.block_fn = self.fan_block_v2
     self.mesh_cnn = cnn_class(self.blocks_layers, self.block_fn, self.block_paras)
 
   def __call__(self, features,  is_training):
@@ -57,9 +48,9 @@ class Model(ResConvOps):
     edges_per_vertex: [B,N,10*2]
     '''
     if self.CNN == 'TRIANGLE':
-      self.main_triangle_cnn(features, is_training)
+      return self.main_triangle_cnn(features, is_training)
     elif self.CNN == 'FAN':
-      self.main_fan_cnn(features, is_training)
+      return self.main_fan_cnn(features, is_training)
 
   def main_fan_cnn(self, features, is_training):
     self.is_training = is_training
@@ -67,14 +58,24 @@ class Model(ResConvOps):
     vertices = inputs['vertices']
     edgev_per_vertex = inputs['edgev_per_vertex']
     valid_ev_num_pv = inputs['valid_ev_num_pv']
+    vidx_per_face = inputs['vidx_per_face']
+    valid_num_face = inputs['valid_num_face']
 
     vertices_scales = []
     for scale in range(self.block_paras.scale_num):
       with tf.variable_scope('S%d'%(scale)):
         vertices = self.mesh_cnn.update_vertex(scale, is_training, vertices,
               edgev_per_vertex, valid_ev_num_pv)
-    import pdb; pdb.set_trace()  # XXX BREAKPOINT
-    pass
+
+    dense_filters = [64, self.dset_metas.num_classes]
+    vlogits = self.dense_block(vertices, dense_filters, self.is_training)
+    vlogits = tf.squeeze(vlogits, 2)
+    flogits = gather_second_d(vlogits, vidx_per_face)
+    flogits = tf.reduce_mean(flogits, 2)
+    fn = get_tensor_shape(vidx_per_face)[1]
+    valid_face_mask = tf.tile(tf.reshape(tf.range(fn), [1,fn]), [self.batch_size,1])
+    flabel_weight = tf.cast(tf.less(valid_face_mask, fn), tf.float32)
+    return flogits, flabel_weight
 
   def main_triangle_cnn(self, features, is_training):
     self.is_training = is_training
@@ -126,12 +127,12 @@ class Model(ResConvOps):
     self.num_vertex0 = vshape[1]
     self.log_tensor_p(vertices, 'vertices', 'raw_input')
 
+    inputs['vidx_per_face'] = self.get_ele(features, 'vidx_per_face')
+    inputs['valid_num_face'] = features['valid_num_face']
+
     if self.CNN == 'TRIANGLE':
       inputs['fidx_per_vertex'] = self.get_ele(features, 'fidx_per_vertex')
       inputs['fidx_pv_empty_mask'] = self.get_ele(features, 'fidx_pv_empty_mask')
-
-      inputs['vidx_per_face'] = self.get_ele(features, 'vidx_per_face')
-      inputs['valid_num_face'] = features['valid_num_face']
 
     elif self.CNN == 'FAN':
       inputs['edgev_per_vertex'] = self.get_ele(features, 'edgev_per_vertex')
@@ -154,9 +155,15 @@ class FanCnn():
 
   def update_vertex(self, scale, is_training, vertices,\
                     edgev_per_vertex, valid_ev_num_pv):
-    edgev = gather_second_d(vertices, edgev_per_vertex)
-    import pdb; pdb.set_trace()  # XXX BREAKPOINT
-    pass
+    self.scale = scale
+    self.is_training = is_training
+    vertices = tf.expand_dims(vertices, 2)
+
+    blocks_params = self.block_paras.get_block_paras('vertex', self.scale)
+    edgev = self.blocks_layers(self.scale, vertices, blocks_params, self.block_fn,
+                               self.is_training, '%d'%( self.scale),
+                               edgev_per_vertex=edgev_per_vertex)
+    return edgev
 
 class TriangleCnn():
   def __init__(self, blocks_layers_fn=None, block_fn=None, block_paras=None,
@@ -240,30 +247,39 @@ class BlockParas():
   def __init__(self, block_configs):
     block_sizes = block_configs['block_sizes']
     filters = block_configs['filters']
+    if 'kernels' in block_configs:
+      kernels = block_configs['kernels']
+    else:
+      kernels = None
     self.scale_num = len(filters['vertex'])
-    self.e2fl_pool = block_configs['e2fl_pool']
-    self.f2v_pool = block_configs['f2v_pool']
+    if hasattr(self, 'e2fl_pool'):
+      self.e2fl_pool = block_configs['e2fl_pool']
+      self.f2v_pool = block_configs['f2v_pool']
     self.use_face_global_scale0 = block_configs['use_face_global_scale0']
 
     all_paras = {}
     for item in block_sizes:
-      all_paras[item] = BlockParas.complete_scales_paras(block_sizes[item], filters[item])
+      all_paras[item] = BlockParas.complete_scales_paras(block_sizes[item], filters[item], kernels[item])
     self.all_paras = all_paras
 
   def get_block_paras(self, element, scale):
     return self.all_paras[element][scale]
 
   @staticmethod
-  def complete_scales_paras(block_size, filters):
+  def complete_scales_paras(block_size, filters, kernels):
     scale_num = len(block_size)
     scales_blocks_paras = []
     for s in range(scale_num):
-      blocks_paras = BlockParas.complete_paras_1scale(block_size[s], filters[s])
+      if kernels:
+        kernels_s = kernels[s]
+      else:
+        kernels_s = None
+      blocks_paras = BlockParas.complete_paras_1scale(block_size[s], filters[s], kernels_s)
       scales_blocks_paras.append(blocks_paras)
     return scales_blocks_paras
 
   @staticmethod
-  def complete_paras_1scale(block_size, filters):
+  def complete_paras_1scale(block_size, filters, kernels):
     assert not isinstance(block_size[0], list)
     block_size  = np.array(block_size)
     filters     = np.array(filters)
@@ -273,7 +289,7 @@ class BlockParas():
     blocks_paras['block_sizes'] = block_size
     blocks_paras['filters'] = filters
     blocks_paras['kernels'], blocks_paras['strides'], blocks_paras['pad_stride1'] = \
-                                BlockParas.get_1_kernel_block_paras(block_num)
+                                BlockParas.get_1_kernel_block_paras(block_num, kernels)
     blocks_paras = BlockParas.split_block_paras(blocks_paras)
 
     return blocks_paras
@@ -296,8 +312,11 @@ class BlockParas():
 
 
   @staticmethod
-  def get_1_kernel_block_paras(block_num):
-    kernels = [1 for i in range(block_num)]
+  def get_1_kernel_block_paras(block_num, kernels_):
+    if kernels_:
+      kernels = [kernels_[i] for i in range(block_num)]
+    else:
+      kernels = [1 for i in range(block_num)]
     strides = [1 for i in range(block_num)]
     paddings = ['v' for i in range(block_num)]
     return kernels, strides, paddings

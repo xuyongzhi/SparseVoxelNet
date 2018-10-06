@@ -461,8 +461,8 @@ class ResConvOps(object):
     if strides > 1:
       assert padding == 'valid'
       inputs = self.fixed_padding_2d3d(inputs, kernels)
-    if padding == 'same':
-      self.check_kernel_waste(inputs, kernels, True)
+    #if padding == 'same':
+    #  self.check_kernel_waste(inputs, kernels, True)
     return inputs, padding
 
   def check_kernel_waste(self, inputs, kernels, warning=False):
@@ -509,7 +509,63 @@ class ResConvOps(object):
     return inputs
 
 
-  def building_block_v2(self, inputs, block_params, training, projection_shortcut,
+
+  def fan_block_v2(self, vertices, block_params, training, projection_shortcut,
+                        half_layer=None, no_ini_bn=False, edgev=None):
+    filters = block_params['filters']
+    kernels = block_params['kernels']
+    strides = block_params['strides']
+    pad_stride1 = block_params['pad_stride1']
+
+    shortcut = vertices
+    if not no_ini_bn:
+      vertices = self.batch_norm(vertices, training, tf.nn.relu)
+    if projection_shortcut == 'FirstResUnit':
+      # For pointnet, projection shortcut is not needed at the First ResUnit.
+      # However, BN and Activation is still required at the First ResUnit for
+      # pre-activation.
+      shortcut = vertices
+      projection_shortcut = None
+      if self.IsShowModel:  self.log(
+            'shortcut after activation identity for pointnet first res unit')
+    if half_layer:
+      projection_shortcut = None
+
+    # The projection shortcut should come after the first batch norm and ReLU
+    # since it performs a 1x1 convolution.
+    if projection_shortcut is not None:
+      shortcut = projection_shortcut(vertices)
+
+    with tf.variable_scope('c0'):
+      vertices = self.conv1d2d3d(vertices, filters, 1, 1, 'v')
+      self.log_tensor_c(vertices, 1, 1, 'v',
+                          tf.get_variable_scope().name)
+      if edgev is not None:
+        evn0 = get_tensor_shape(edgev)[2]
+        edgev = self.conv1d2d3d(edgev, filters, [1, kernels], strides, pad_stride1)
+        self.log_tensor_c(vertices, kernels, strides, pad_stride1,
+                          tf.get_variable_scope().name)
+        vertices += edgev
+    if half_layer: return vertices
+    vertices = self.batch_norm(vertices, training, tf.nn.relu)
+
+    with tf.variable_scope('c1'):
+      if edgev is not None:
+        kernels_1 = evn0-kernels + 1
+      else:
+        kernels_1 = 1
+      vertices = self.conv1d2d3d(vertices, filters, [1,kernels_1], 1, 'v')
+      self.log_tensor_c(vertices, kernels_1, 1, 'v',
+                        tf.get_variable_scope().name)
+
+    if self.residual:
+      assert vertices.shape == shortcut.shape
+      if self.IsShowModel: self.log('Add shortcut*%0.1f'%(self.res_scale))
+      return vertices * self.res_scale + shortcut
+    else:
+      return vertices
+
+  def building_block_v2(self, vertices, block_params, training, projection_shortcut,
                         half_layer=None, no_ini_bn=False):
     """A single block for ResNet v2, without a bottleneck.
 
@@ -565,8 +621,6 @@ class ResConvOps(object):
     inputs = self.batch_norm(inputs, training, tf.nn.relu)
 
     with tf.variable_scope('c1'):
-      if self.check_kernel_waste(inputs, kernels):
-        kernels = 1
       inputs = self.conv1d2d3d(inputs, filters, kernels, 1, 's')
       self.log_tensor_c(inputs, kernels, 1, 's',
                         tf.get_variable_scope().name)
@@ -798,16 +852,22 @@ class ResConvOps(object):
       raise NotImplementedError
     return shortcut
 
-  def blocks_layers(self, scale, inputs, blocks_params, block_fn, is_training, scope):
+  def blocks_layers(self, scale, inputs, blocks_params, block_fn, is_training, scope, edgev_per_vertex=None):
     self.log_tensor_p(inputs, '', scope)
     self.log_dotted_line(scope)
     for bi in range(len(blocks_params)):
+      if edgev_per_vertex is not None:
+        edgev = gather_second_d(tf.squeeze(inputs, 2), edgev_per_vertex)
+        self.log_tensor_p(edgev, 'edgev', scope)
+      else:
+        edgev = None
+
       with tf.variable_scope(scope+'_b%d'%(bi)):
         inputs = self.block_layer(scale, inputs, blocks_params[bi], block_fn,
-                                is_training, scope+'_b%d'%(bi))
+                                is_training, scope+'_b%d'%(bi), edgev=edgev)
     return inputs
 
-  def block_layer(self, scale, inputs, block_params, block_fn, is_training, name):
+  def block_layer(self, scale, inputs, block_params, block_fn, is_training, name, edgev=None):
     """Creates one layer of block_size for the ResNet model.
 
     Args:
@@ -854,7 +914,7 @@ class ResConvOps(object):
     with tf.variable_scope('L0'):
       no_ini_bn = scale==1
       inputs = block_fn(inputs, block_params, is_training, projection_shortcut_0,
-                        half_layer, no_ini_bn=no_ini_bn)
+                        half_layer, no_ini_bn=no_ini_bn, edgev=edgev)
 
     block_params['strides'] = 1
     block_params['pad_stride1'] = 's'
