@@ -395,7 +395,7 @@ class MeshSampling():
     IsGenply_Cleaned = False
     IsGenply_SameMask = False
     IsGenply_Splited = False
-    IsGenply_SplitedSampled = True
+    IsGenply_SplitedSampled = False
 
     if IsGenply_Raw:
       MeshSampling.gen_mesh_ply_basic(raw_datas, 'Raw', 'raw', ply_dir)
@@ -463,7 +463,6 @@ class MeshSampling():
       for bi in range(block_num):
         MeshSampling.gen_mesh_ply_basic(splited_sampled_datas[bi], 'SplitedSampled',
                         'Block{}_sampled_{}'.format(bi, _num_vertex_sp), ply_dir, gen_edgev=True)
-
 
     if is_show_shapes:
       MeshSampling.show_datas_shape(splited_sampled_datas, 'sampled datas')
