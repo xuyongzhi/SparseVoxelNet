@@ -395,7 +395,7 @@ class MeshSampling():
     IsGenply_Cleaned = False
     IsGenply_SameMask = False
     IsGenply_Splited = False
-    IsGenply_SplitedSampled = False
+    IsGenply_SplitedSampled = True
 
     if IsGenply_Raw:
       MeshSampling.gen_mesh_ply_basic(raw_datas, 'Raw', 'raw', ply_dir)
@@ -462,7 +462,8 @@ class MeshSampling():
     if IsGenply_SplitedSampled:
       for bi in range(block_num):
         MeshSampling.gen_mesh_ply_basic(splited_sampled_datas[bi], 'SplitedSampled',
-                        'Block{}_sampled_{}'.format(bi, _num_vertex_sp), ply_dir)
+                        'Block{}_sampled_{}'.format(bi, _num_vertex_sp), ply_dir, gen_edgev=True)
+
 
     if is_show_shapes:
       MeshSampling.show_datas_shape(splited_sampled_datas, 'sampled datas')
@@ -1157,7 +1158,7 @@ class MeshSampling():
       # replace the neg vertices by left or right
       invalid_num = tf.reduce_sum(tf.cast(tf.less(edgev_per_vertex_new1,0), tf.int32))
       round_id = tf.constant(0)
-      cond = lambda edgev_per_vertex_new1, invalid_num, round_id: tf.greater(invalid_num, 0) and tf.less(round_id, 2)
+      cond = lambda edgev_per_vertex_new1, invalid_num, round_id: tf.logical_and(tf.greater(invalid_num, 0), tf.less(round_id, 2))
       edgev_per_vertex_new2, invalid_num2, round_id2 = tf.while_loop(cond,
                 MeshSampling.replace_neg,
                 [edgev_per_vertex_new1, invalid_num, round_id])
@@ -1189,16 +1190,34 @@ class MeshSampling():
 
 
   @staticmethod
-  def gen_mesh_ply_basic(datas, dir_name='', base_name='category_labeled', ply_dir=None):
+  def gen_mesh_ply_basic(datas, dir_name='', base_name='', ply_dir=None, gen_edgev=False):
     if ply_dir == None:
       ply_dir = '/tmp'
     path =  '{}/{}'.format(ply_dir, dir_name)
-    ply_fn = '{}/{}.ply'.format(path, base_name)
     for item in datas:
       if isinstance(datas[item], tf.Tensor):
         datas[item] = datas[item].numpy()
+
+
+    if gen_edgev:
+      ply_fn = '{}/edgev_{}.ply'.format(path, base_name)
+      down_sample_rate = 1e-1
+      edgev_per_vertex = datas['edgev_per_vertex']
+      n0 = edgev_per_vertex.shape[0]
+      n1 = int(down_sample_rate * n0)
+      ds_idx = np.random.randint(0, n0, n1)
+      edgev_per_vertex_ds = np.take(edgev_per_vertex, ds_idx, 0)
+
+      ply_util.gen_mesh_ply(ply_fn, datas['xyz'], edgev_per_vertex_ds)
+
+      ply_util.gen_mesh_ply(ply_fn, datas['xyz'], edgev_per_vertex_ds,
+                          vertex_color=datas['color'])
+
+    ply_fn = '{}/{}.ply'.format(path, base_name)
     ply_util.gen_mesh_ply(ply_fn, datas['xyz'], datas['vidx_per_face'],
                           face_label=datas['label_category'])
+
+
 
   @staticmethod
   def gen_ply_raw(raw_datas, same_normal_mask, same_category_mask, same_norm_cat_mask, ply_dir):

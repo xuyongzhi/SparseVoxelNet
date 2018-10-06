@@ -280,12 +280,12 @@ def gen_mesh_ply(ply_fn, vertices0, vidx_per_face, face_label=None,
     '''
     assert (int(face_label is None) + int(vertex_label is None) + int(vertex_color is None)) >=2, \
       "choose one color method from three: {}, {}, {}".format(face_label, vertex_label, vertex_color)
-    assert vertices0.shape[-1] == vidx_per_face.shape[-1] == 3
+    assert vertices0.shape[-1] ==  3
+    vnpf = vidx_per_face.shape[-1]
     assert np.min(vidx_per_face)>=0, "negative vidx_per_face"
 
     vertices0 = np.reshape( vertices0, (-1,3) )
-    vidx_per_face = np.reshape(vidx_per_face, (-1,3))
-    face_label = np.squeeze(face_label)
+    vidx_per_face = np.reshape(vidx_per_face, (-1,vnpf))
     if vertex_label is not None:
       vertex_label = np.reshape(vertex_label, (-1))
     if vertex_color is not None:
@@ -294,8 +294,8 @@ def gen_mesh_ply(ply_fn, vertices0, vidx_per_face, face_label=None,
     num_vertex = vertices0.shape[0]
     assert np.max(vidx_per_face) < num_vertex
 
-    is_face_color = vertex_label is None and vertex_color is None
-    if is_face_color:
+    is_vertex_color = (vertex_label is not None) and (vertex_color is not None)
+    if not is_vertex_color:
       vertex = np.zeros( shape=(num_vertex) ).astype([('x', 'f8'), ('y', 'f8'),('z', 'f8')])
     else:
       if vertex_label is not None:
@@ -305,7 +305,7 @@ def gen_mesh_ply(ply_fn, vertices0, vidx_per_face, face_label=None,
       vertex = np.zeros( shape=(num_vertex) ).astype([('x', 'f8'), ('y', 'f8'),('z', 'f8'),
                                             ('red', 'u1'), ('green', 'u1'),('blue', 'u1')])
     for i in range(vertices0.shape[0]):
-      if is_face_color:
+      if not is_vertex_color:
         vertex[i] = ( vertices0[i,0],vertices0[i,1],vertices0[i,2] )
       else:
         vertex[i] = ( vertices0[i,0],vertices0[i,1],vertices0[i,2], \
@@ -315,19 +315,19 @@ def gen_mesh_ply(ply_fn, vertices0, vidx_per_face, face_label=None,
 
     # define the order of the 8 vertexs for a box
     num_face = vidx_per_face.shape[0]
+    is_face_color = face_label is not None
     if is_face_color:
       if face_label is not None:
         if extra=='label_color_default':
+          face_label = np.squeeze(face_label)
           face_color = np.take(color_dic.rgb_order, face_label, 0)
-      else:
-        face_color = np.ones([num_face,3], dtype=np.uint8) * 255
 
       face = np.zeros( shape=(num_face) ).astype(
                     dtype=[('vertex_indices', 'i4', (3,)),
                            ('red', 'u1'), ('green', 'u1'),('blue', 'u1')])
     else:
       face = np.zeros( shape=(num_face) ).astype(
-                    dtype=[('vertex_indices', 'i4', (3,))])
+                    dtype=[('vertex_indices', 'i4', (vnpf,))])
 
     for i in range(num_face):
       if is_face_color:
