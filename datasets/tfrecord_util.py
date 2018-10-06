@@ -467,7 +467,6 @@ class MeshSampling():
     if is_show_shapes:
       MeshSampling.show_datas_shape(splited_sampled_datas, 'sampled datas')
 
-    import pdb; pdb.set_trace()  # XXX BREAKPOINT
     return splited_sampled_datas
 
 
@@ -1158,14 +1157,16 @@ class MeshSampling():
       # replace the neg vertices by left or right
       invalid_num = tf.reduce_sum(tf.cast(tf.less(edgev_per_vertex_new1,0), tf.int32))
       round_id = tf.constant(0)
-      cond = lambda edgev_per_vertex_new1, invalid_num, round_id: tf.greater(invalid_num, 0) and tf.less(round_id, 3)
-      edgev_per_vertex_new, invalid_num2, round_id2 = tf.while_loop(cond,
+      cond = lambda edgev_per_vertex_new1, invalid_num, round_id: tf.greater(invalid_num, 0) and tf.less(round_id, 2)
+      edgev_per_vertex_new2, invalid_num2, round_id2 = tf.while_loop(cond,
                 MeshSampling.replace_neg,
                 [edgev_per_vertex_new1, invalid_num, round_id])
 
       # there may still be some negative, but very few. Just handle as lonely
-      # points
-      lonely_vidx = tf.
+      # points. Assign self vertex idx to the lonely edges
+      lonely_vidx = tf.cast(tf.where(tf.less(edgev_per_vertex_new2, 0)), tf.int32)
+      tmp = tf.scatter_nd(lonely_vidx, lonely_vidx[:,0]+1, tf.shape(edgev_per_vertex_new2))
+      edgev_per_vertex_new3 = edgev_per_vertex_new2 + tmp
 
 
     # rm lost faces
@@ -1182,7 +1183,7 @@ class MeshSampling():
         vidx_per_face_new = tf.identity(vidx_per_face_new)
 
     if edgev_per_vertex is not None:
-      return face_sp_indices, vidx_per_face_new, edgev_per_vertex_new, valid_ev_num_pv_new
+      return face_sp_indices, vidx_per_face_new, edgev_per_vertex_new3, valid_ev_num_pv_new
     else:
       return face_sp_indices, vidx_per_face_new
 
