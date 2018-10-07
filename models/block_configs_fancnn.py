@@ -12,9 +12,9 @@ def block_configs(net_flag='default'):
   kernels = {}
 
   if net_flag == '3A':
-    block_sizes['vertex'] = [ [1, 1],  ]
-    filters['vertex']     = [ [32, 64],]
-    kernels['vertex']     = [ [7, 7],  ]
+    block_sizes['vertex'] = [ [1, 1, 1, 1, 1],  ]
+    filters['vertex']     = [ [32, 64, 128, 128, 256],]
+    kernels['vertex']     = [ [7, 7, 7, 7, 7],  ]
 
   else:
     raise NotImplementedError

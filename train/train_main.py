@@ -384,7 +384,7 @@ def define_network_flags():
       net_flag_choices=['3A', '3B'])
   flags.adopt_module_key_flags(net_run_loop)
   data_dir = os.path.join(DATA_DIR,'MATTERPORT_TF/mesh_tfrecord')
-  flags_core.set_defaults(train_epochs=90,
+  flags_core.set_defaults(train_epochs=200,
                           data_dir=data_dir,
                           model_dir=os.path.join(ROOT_DIR,'results/mesh_seg'),
                           batch_size=1,
@@ -393,8 +393,8 @@ def define_network_flags():
 
   flags.DEFINE_string('optimizer','adam','adam momentum')
   flags.DEFINE_float('weight_decay', short_name='wd', default=1e-4, help="wd")
-  flags.DEFINE_float('lr0', default=0.01, help="base lr")
-  flags.DEFINE_float('lrd_rate', default=0.1, help="learning rate decay rate")
+  flags.DEFINE_float('lr0', default=1e-4, help="base lr")
+  flags.DEFINE_float('lrd_rate', default=1, help="learning rate decay rate")
   flags.DEFINE_float('bnd0', default=0.8, help="base bnd")
   flags.DEFINE_float('bnd_decay', default=0.1, help="")
   flags.DEFINE_integer('lrd_epochs', default=30, help="learning_rate decay epoches")
