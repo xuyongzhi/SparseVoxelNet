@@ -254,6 +254,8 @@ def net_model_fn( features, labels, mode, model_class,
     current mode.
   """
 
+  from datasets.tfrecord_util import get_ele
+  labels = get_ele(features, 'label_category', net_data_configs['dset_shape_idx'])
   model = model_class(net_data_configs=net_data_configs,
                       data_format=data_format, dtype=dtype)
 
@@ -267,6 +269,7 @@ def net_model_fn( features, labels, mode, model_class,
   predictions = {
       'classes': tf.argmax(logits, axis=-1),
       'probabilities': tf.nn.softmax(logits, name='softmax_tensor'),
+      'labels': labels
   }
 
   if mode == tf.estimator.ModeKeys.PREDICT:
@@ -619,23 +622,10 @@ def gen_pred_ply(eval_results, pred_generator):
     valid_num_face = pred['valid_num_face']
     vidx_per_face = vidx_per_face[0:valid_num_face[0], :]
 
-    num_vertex = xyz.shape[0]
-    true = classes == labels
-    spl_pos = labels == 1
-    spl_neg = labels == 0
-    pos_rate = 1.0 * np.sum(spl_pos) / num_vertex
-    spl_true_neg = np.logical_and(true, spl_neg).astype(np.int8)
-    spl_true_pos = np.logical_and(true, spl_pos).astype(np.int8)
-    spl_true_neg_rate = 1.0 * np.sum(spl_true_neg) / np.sum(spl_neg)
-    spl_true_pos_rate = 1.0 * np.sum(spl_true_pos) / np.sum(spl_pos)
-
-    print('\nspl pos_rate:{:.2f} true_neg_rate:{:.2f}, true_pos_rate:{:.2f}\n'.format(
-                pos_rate, spl_true_neg_rate, spl_true_pos_rate))
-
-    ply_fn = os.path.join(pred_res_dir, 'gt_simplicity.ply')
-    gen_mesh_ply(ply_fn, xyz, vidx_per_face, vertex_label=labels)
-    ply_fn = os.path.join(pred_res_dir, 'simplicity_pred.ply')
-    gen_mesh_ply(ply_fn, xyz, vidx_per_face, vertex_label=classes)
-    import pudb; pudb.set_trace()  # XXX BREAKPOINT
+    ply_fn = os.path.join(pred_res_dir, 'pred.ply')
+    gen_mesh_ply(ply_fn, xyz, vidx_per_face, face_label=classes)
+    ply_fn = os.path.join(pred_res_dir, 'gt.ply')
+    gen_mesh_ply(ply_fn, xyz, vidx_per_face, face_label=labels)
+    import pdb; pdb.set_trace()  # XXX BREAKPOINT
     pass
 
