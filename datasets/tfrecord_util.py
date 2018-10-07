@@ -1219,7 +1219,6 @@ class MeshSampling():
                           face_label=datas['label_category'])
 
 
-
   @staticmethod
   def gen_ply_raw(raw_datas, same_normal_mask, same_category_mask, same_norm_cat_mask, ply_dir):
     if ply_dir == None:
