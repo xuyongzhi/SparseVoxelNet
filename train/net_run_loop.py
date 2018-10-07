@@ -255,7 +255,8 @@ def net_model_fn( features, labels, mode, model_class,
   """
 
   from datasets.tfrecord_util import get_ele
-  labels = get_ele(features, 'label_category', net_data_configs['dset_shape_idx'])
+  labels = tf.squeeze(get_ele(features, 'label_category', net_data_configs['dset_shape_idx']), 2)
+
   model = model_class(net_data_configs=net_data_configs,
                       data_format=data_format, dtype=dtype)
 
@@ -269,7 +270,8 @@ def net_model_fn( features, labels, mode, model_class,
   predictions = {
       'classes': tf.argmax(logits, axis=-1),
       'probabilities': tf.nn.softmax(logits, name='softmax_tensor'),
-      'labels': labels
+      'labels': labels,
+      'label_weight': label_weight
   }
 
   if mode == tf.estimator.ModeKeys.PREDICT:
@@ -365,7 +367,7 @@ def net_model_fn( features, labels, mode, model_class,
   else:
     train_op = None
 
-  accuracy = tf.metrics.accuracy(labels, predictions['classes'])
+  accuracy = tf.metrics.accuracy(labels, predictions['classes'], label_weight)
   metrics = {'accuracy': accuracy,}
 
   # Create a tensor named train_accuracy for logging purposes
@@ -617,10 +619,17 @@ def gen_pred_ply(eval_results, pred_generator):
     classes = pred['classes']
     probabilities = pred['probabilities']
     labels = pred['labels']
+    label_weight = pred['label_weight']
     xyz = pred['xyz']
     vidx_per_face = pred['vidx_per_face']
     valid_num_face = pred['valid_num_face']
     vidx_per_face = vidx_per_face[0:valid_num_face[0], :]
+
+    # eval
+    valid_num_face = np.sum(label_weight)
+    correct0 = classes == labels
+    correct1 = correct0 * label_weight
+    import pdb; pdb.set_trace()  # XXX BREAKPOINT
 
     ply_fn = os.path.join(pred_res_dir, 'pred.ply')
     gen_mesh_ply(ply_fn, xyz, vidx_per_face, face_label=classes)

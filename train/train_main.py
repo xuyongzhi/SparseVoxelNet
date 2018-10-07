@@ -384,7 +384,7 @@ def define_network_flags():
       net_flag_choices=['3A', '3B'])
   flags.adopt_module_key_flags(net_run_loop)
   data_dir = os.path.join(DATA_DIR,'MATTERPORT_TF/mesh_tfrecord')
-  flags_core.set_defaults(train_epochs=200,
+  flags_core.set_defaults(train_epochs=220,
                           data_dir=data_dir,
                           model_dir=os.path.join(ROOT_DIR,'results/mesh_seg'),
                           batch_size=1,
