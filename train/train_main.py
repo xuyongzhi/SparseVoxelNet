@@ -417,10 +417,10 @@ def run_network(flags_obj):
                     get_synth_input_fn(flags_core.get_tf_dtype(flags_obj)) or
                     input_fn)
   net_data_configs = parse_flags_update_configs(flags_obj)
-  #net_run_loop.net_main(
-  #    flags_obj, network_model_fn, input_function, net_data_configs)
-  net_run_loop.net_main_check(
+  net_run_loop.net_main(
       flags_obj, network_model_fn, input_function, net_data_configs)
+  #net_run_loop.net_main_check(
+  #    flags_obj, network_model_fn, input_function, net_data_configs)
 
 
 def main(_):

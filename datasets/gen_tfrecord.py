@@ -492,7 +492,7 @@ def main_matterport():
   block_size = {'MODELNET40':None, 'MATTERPORT':np.array([3.0, 3.0, 5.0]) }
 
   scene_name = '17DRP5sb8fy'
-  #scene_name = '2t7WUuJeko7'
+  scene_name = '2t7WUuJeko7'
   region_name = 'region*'
   raw_glob = os.path.join(dset_path, '{}/*/region_segmentations/{}.ply'.format(
                                 scene_name, region_name))

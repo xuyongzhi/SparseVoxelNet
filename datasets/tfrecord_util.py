@@ -263,13 +263,10 @@ def read_tfrecord(dataset_name, tf_path, loss_lw_gama=-1):
             if 'edgev_per_vertex' in dset_idx['vertex_i']:
               edgev_per_vertex = get_ele(features, 'edgev_per_vertex', dset_shape_idx)
               for i in range(10):
-                import pdb; pdb.set_trace()  # XXX BREAKPOINT
-                xyz_i = np.take(xyz[0,:,:], edgev_per_vertex[0,i,:], axis=0)
+                xyz_i = np.take(xyz[0,:,:], edgev_per_vertex[0:100,i,:], axis=0)
                 ply_fn = os.path.join(ply_dir, 'fans/fan%d_raw_color.ply'%(i))
-                import pdb; pdb.set_trace()  # XXX BREAKPOINT
                 ply_util.create_ply(xyz_i, ply_fn)
 
-              import pdb; pdb.set_trace()  # XXX BREAKPOINT
 
             for bi in range(batch_size):
               ply_fn = os.path.join(ply_dir, 'batch_%d/b%d_raw_color.ply'%(batch_num, bi))
