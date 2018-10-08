@@ -155,13 +155,11 @@ class FanCnn():
 
   def update_vertex(self, scale, is_training, vertices,\
                     edgev_per_vertex, valid_ev_num_pv):
-    self.scale = scale
-    self.is_training = is_training
     vertices = tf.expand_dims(vertices, 2)
 
-    blocks_params = self.block_paras.get_block_paras('vertex', self.scale)
-    edgev = self.blocks_layers(self.scale, vertices, blocks_params, self.block_fn,
-                               self.is_training, '%d'%( self.scale),
+    blocks_params = self.block_paras.get_block_paras('vertex', scale)
+    edgev = self.blocks_layers(scale, vertices, blocks_params, self.block_fn,
+                               is_training, '%d'%( scale),
                                edgev_per_vertex=edgev_per_vertex)
     return edgev
 

@@ -94,7 +94,7 @@ def process_record_dataset(dataset, is_training, batch_size, shuffle_buffer,
           lambda value: parse_record_fn(value, is_training, dset_shape_idx),
           batch_size=batch_size,
           num_parallel_batches=1,
-          drop_remainder=False))
+          drop_remainder=True))
 
   # Operations between the final prefetch and the get_next call to the iterator
   # will happen synchronously during run time. We prefetch here again to
@@ -401,6 +401,8 @@ def net_main_check(
     dataset = input_fn_train(1)
     ds_iterator = dataset.make_one_shot_iterator()
     features, labels = ds_iterator.get_next()
+    print(features)
+    import pdb; pdb.set_trace()  # XXX BREAKPOINT
 
     with tf.Session() as sess:
       features_, labels_ = sess.run([features, labels])
@@ -552,7 +554,7 @@ def net_main(
     # eval (which is generally unimportant in those circumstances) to terminate.
     # Note that eval will run for max_train_steps each loop, regardless of the
     # global_step count.
-    only_train = True and (not flags_obj.eval_only) and (not flags_obj.pred_ply)
+    only_train = False and (not flags_obj.eval_only) and (not flags_obj.pred_ply)
     if not only_train:
       eval_results = classifier.evaluate(input_fn=input_fn_eval,
                                         steps=flags_obj.max_train_steps)

@@ -381,7 +381,7 @@ def add_log_file(model_dir):
 
 def define_network_flags():
   net_run_loop.define_net_flags(
-      net_flag_choices=['3A', '3B'])
+      net_flag_choices=['3A', '5A'])
   flags.adopt_module_key_flags(net_run_loop)
   data_dir = os.path.join(DATA_DIR,'MATTERPORT_TF/mesh_tfrecord')
   flags_core.set_defaults(train_epochs=220,
@@ -417,10 +417,9 @@ def run_network(flags_obj):
                     get_synth_input_fn(flags_core.get_tf_dtype(flags_obj)) or
                     input_fn)
   net_data_configs = parse_flags_update_configs(flags_obj)
-  net_run_loop.net_main(
-      flags_obj, network_model_fn, input_function, net_data_configs)
-  #net_run_loop.net_main_check(
-  #    flags_obj, network_model_fn, input_function, net_data_configs)
+  net_main_fn = net_run_loop.net_main
+  #net_main_fn = net_run_loop.net_main_check
+  net_main_fn( flags_obj, network_model_fn, input_function, net_data_configs)
 
 
 def main(_):

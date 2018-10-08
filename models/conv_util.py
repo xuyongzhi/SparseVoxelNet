@@ -289,18 +289,24 @@ class ResConvOps(object):
     """Performs a batch normalization using a standard set of parameters."""
     # We set fused=True for a significant performance boost. See
     # https://www.tensorflow.org/performance/performance_guide#common_fused_ops
-    global_step = tf.train.get_or_create_global_step()
-    batch_norm_decay = self.batch_norm_decay_fn(global_step)
-    inputs = tf.layers.batch_normalization(
-        inputs=inputs, axis=1 if self.data_format == 'channels_first' else -1,
-        momentum=batch_norm_decay , epsilon=_BATCH_NORM_EPSILON, center=True,
-        scale=True, training=training, fused=True)
+    batch_size = get_tensor_shape(inputs)[0]
+    if batch_size > 1:
+      global_step = tf.train.get_or_create_global_step()
+      batch_norm_decay = self.batch_norm_decay_fn(global_step)
+      inputs = tf.layers.batch_normalization(
+          inputs=inputs, axis=1 if self.data_format == 'channels_first' else -1,
+          momentum=batch_norm_decay , epsilon=_BATCH_NORM_EPSILON, center=True,
+          scale=True, training=training, fused=True)
 
     if activation!=None:
       inputs = activation(inputs)
-      if self.IsShowModel:  self.log('%30s'%('BN RELU'))
+      if batch_size >1:
+        if self.IsShowModel:  self.log('%30s'%('BN RELU'))
+      else:
+        if self.IsShowModel:  self.log('%30s'%('RELU'))
     else:
-      if self.IsShowModel:  self.log('%30s'%('BN'))
+      if batch_size >1:
+        if self.IsShowModel:  self.log('%30s'%('BN'))
 
     return inputs
 
