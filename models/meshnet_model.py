@@ -67,6 +67,10 @@ class Model(ResConvOps):
         vertices = self.mesh_cnn.update_vertex(scale, is_training, vertices,
               edgev_per_vertex, valid_ev_num_pv)
 
+    flogits, flabel_weight = self.face_classifier(vertices, vidx_per_face, valid_num_face)
+    return flogits, flabel_weight
+
+  def face_classifier(self, vertices, vidx_per_face, valid_num_face):
     dense_filters = [64, self.dset_metas.num_classes]
     vlogits = self.dense_block(vertices, dense_filters, self.is_training)
     vlogits = tf.squeeze(vlogits, 2)
@@ -123,7 +127,7 @@ class Model(ResConvOps):
     vertices = [self.get_ele(features,e) for e in self.data_configs['feed_data']]
     inputs['vertices'] = vertices = tf.concat(vertices, -1)
     vshape = get_tensor_shape(vertices)
-    self.batch_size = vshape[0]
+    #self.batch_size = vshape[0]
     self.num_vertex0 = vshape[1]
     self.log_tensor_p(vertices, 'vertices', 'raw_input')
 

@@ -55,10 +55,9 @@ def get_filenames_1(is_training, data_dir):
   """Return filenames for dataset."""
   data_dir = os.path.join(data_dir, 'data')
   if is_training:
-    #fn_glob = os.path.join(data_dir, '17DRP5sb8fy_region0_0.tfrecord')
-    fn_glob = os.path.join(data_dir, '2t7WUuJeko7_region2_0.tfrecord')
+    fn_glob = os.path.join(data_dir, '17DRP5sb8fy_*.tfrecord')
   else:
-    fn_glob = os.path.join(data_dir, '2t7WUuJeko7_region2_0.tfrecord')
+    fn_glob = os.path.join(data_dir, '17DRP5sb8fy_*.tfrecord')
   all_fnls = glob.glob(fn_glob)
   assert len(all_fnls) > 0, fn_glob
   print('\ngot {} training files for training={}\n'.format(len(all_fnls), is_training))
@@ -325,6 +324,7 @@ def parse_flags_update_configs(flags_obj):
   net_configs['bnd0'] = flags_obj.bnd0
   net_configs['bnd_decay'] = flags_obj.bnd_decay
   net_configs['batch_size'] = flags_obj.batch_size
+  net_configs['num_gpus'] = flags_obj.num_gpus
   net_configs['optimizer'] = flags_obj.optimizer
 
   net_data_configs['net_configs'] = net_configs
@@ -381,14 +381,14 @@ def add_log_file(model_dir):
 
 def define_network_flags():
   net_run_loop.define_net_flags(
-      net_flag_choices=['3A', '5A'])
+      net_flag_choices=['3A', '4A', '5A'])
   flags.adopt_module_key_flags(net_run_loop)
   data_dir = os.path.join(DATA_DIR,'MATTERPORT_TF/mesh_tfrecord')
   flags_core.set_defaults(train_epochs=220,
                           data_dir=data_dir,
                           model_dir=os.path.join(ROOT_DIR,'results/mesh_seg'),
-                          batch_size=1,
-                          num_gpus=1,
+                          batch_size=2,
+                          num_gpus=2,
                           epochs_between_evals=5,)
 
   flags.DEFINE_string('optimizer','adam','adam momentum')

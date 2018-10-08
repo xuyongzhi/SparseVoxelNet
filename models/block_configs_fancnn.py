@@ -11,7 +11,12 @@ def block_configs(net_flag='default'):
   filters = {}
   kernels = {}
 
-  if net_flag == '5A':
+  if net_flag == '4A':
+    block_sizes['vertex'] = [ [1, 1, 1, 1 ],  ]
+    filters['vertex']     = [ [32, 64, 128, 128],]
+    kernels['vertex']     = [ [7, 7, 7, 7],  ]
+
+  elif net_flag == '5A':
     block_sizes['vertex'] = [ [1, 1, 1, 1, 1],  ]
     filters['vertex']     = [ [32, 64, 128, 128, 256],]
     kernels['vertex']     = [ [7, 7, 7, 7, 7],  ]

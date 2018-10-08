@@ -188,22 +188,26 @@ class ResConvOps(object):
   _padding = {'s':'same', 'v':'valid' }
 
   def __init__(self, net_data_configs, data_format, dtype):
+    net_configs = net_data_configs['net_configs']
+    data_configs = net_data_configs['data_configs']
     self.data_format = data_format
     if data_format == None:
       self.data_format = 'channels_last'
-    self.net_data_configs= net_data_configs
 
-    self.residual = net_data_configs['net_configs']['residual']
+    self.batch_size_alltower = net_configs['batch_size']
+    self.num_gpus = net_configs['num_gpus']
+    self.batch_size = self.batch_size_alltower // self.num_gpus
+    self.residual = net_configs['residual']
     train_global_step = tf.train.get_or_create_global_step()
     self.res_scale = 1.0
     self.use_bias = True
     self.block_style = 'Regular'
-    self.drop_imo = net_data_configs['net_configs']['drop_imo']
+    self.drop_imo = net_configs['drop_imo']
 
     #self.batch_norm_decay = _BATCH_NORM_DECAY
-    self.batch_norm_decay_fn = net_data_configs['net_configs']['bn_decay_fn']
+    self.batch_norm_decay_fn = net_configs['bn_decay_fn']
 
-    model_dir = net_data_configs['data_configs']['model_dir']
+    model_dir = data_configs['model_dir']
     if ResConvOps._epoch==0:
       self.IsShowModel = True
       if not os.path.exists(model_dir):
@@ -289,7 +293,8 @@ class ResConvOps(object):
     """Performs a batch normalization using a standard set of parameters."""
     # We set fused=True for a significant performance boost. See
     # https://www.tensorflow.org/performance/performance_guide#common_fused_ops
-    batch_size = get_tensor_shape(inputs)[0]
+    #batch_size = get_tensor_shape(inputs)[0]
+    batch_size = self.batch_size
     if batch_size > 1:
       global_step = tf.train.get_or_create_global_step()
       batch_norm_decay = self.batch_norm_decay_fn(global_step)
