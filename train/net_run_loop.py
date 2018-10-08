@@ -616,25 +616,39 @@ def gen_pred_ply(eval_results, pred_generator):
   pred_res_dir = '/tmp/pred_res'
 
   for pred in pred_generator:
-    classes = pred['classes']
-    probabilities = pred['probabilities']
-    labels = pred['labels']
-    label_weight = pred['label_weight']
+    valid_num_face = int( pred['valid_num_face'] )
+    classes = pred['classes'][0:valid_num_face]
+    probabilities = pred['probabilities'][0:valid_num_face,:]
+    labels = pred['labels'][0:valid_num_face]
     xyz = pred['xyz']
-    vidx_per_face = pred['vidx_per_face']
-    valid_num_face = pred['valid_num_face']
-    vidx_per_face = vidx_per_face[0:valid_num_face[0], :]
+    vidx_per_face = pred['vidx_per_face'][0:valid_num_face, :]
 
     # eval
-    valid_num_face = np.sum(label_weight)
-    correct0 = classes == labels
-    correct1 = correct0 * label_weight
-    import pdb; pdb.set_trace()  # XXX BREAKPOINT
+    correct_mask = classes == labels
+    cort_idx = np.where(correct_mask)[0]
+    cor_num = cort_idx.shape[0]
+    err_idx = np.where(np.logical_not(correct_mask))[0]
+    acc = 1.0 * cor_num / valid_num_face
+    print('acc:{}'.format(acc))
+
+    crt_vidx_per_face = np.take(vidx_per_face, cort_idx, 0)
+    crt_classes = np.take(classes, cort_idx)
+    err_vidx_per_face = np.take(vidx_per_face, err_idx, 0)
+    err_classes = np.take(classes, err_idx)
+
+    ply_fn = os.path.join(pred_res_dir, 'crt.ply')
+    gen_mesh_ply(ply_fn, xyz, crt_vidx_per_face, face_label=crt_classes)
+
+    ply_fn = os.path.join(pred_res_dir, 'err.ply')
+    gen_mesh_ply(ply_fn, xyz, err_vidx_per_face, face_label=err_classes)
+
 
     ply_fn = os.path.join(pred_res_dir, 'pred.ply')
     gen_mesh_ply(ply_fn, xyz, vidx_per_face, face_label=classes)
+
     ply_fn = os.path.join(pred_res_dir, 'gt.ply')
     gen_mesh_ply(ply_fn, xyz, vidx_per_face, face_label=labels)
+
     import pdb; pdb.set_trace()  # XXX BREAKPOINT
     pass
 

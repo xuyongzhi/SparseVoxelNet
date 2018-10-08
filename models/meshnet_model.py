@@ -59,7 +59,7 @@ class Model(ResConvOps):
     edgev_per_vertex = inputs['edgev_per_vertex']
     valid_ev_num_pv = inputs['valid_ev_num_pv']
     vidx_per_face = inputs['vidx_per_face']
-    valid_num_face = inputs['valid_num_face']
+    valid_num_face = tf.cast(inputs['valid_num_face'], tf.int32)
 
     vertices_scales = []
     for scale in range(self.block_paras.scale_num):
@@ -74,7 +74,7 @@ class Model(ResConvOps):
     flogits = tf.reduce_mean(flogits, 2)
     fn = get_tensor_shape(vidx_per_face)[1]
     valid_face_mask = tf.tile(tf.reshape(tf.range(fn), [1,fn]), [self.batch_size,1])
-    flabel_weight = tf.cast(tf.less(valid_face_mask, fn), tf.float32)
+    flabel_weight = tf.cast(tf.less(valid_face_mask, valid_num_face), tf.float32)
     return flogits, flabel_weight
 
   def main_triangle_cnn(self, features, is_training):
