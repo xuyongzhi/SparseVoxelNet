@@ -381,10 +381,10 @@ def add_log_file(model_dir):
 
 def define_network_flags():
   net_run_loop.define_net_flags(
-      net_flag_choices=['3A', '4A', '5A'])
+      net_flag_choices=['3A', '4A', '4B', '5A'])
   flags.adopt_module_key_flags(net_run_loop)
   data_dir = os.path.join(DATA_DIR,'MATTERPORT_TF/mesh_tfrecord')
-  flags_core.set_defaults(train_epochs=220,
+  flags_core.set_defaults(train_epochs=300,
                           data_dir=data_dir,
                           model_dir=os.path.join(ROOT_DIR,'results/mesh_seg'),
                           batch_size=2,

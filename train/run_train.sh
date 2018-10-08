@@ -2,7 +2,7 @@
 ply=--pred_ply
 ply=''
 #ply=--eval_only
-net_flag='4A'
+net_flag='4B'
 
 ng=1
 bs=2

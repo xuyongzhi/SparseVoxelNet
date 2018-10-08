@@ -67,11 +67,25 @@ class Model(ResConvOps):
         vertices = self.mesh_cnn.update_vertex(scale, is_training, vertices,
               edgev_per_vertex, valid_ev_num_pv)
 
+    vertices = self.add_global(vertices)
     flogits, flabel_weight = self.face_classifier(vertices, vidx_per_face, valid_num_face)
     return flogits, flabel_weight
 
+  def add_global(self, vertices):
+    global_filters = self.block_paras.global_filters
+    if len(global_filters) == 0:
+      return vertices
+
+    global_f = tf.reduce_max(vertices, 1, keepdims=True)
+    global_f = self.dense_block(global_f, global_filters, self.is_training)
+    nv = get_tensor_shape(vertices)[1]
+    global_f = tf.tile(global_f, [1, nv, 1, 1])
+    vertices = tf.concat([vertices, global_f], -1)
+    self.log_tensor_p(vertices, '', 'cat global')
+    return vertices
+
   def face_classifier(self, vertices, vidx_per_face, valid_num_face):
-    dense_filters = [64, self.dset_metas.num_classes]
+    dense_filters = self.block_paras.dense_filters
     vlogits = self.dense_block(vertices, dense_filters, self.is_training)
     vlogits = tf.squeeze(vlogits, 2)
     flogits = gather_second_d(vlogits, vidx_per_face)
@@ -257,7 +271,10 @@ class BlockParas():
     if hasattr(self, 'e2fl_pool'):
       self.e2fl_pool = block_configs['e2fl_pool']
       self.f2v_pool = block_configs['f2v_pool']
-    self.use_face_global_scale0 = block_configs['use_face_global_scale0']
+      self.use_face_global_scale0 = block_configs['use_face_global_scale0']
+
+    self.dense_filters = block_configs['dense_filters']
+    self.global_filters = block_configs['global_filters']
 
     all_paras = {}
     for item in block_sizes:
