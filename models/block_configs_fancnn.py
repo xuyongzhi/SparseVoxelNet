@@ -27,10 +27,15 @@ def block_configs(net_flag='default'):
   block_configs['block_sizes'] = block_sizes
   block_configs['filters'] = filters
   block_configs['kernels'] = kernels
-  block_configs['block_flag'] = block_flag
 
   #*****************************************************************************
-  block_configs['global_filters'] = [128, 128, 64, 64]
-  block_configs['dense_filters'] = [128, 64, 64]
+  block_configs['global_filters'] = [128, 64]
+  block_configs['dense_filters'] = [128, 64]
+
+  #block_configs['global_filters'] = [64]
+  #block_configs['dense_filters'] = [64]
+  dense_flag = '_%d%d'%(len(block_configs['global_filters']), len(block_configs['dense_filters']))
+
+  block_configs['block_flag'] = block_flag + dense_flag
 
   return block_configs
