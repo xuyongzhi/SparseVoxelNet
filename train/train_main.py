@@ -40,7 +40,7 @@ _NUM_EXAMPLES_ALL = {}
 _NUM_EXAMPLES_ALL['MATTERPORT'] = {
         'train': -1, 'validation':-1}
 
-_NUM_TRAIN_FILES = 10
+_NUM_TRAIN_FILES = 200
 _SHUFFLE_BUFFER = 1000
 
 DATASET_NAME = 'MATTERPORT'
@@ -55,10 +55,11 @@ def get_filenames_1(is_training, data_dir):
   """Return filenames for dataset."""
   data_dir = os.path.join(data_dir, 'data')
   if is_training:
-    fn_glob = os.path.join(data_dir, '17DRP5sb8fy_region0*.tfrecord')
+    fn_glob = os.path.join(data_dir, '17DRP5sb8fy_region*.tfrecord')
   else:
-    fn_glob = os.path.join(data_dir, '17DRP5sb8fy_region0*.tfrecord')
-  all_fnls = glob.glob(fn_glob)[0:8]
+    fn_glob = os.path.join(data_dir, '17DRP5sb8fy_region*.tfrecord')
+    #fn_glob = os.path.join(data_dir, '2t7WUuJeko7_region0*.tfrecord')
+  all_fnls = glob.glob(fn_glob)
   assert len(all_fnls) > 0, fn_glob
   print('\ngot {} training files for training={}\n'.format(len(all_fnls), is_training))
   return all_fnls

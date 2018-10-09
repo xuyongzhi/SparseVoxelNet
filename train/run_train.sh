@@ -1,5 +1,5 @@
-ply=--pred_ply
-#ply=''
+#ply=--pred_ply
+ply=''
 #ply=--eval_only
 net_flag='5A'
 

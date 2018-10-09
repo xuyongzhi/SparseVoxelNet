@@ -69,6 +69,7 @@ class Model(ResConvOps):
 
     vertices = self.add_global(vertices)
     flogits, flabel_weight = self.face_classifier(vertices, vidx_per_face, valid_num_face)
+    self.log_model_summary()
     return flogits, flabel_weight
 
   def add_global(self, vertices):

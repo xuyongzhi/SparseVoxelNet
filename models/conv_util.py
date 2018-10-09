@@ -188,6 +188,7 @@ class ResConvOps(object):
   _padding = {'s':'same', 'v':'valid' }
 
   def __init__(self, net_data_configs, data_format, dtype):
+    self.net_data_configs = net_data_configs
     net_configs = net_data_configs['net_configs']
     data_configs = net_data_configs['data_configs']
     self.data_format = data_format
@@ -221,6 +222,7 @@ class ResConvOps(object):
   def log_model_summary(self):
     if self.IsShowModel:
       self.log_model_summary_()
+
   def log_model_summary_(self):
     self.model_log_f.write('\n--------------------------------------------\n')
     self.show_layers_num_summary()
@@ -248,11 +250,13 @@ class ResConvOps(object):
     config_group_to_write = ['net_configs', 'data_configs']
     for gp in config_group_to_write:
       gpc = self.net_data_configs[gp]
-      str_g = '\n%s\n'%(gp)
+      str_g = '\n{}\n'.format(gp)
       self.model_log_f.write(str_g)
       print(str_g)
       for item in gpc:
-        str_i = '\t%s:%s\n'%(item, gpc[item])
+        if item=='lr_vals':
+          gpc[item] = ', '.join(['%0.1e'%(d) for d in gpc[item]])
+        str_i = '\t{}:{}\n'.format(item, gpc[item])
         self.model_log_f.write(str_i)
         print(str_i)
 
