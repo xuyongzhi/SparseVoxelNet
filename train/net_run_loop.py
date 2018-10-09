@@ -542,6 +542,13 @@ def net_main(
   for cycle_index, num_train_epochs in enumerate(schedule):
     tf.logging.info('Starting cycle: %d/%d', cycle_index, int(n_loops))
 
+    #train_spec = tf.estimator.TrainSpec(
+    #                    input_fn=lambda: input_fn_train(num_train_epochs),
+    #                    hooks=train_hooks, max_steps=flags_obj.max_train_steps)
+    #eval_spec = tf.estimator.EvalSpec(input_fn=input_fn_eval,
+    #                                  steps=flags_obj.max_train_steps)
+    #eval_results = tf.estimator.train_and_evaluate(classifier, train_spec, eval_spec)
+
     if num_train_epochs:
       classifier.train(input_fn=lambda: input_fn_train(num_train_epochs),
                        hooks=train_hooks, max_steps=flags_obj.max_train_steps)
@@ -576,7 +583,7 @@ def net_main(
     classifier.export_savedmodel(flags_obj.export_dir, input_receiver_fn)
 
 
-def define_net_flags(net_flag_choices=None):
+def define_net_flags():
   """Add flags and validators for ResNet."""
   flags_core.define_base()
   flags_core.define_performance(num_parallel_calls=False)
@@ -603,14 +610,6 @@ def define_net_flags(net_flag_choices=None):
       help=flags_core.help_wrap('Skip training and only perform evaluation on '
                                 'the latest checkpoint.'))
 
-  choice_kwargs = dict(
-      name='net_flag', short_name='nf', default='3A',
-      help=flags_core.help_wrap('The size of the ResNet model to use.'))
-
-  if net_flag_choices is None:
-    flags.DEFINE_string(**choice_kwargs)
-  else:
-    flags.DEFINE_enum(enum_values=net_flag_choices, **choice_kwargs)
 
 def gen_pred_ply(eval_results, pred_generator, model_dir):
   from utils.ply_util import gen_mesh_ply

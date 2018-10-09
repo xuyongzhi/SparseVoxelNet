@@ -18,7 +18,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os, glob, time
+import os, glob, time, sys
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+ROOT_DIR = os.path.dirname(BASE_DIR)
+sys.path.append(ROOT_DIR)
 
 from absl import app as absl_app
 from absl import flags
@@ -32,8 +36,6 @@ from models import meshnet_model
 from datasets.tfrecord_util import parse_record, get_dset_shape_idxs
 from datasets.all_datasets_meta.datasets_meta import DatasetsMeta
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-ROOT_DIR = os.path.dirname(BASE_DIR)
 DATA_DIR = os.path.join(ROOT_DIR, 'data')
 
 _NUM_EXAMPLES_ALL = {}
@@ -382,23 +384,23 @@ def add_log_file(model_dir):
 
 
 def define_network_flags():
-  net_run_loop.define_net_flags(
-      net_flag_choices=['3A', '4A', '4B', '5A'])
+  net_run_loop.define_net_flags()
   flags.adopt_module_key_flags(net_run_loop)
   data_dir = os.path.join(DATA_DIR,'MATTERPORT_TF/mesh_tfrecord')
-  flags_core.set_defaults(train_epochs=300,
+  flags_core.set_defaults(train_epochs=200,
                           data_dir=data_dir,
                           model_dir=os.path.join(ROOT_DIR,'results/mesh_seg'),
                           batch_size=2,
                           num_gpus=1,
-                          epochs_between_evals=5,)
+                          epochs_between_evals=2,)
 
+  flags.DEFINE_string('net_flag','5A','5A')
   flags.DEFINE_string('optimizer','adam','adam momentum')
   flags.DEFINE_float('weight_decay', short_name='wd', default=1e-4, help="wd")
   flags.DEFINE_float('lr0', default=1e-3, help="base lr")
   flags.DEFINE_float('lrd_rate', default=0.7, help="learning rate decay rate")
-  flags.DEFINE_float('bnd0', default=0.8, help="base bnd")
-  flags.DEFINE_float('bnd_decay', default=0.1, help="")
+  flags.DEFINE_float('bnd0', default=0.6, help="base bnd")
+  flags.DEFINE_float('bnd_decay', default=0.5, help="")
   flags.DEFINE_integer('lrd_epochs', default=30, help="learning_rate decay epoches")
   flags.DEFINE_string('feed_data','xyz-nxnynz','xyz-nxnynz-color')
   flags.DEFINE_bool(name='residual', short_name='rs', default=False,

@@ -154,7 +154,8 @@ class Model(ResConvOps):
       inputs['fidx_pv_empty_mask'] = self.get_ele(features, 'fidx_pv_empty_mask')
 
     elif self.CNN == 'FAN':
-      inputs['edgev_per_vertex'] = self.get_ele(features, 'edgev_per_vertex')
+      edgevnum = self.block_paras.edgevnum
+      inputs['edgev_per_vertex'] = self.get_ele(features, 'edgev_per_vertex')[:,:,0:edgevnum]
       inputs['valid_ev_num_pv'] = self.get_ele(features, 'valid_ev_num_pv')
 
     return inputs
@@ -268,6 +269,7 @@ class BlockParas():
       kernels = block_configs['kernels']
     else:
       kernels = None
+    self.edgevnum = block_configs['edgevnum']
     self.scale_num = len(filters['vertex'])
     if hasattr(self, 'e2fl_pool'):
       self.e2fl_pool = block_configs['e2fl_pool']
