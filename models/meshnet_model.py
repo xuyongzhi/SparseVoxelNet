@@ -85,7 +85,7 @@ class Model(ResConvOps):
     return vertices
 
   def face_classifier(self, vertices, vidx_per_face, valid_num_face):
-    dense_filters = self.block_paras.dense_filters
+    dense_filters = self.block_paras.dense_filters + [self.dset_metas.num_classes]
     vlogits = self.dense_block(vertices, dense_filters, self.is_training)
     vlogits = tf.squeeze(vlogits, 2)
     flogits = gather_second_d(vlogits, vidx_per_face)

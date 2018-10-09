@@ -10,12 +10,12 @@ def block_configs(net_flag='default'):
 
   if net_flag == '4A' or net_flag=='4B':
     block_sizes['vertex'] = [ [1, 1, 1, 1 ],  ]
-    filters['vertex']     = [ [32, 64, 128, 128],]
+    filters['vertex']     = [ [64, 64, 128, 128],]
     kernels['vertex']     = [ [7, 7, 7, 7],  ]
 
   elif net_flag == '5A':
     block_sizes['vertex'] = [ [1, 1, 1, 1, 1],  ]
-    filters['vertex']     = [ [32, 64, 128, 128, 256],]
+    filters['vertex']     = [ [32, 64, 64, 128, 128],]
     kernels['vertex']     = [ [7, 7, 7, 7, 7],  ]
 
   else:
@@ -29,8 +29,8 @@ def block_configs(net_flag='default'):
   block_configs['kernels'] = kernels
 
   #*****************************************************************************
-  block_configs['global_filters'] = [128, 64]
-  block_configs['dense_filters'] = [128, 64]
+  block_configs['global_filters'] = [64, 64]
+  block_configs['dense_filters'] = [64, 64]
 
   #block_configs['global_filters'] = [64]
   #block_configs['dense_filters'] = [64]

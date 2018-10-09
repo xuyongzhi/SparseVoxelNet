@@ -394,9 +394,9 @@ def define_network_flags():
 
   flags.DEFINE_string('optimizer','adam','adam momentum')
   flags.DEFINE_float('weight_decay', short_name='wd', default=1e-4, help="wd")
-  flags.DEFINE_float('lr0', default=1e-4, help="base lr")
-  flags.DEFINE_float('lrd_rate', default=1.0, help="learning rate decay rate")
-  flags.DEFINE_float('bnd0', default=0.9, help="base bnd")
+  flags.DEFINE_float('lr0', default=1e-3, help="base lr")
+  flags.DEFINE_float('lrd_rate', default=0.7, help="learning rate decay rate")
+  flags.DEFINE_float('bnd0', default=0.8, help="base bnd")
   flags.DEFINE_float('bnd_decay', default=0.1, help="")
   flags.DEFINE_integer('lrd_epochs', default=30, help="learning_rate decay epoches")
   flags.DEFINE_string('feed_data','xyz-nxnynz','xyz-nxnynz-color')

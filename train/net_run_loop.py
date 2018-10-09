@@ -185,7 +185,7 @@ def learning_rate_with_decay(
   boundaries = [int(batches_per_epoch * epoch) for epoch in boundary_epochs]
   n = len(boundaries)
   lr_vals = [initial_learning_rate * pow(lr_decay_rate, i) for i in range(n+1)]
-  lr_vals = [max(l, 5e-5) for l in lr_vals]
+  lr_vals = [max(l, 3e-5) for l in lr_vals]
   bnd_vals = [(1-initial_bnd_rate) * pow(bnd_decay_rate, i) for i in range(n+1)]
   bnd_vals = [min(1-d, 0.999) for d in bnd_vals]
 
