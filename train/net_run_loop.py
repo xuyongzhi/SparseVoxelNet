@@ -561,7 +561,7 @@ def net_main(
 
       if flags_obj.pred_ply:
         pred_generator = classifier.predict(input_fn=input_fn_eval)
-        gen_pred_ply(eval_results, pred_generator)
+        gen_pred_ply(eval_results, pred_generator, flags_obj.model_dir)
 
       benchmark_logger.log_evaluation_result(eval_results)
 
@@ -612,13 +612,12 @@ def define_net_flags(net_flag_choices=None):
   else:
     flags.DEFINE_enum(enum_values=net_flag_choices, **choice_kwargs)
 
-def gen_pred_ply(eval_results, pred_generator):
+def gen_pred_ply(eval_results, pred_generator, model_dir):
   from utils.ply_util import gen_mesh_ply
   import numpy as np
 
   k = 0
   for pred in pred_generator:
-    pred_res_dir = '/tmp/pred_res_%d'%(k)
     k += 1
 
     valid_num_face = int( pred['valid_num_face'] )
@@ -640,6 +639,8 @@ def gen_pred_ply(eval_results, pred_generator):
     crt_classes = np.take(classes, cort_idx)
     err_vidx_per_face = np.take(vidx_per_face, err_idx, 0)
     err_classes = np.take(classes, err_idx)
+
+    pred_res_dir = '/%s/plys/b%d_Acc_%d'%(model_dir, k, int(100*acc))
 
     ply_fn = os.path.join(pred_res_dir, 'crt.ply')
     gen_mesh_ply(ply_fn, xyz, crt_vidx_per_face, face_label=crt_classes)
