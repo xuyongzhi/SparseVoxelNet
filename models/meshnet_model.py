@@ -63,7 +63,7 @@ class Model(ResConvOps):
 
     vertices_scales = []
     for scale in range(self.block_paras.scale_num):
-      with tf.variable_scope('S%d'%(scale)):
+      with tf.variable_scope('FanCnn'):
         vertices = self.mesh_cnn.update_vertex(scale, is_training, vertices,
               edgev_per_vertex, valid_ev_num_pv)
 
@@ -177,7 +177,7 @@ class FanCnn():
 
     blocks_params = self.block_paras.get_block_paras('vertex', scale)
     edgev = self.blocks_layers(scale, vertices, blocks_params, self.block_fn,
-                               is_training, '%d'%( scale),
+                               is_training, 'S%d'%( scale),
                                edgev_per_vertex=edgev_per_vertex)
     return edgev
 

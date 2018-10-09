@@ -55,10 +55,10 @@ def get_filenames_1(is_training, data_dir):
   """Return filenames for dataset."""
   data_dir = os.path.join(data_dir, 'data')
   if is_training:
-    fn_glob = os.path.join(data_dir, '17DRP5sb8fy_*.tfrecord')
+    fn_glob = os.path.join(data_dir, '17DRP5sb8fy_region0*.tfrecord')
   else:
-    fn_glob = os.path.join(data_dir, '17DRP5sb8fy_*.tfrecord')
-  all_fnls = glob.glob(fn_glob)
+    fn_glob = os.path.join(data_dir, '17DRP5sb8fy_region0*.tfrecord')
+  all_fnls = glob.glob(fn_glob)[0:8]
   assert len(all_fnls) > 0, fn_glob
   print('\ngot {} training files for training={}\n'.format(len(all_fnls), is_training))
   return all_fnls
@@ -314,6 +314,7 @@ def parse_flags_update_configs(flags_obj):
   # net_configs
   net_configs = {}
   net_configs['residual'] = flags_obj.residual
+  net_configs['shortcut'] = flags_obj.shortcut
   net_configs['drop_imo_str'] = flags_obj.drop_imo
   net_configs['drop_imo'] = [0.1*int(e) for e in flags_obj.drop_imo]
   net_configs['lr0'] = flags_obj.lr0
@@ -401,6 +402,7 @@ def define_network_flags():
   flags.DEFINE_string('feed_data','xyz-nxnynz','xyz-nxnynz-color')
   flags.DEFINE_bool(name='residual', short_name='rs', default=False,
       help=flags_core.help_wrap('Is use reidual architecture'))
+  flags.DEFINE_string('shortcut','C','C Z')
   flags.DEFINE_string('drop_imo','000','dropout rate for input, middle and out')
   flags.DEFINE_bool(name='pred_ply', default=False, help ="")
 

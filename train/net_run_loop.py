@@ -554,7 +554,7 @@ def net_main(
     # eval (which is generally unimportant in those circumstances) to terminate.
     # Note that eval will run for max_train_steps each loop, regardless of the
     # global_step count.
-    only_train = False and (not flags_obj.eval_only) and (not flags_obj.pred_ply)
+    only_train = True and (not flags_obj.eval_only) and (not flags_obj.pred_ply)
     if not only_train:
       eval_results = classifier.evaluate(input_fn=input_fn_eval,
                                         steps=flags_obj.max_train_steps)
@@ -615,9 +615,12 @@ def define_net_flags(net_flag_choices=None):
 def gen_pred_ply(eval_results, pred_generator):
   from utils.ply_util import gen_mesh_ply
   import numpy as np
-  pred_res_dir = '/tmp/pred_res'
 
+  k = 0
   for pred in pred_generator:
+    pred_res_dir = '/tmp/pred_res_%d'%(k)
+    k += 1
+
     valid_num_face = int( pred['valid_num_face'] )
     classes = pred['classes'][0:valid_num_face]
     probabilities = pred['probabilities'][0:valid_num_face,:]

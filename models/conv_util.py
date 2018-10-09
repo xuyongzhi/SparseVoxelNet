@@ -37,7 +37,7 @@ import os, sys
 #BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 #ROOT_DIR = os.path.dirname(BASE_DIR)
 
-DEBUG_TMP = False
+DEBUG_TMP = True
 
 _BATCH_NORM_DECAY = 0.997
 _BATCH_NORM_EPSILON = 1e-5
@@ -198,6 +198,7 @@ class ResConvOps(object):
     self.num_gpus = net_configs['num_gpus']
     self.batch_size = self.batch_size_alltower // self.num_gpus
     self.residual = net_configs['residual']
+    self.shortcut_method = net_configs['shortcut']
     train_global_step = tf.train.get_or_create_global_step()
     self.res_scale = 1.0
     self.use_bias = True
@@ -218,9 +219,9 @@ class ResConvOps(object):
     ResConvOps._epoch += 1
 
   def log_model_summary(self):
-    if not self.IsShowModel:
-      return
-
+    if self.IsShowModel:
+      self.log_model_summary_()
+  def log_model_summary_(self):
     self.model_log_f.write('\n--------------------------------------------\n')
     self.show_layers_num_summary()
     self.model_log_f.write('\n\n--------------------------------------------\n')
@@ -295,6 +296,8 @@ class ResConvOps(object):
     # https://www.tensorflow.org/performance/performance_guide#common_fused_ops
     #batch_size = get_tensor_shape(inputs)[0]
     batch_size = self.batch_size
+    if DEBUG_TMP:
+      training = True
     if batch_size > 1:
       global_step = tf.train.get_or_create_global_step()
       batch_norm_decay = self.batch_norm_decay_fn(global_step)
@@ -345,9 +348,12 @@ class ResConvOps(object):
       self.log(tensor_info(inputs, pool_str, layer_name,
                            batch_size=self.batch_size))
 
-  def log_dotted_line(self, name):
+  def log_dotted_line(self, name, id=0):
     if self.IsShowModel:
-      self.log('\n---------------------- %s ----------------------'%(name))
+      if id==0:
+        self.log('\n----------------------------- %s ----------------------------'%(name))
+      elif id==1:
+        self.log('\n- - - - - - - - - - - - - %s - - - - - - - - - - - - -'%(name))
 
   def show_layers_num_summary(self):
     self.log('block layers num:{}\nconv2d num:{}\nconv3d num:{}\nconv1d num:{}\ndense num:{}'.format(
@@ -520,44 +526,43 @@ class ResConvOps(object):
     return inputs
 
 
-
   def fan_block_v2(self, vertices, block_params, training, projection_shortcut,
-                        half_layer=None, no_ini_bn=False, edgev=None):
+                        half_layer=None, initial_layer=False, edgev_per_vertex=None):
     filters = block_params['filters']
     kernels = block_params['kernels']
     strides = block_params['strides']
     pad_stride1 = block_params['pad_stride1']
+    assert isinstance(filters, int)
+    assert isinstance(kernels, int)
+    assert len(get_tensor_shape(vertices)) == 4
+    if edgev_per_vertex is  not None:
+      assert len(get_tensor_shape(edgev_per_vertex)) == 3
 
     shortcut = vertices
-    if not no_ini_bn:
+    if not initial_layer:
       vertices = self.batch_norm(vertices, training, tf.nn.relu)
-    if projection_shortcut == 'FirstResUnit':
-      # For pointnet, projection shortcut is not needed at the First ResUnit.
-      # However, BN and Activation is still required at the First ResUnit for
-      # pre-activation.
-      shortcut = vertices
-      projection_shortcut = None
-      if self.IsShowModel:  self.log(
-            'shortcut after activation identity for pointnet first res unit')
-    if half_layer:
-      projection_shortcut = None
+
+    if edgev_per_vertex is not None:
+      # gather edgev after BN
+      edgev = gather_second_d(tf.squeeze(vertices, 2), edgev_per_vertex)
+      self.log_tensor_p(edgev, 'edgev', 'vertice neighbor ')
 
     # The projection shortcut should come after the first batch norm and ReLU
     # since it performs a 1x1 convolution.
     if projection_shortcut is not None:
       shortcut = projection_shortcut(vertices)
 
-    with tf.variable_scope('c0'):
+    with tf.variable_scope('vc0'):
       vertices = self.conv1d2d3d(vertices, filters, 1, 1, 'v')
       self.log_tensor_c(vertices, 1, 1, 'v',
-                          tf.get_variable_scope().name)
-      if edgev is not None:
-        evn0 = get_tensor_shape(edgev)[2]
+                        tf.get_variable_scope().name)
+    if edgev is not None:
+      evn0 = get_tensor_shape(edgev)[2]
+      with tf.variable_scope('evc0'):
         edgev = self.conv1d2d3d(edgev, filters, [1, kernels], strides, pad_stride1)
-        self.log_tensor_c(vertices, kernels, strides, pad_stride1,
-                          tf.get_variable_scope().name)
-        vertices += edgev
-    if half_layer: return vertices
+        self.log_tensor_c(edgev, kernels, strides, pad_stride1,
+                        tf.get_variable_scope().name)
+      vertices += edgev
     vertices = self.batch_norm(vertices, training, tf.nn.relu)
 
     with tf.variable_scope('c1'):
@@ -569,7 +574,7 @@ class ResConvOps(object):
       self.log_tensor_c(vertices, kernels_1, 1, 'v',
                         tf.get_variable_scope().name)
 
-    if self.residual:
+    if self.residual and not initial_layer:
       assert vertices.shape == shortcut.shape
       if self.IsShowModel: self.log('Add shortcut*%0.1f'%(self.res_scale))
       return vertices * self.res_scale + shortcut
@@ -816,6 +821,44 @@ class ResConvOps(object):
     '''
     scm = self.shortcut_method
     filters_out_sc = block_params['filters']
+
+    channel_increase = self.get_feature_channels(inputs) != filters_out_sc
+    need_projection = channel_increase != 0
+    if not need_projection:
+      return inputs
+
+    if scm == 'C' or channel_increase<0:
+      # pad_stride1=='v: feature map size have to be reduced => kernels
+      with tf.variable_scope('sc_C'):
+        shortcut = self.conv1d2d3d(inputs, filters_out_sc, 1, 1, 'v')
+        self.log_tensor_c(shortcut, 1, 1, 'v', tf.get_variable_scope().name)
+
+    elif scm == 'Z':
+      with tf.variable_scope('sc_'+scm):
+        shortcut = self.padding_channel(inputs, channel_increase)
+        self.log_tensor_p(shortcut, 'padding', tf.get_variable_scope().name)
+
+    else:
+      raise NotImplementedError
+    return shortcut
+
+  def shortcut_fn_UNUSED(self, inputs, block_params):
+    ''' shortcut functions when feature map size decrease or channel increase
+    (1) Four methods for reducing feature map size:
+      (a) Conv+Padding (b) Pool+Padding  => Kernel > 1, Padding='v'
+      (c) Conv+Stride (d) Pool+Stride    => Stride > 1
+      Stride>1 is commonly used by 2D, but not used here, because feature map
+      is too small. Focus on a,b
+    (2) Tow methos for increasing channels:
+      (i) conv (j) zero padding
+    (3) shortcut: C, MC, AC, MZ, AZ
+      Candidate procedure for reducing feature map and increasing channels:
+      ['C'] Conv(kernel>1) + Padding('v') #Large model
+      ['MC'/'AC'] Max/Ave Pool(Kernle>1) + Padding('v') => 1x1 Conv # Small weight
+      ['MZ'/'AZ'] Max/Ave Pool(Kernel>1) + Padding('v') => Channel zero padding # No weight
+    '''
+    scm = self.shortcut_method
+    filters_out_sc = block_params['filters']
     kernels = block_params['kernels']
     strides = block_params['strides']
     pad_stride1 = block_params['pad_stride1']
@@ -866,19 +909,22 @@ class ResConvOps(object):
   def blocks_layers(self, scale, inputs, blocks_params, block_fn, is_training, scope, edgev_per_vertex=None):
     self.log_tensor_p(inputs, '', scope)
     self.log_dotted_line(scope)
-    for bi in range(len(blocks_params)):
-      if edgev_per_vertex is not None:
-        edgev = gather_second_d(tf.squeeze(inputs, 2), edgev_per_vertex)
-        self.log_tensor_p(edgev, 'edgev', scope)
-      else:
-        edgev = None
+    # initial layer
+    with tf.variable_scope('initial_layer'):
+      self.log_dotted_line(scope+'_Initial_Layer', 1)
+      inputs = block_fn(inputs, blocks_params[0], is_training, projection_shortcut=None,
+                        initial_layer=True, edgev_per_vertex=edgev_per_vertex)
 
+    for bi in range(1, len(blocks_params)):
       with tf.variable_scope(scope+'_b%d'%(bi)):
+        self.log_dotted_line(scope+'_Block%d'%(bi), 1)
         inputs = self.block_layer(scale, inputs, blocks_params[bi], block_fn,
-                                is_training, scope+'_b%d'%(bi), edgev=edgev)
+                                is_training, scope+'_b%d'%(bi), edgev_per_vertex=edgev_per_vertex)
+    inputs = self.batch_norm(inputs, is_training, tf.nn.relu)
+    self.log_dotted_line(scope)
     return inputs
 
-  def block_layer(self, scale, inputs, block_params, block_fn, is_training, name, edgev=None):
+  def block_layer(self, scale, inputs, block_params, block_fn, is_training, name, edgev_per_vertex=None):
     """Creates one layer of block_size for the ResNet model.
 
     Args:
@@ -899,33 +945,17 @@ class ResConvOps(object):
       The output tensor of the block layer.
     """
     block_size = block_params['block_sizes']
+    assert block_size>=1
     filters = block_params['filters']
-
-    if block_size==0: return inputs
-    half_layer = block_size==0.5
-    if half_layer:
-      block_size = 1
-    # Bottleneck block_size end with 4x the number of filters as they start with
-    bottleneck = block_fn == self.bottleneck_block_v2
 
     def shortcut_projection(inputs):
       return self.shortcut_fn(inputs, block_params)
 
     # (1) Only the first block per block_layer uses projection_shortcut and strides
     # and pad_stride1
-    # (2) No need to change map size and channels in first unit if Pointnet
-    if self._block_layers_num == 0 and filters==inputs.shape[0].value:
-        projection_shortcut_0 = 'FirstResUnit'
-    else:
-      projection_shortcut_0 = shortcut_projection
-      if scale!=0 and self.block_style == 'Inception' and NoRes_InceptionReduction:
-        projection_shortcut_0 = None
-    if not self.residual:
-      projection_shortcut_0 = None
     with tf.variable_scope('L0'):
-      no_ini_bn = scale==1
-      inputs = block_fn(inputs, block_params, is_training, projection_shortcut_0,
-                        half_layer, no_ini_bn=no_ini_bn, edgev=edgev)
+      inputs = block_fn(inputs, block_params, is_training, shortcut_projection,
+                        edgev_per_vertex=edgev_per_vertex)
 
     block_params['strides'] = 1
     block_params['pad_stride1'] = 's'
@@ -948,6 +978,7 @@ class ResConvOps(object):
         if out_drop_rate>0:
           if self.IsShowModel: self.log('dropout {}'.format(out_drop_rate))
           inputs = tf.layers.dropout(inputs, out_drop_rate, training=is_training)
+    self.log_dotted_line('Dense End')
     return inputs
 
 
