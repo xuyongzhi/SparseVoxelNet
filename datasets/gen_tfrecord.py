@@ -203,7 +203,7 @@ class Raw_To_Tfrecord():
         continue
       num_points_splited.append(num_point_i)
       splited_vidx.append(indices)
-    return splited_vidx, block_num
+    return splited_vidx
 
 
   @staticmethod
@@ -246,7 +246,8 @@ class Raw_To_Tfrecord():
     # 'xyz', 'nxnynz', 'label_raw_category', 'label_instance']
     raw_datas = parse_ply_file(rawfn)
 
-    splited_vidx, block_num = self.split_vertex(raw_datas['xyz'])
+    splited_vidx = self.split_vertex(raw_datas['xyz'])
+    block_num = len(splited_vidx)
     valid_block_num = len(splited_vidx)
     num_points_splited = [e.shape[0] if type(e)!=type(None) else raw_datas['xyz'].shape[0]\
                           for e in splited_vidx]
