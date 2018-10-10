@@ -330,6 +330,8 @@ def parse_flags_update_configs(flags_obj):
   net_configs['batch_size'] = flags_obj.batch_size
   net_configs['num_gpus'] = flags_obj.num_gpus
   net_configs['optimizer'] = flags_obj.optimizer
+  net_configs['eval_only'] = flags_obj.eval_only
+  net_configs['pred_ply'] = flags_obj.pred_ply
 
   net_data_configs['net_configs'] = net_configs
 
@@ -337,6 +339,11 @@ def parse_flags_update_configs(flags_obj):
   return net_data_configs
 
 def define_model_dir(flags_obj, net_data_configs):
+  if flags_obj.eval_only or flags_obj.pred_ply:
+    flags_obj.model_dir = os.path.join(ROOT_DIR, 'results/meshseg', flags_obj.model_dir)
+    assert os.path.exists(flags_obj.model_dir+'/checkpoint'),"eval but model_dir does not exist"
+    return flags_obj.model_dir
+
   def model_name():
     if flags_obj.residual == 1:
       modelname = 'R'
@@ -360,7 +367,7 @@ def define_model_dir(flags_obj, net_data_configs):
   wd = -int(wd.split('E')[1])
   logname += '-wd' + str(wd)
 
-  model_dir = os.path.join(ROOT_DIR, 'results/meshsag', logname)
+  model_dir = os.path.join(ROOT_DIR, 'results/meshseg', logname)
   flags_obj.model_dir = model_dir
 
   if not os.path.exists(model_dir):
@@ -389,7 +396,6 @@ def define_network_flags():
   data_dir = os.path.join(DATA_DIR,'MATTERPORT_TF/mesh_tfrecord')
   flags_core.set_defaults(train_epochs=200,
                           data_dir=data_dir,
-                          model_dir=os.path.join(ROOT_DIR,'results/mesh_seg'),
                           batch_size=2,
                           num_gpus=1,
                           epochs_between_evals=2,)

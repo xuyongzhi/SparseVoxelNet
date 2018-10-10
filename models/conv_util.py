@@ -210,7 +210,7 @@ class ResConvOps(object):
     self.batch_norm_decay_fn = net_configs['bn_decay_fn']
 
     model_dir = data_configs['model_dir']
-    if ResConvOps._epoch==0:
+    if ResConvOps._epoch==0 and not (net_configs['eval_only'] or net_configs['pred_ply']):
       self.IsShowModel = True
       if not os.path.exists(model_dir):
         os.makedirs(model_dir)
