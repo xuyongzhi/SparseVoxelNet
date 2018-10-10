@@ -394,7 +394,7 @@ def define_network_flags():
   net_run_loop.define_net_flags()
   flags.adopt_module_key_flags(net_run_loop)
   data_dir = os.path.join(DATA_DIR,'MATTERPORT_TF/mesh_tfrecord')
-  flags_core.set_defaults(train_epochs=200,
+  flags_core.set_defaults(train_epochs=220,
                           data_dir=data_dir,
                           batch_size=2,
                           num_gpus=1,

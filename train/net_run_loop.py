@@ -539,6 +539,7 @@ def net_main(
       max_memory_usage_v = sess.run(max_memory_usage)
       tf.logging.info('\n\nmemory usage: %0.3f G\n\n'%(max_memory_usage_v*1.0/1e9))
 
+  best_acc = 0
   for cycle_index, num_train_epochs in enumerate(schedule):
     tf.logging.info('Starting cycle: %d/%d', cycle_index, int(n_loops))
 
@@ -576,11 +577,25 @@ def net_main(
           flags_obj.stop_threshold, eval_results['accuracy']):
         break
 
+    if num_train_epochs and  eval_results['accuracy'] > best_acc:
+      best_acc = eval_results
+      save_cur_model_as_best_acc(flags_obj.model_dir)
+
   if flags_obj.export_dir is not None:
     # Exports a saved model for the given classifier.
     input_receiver_fn = export.build_tensor_serving_input_receiver_fn(
         shape, batch_size=flags_obj.batch_size)
     classifier.export_savedmodel(flags_obj.export_dir, input_receiver_fn)
+
+
+def save_cur_model_as_best_acc(model_dir):
+  import glob, os, shutil
+  cur_model_path = tf.train.latest_checkpoint(model_dir)
+  cur_name = os.path.basename(cur_model_path)
+  cur_fns = glob.glob(cur_model_path+'*')
+  new_fns = [fn.replace(cur_name, 'best_acc') for fn in cur_fns]
+  for i in range(3):
+    shutil.copyfile(cur_fns[i], new_fns[i])
 
 
 def define_net_flags():
