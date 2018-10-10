@@ -150,7 +150,7 @@ class Raw_To_Tfrecord():
 
   def split_vertex(self, xyz):
     if type(self.block_size) == type(None):
-      return [None], 1
+      return [None]
 
     xyz_min = np.min(xyz, 0)
     xyz_max = np.max(xyz, 0)
@@ -174,7 +174,7 @@ class Raw_To_Tfrecord():
     #print('splited bot:\n{} splited top:\n{}'.format(bot, top))
 
     if block_num == 1:
-      return [None],  block_num
+      return [None]
 
     if block_num>1:
       for i in range(block_num):
