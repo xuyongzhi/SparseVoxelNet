@@ -577,9 +577,16 @@ def net_main(
           flags_obj.stop_threshold, eval_results['accuracy']):
         break
 
-    if num_train_epochs and  eval_results['accuracy'] > best_acc:
-      best_acc = eval_results
-      save_cur_model_as_best_acc(flags_obj.model_dir)
+      cur_is_best = ''
+      if num_train_epochs and  eval_results['accuracy'] > best_acc:
+        best_acc = eval_results
+        #save_cur_model_as_best_acc(flags_obj.model_dir)
+        cur_is_best = 'best'
+      global_step = cur_global_step(flags_obj.model_dir)
+      epoch = global_step / flags_obj.examples_per_epoch
+      metric_logf.write('{} eval acc: {} {}\n'.format(epoch,
+                                          eval_results['accuracy'], cur_is_best))
+      metric_logf.flush()
 
   if flags_obj.export_dir is not None:
     # Exports a saved model for the given classifier.
@@ -588,10 +595,18 @@ def net_main(
     classifier.export_savedmodel(flags_obj.export_dir, input_receiver_fn)
 
 
+def cur_global_step(model_dir):
+  import os
+  cur_model_path = tf.train.latest_checkpoint(model_dir)
+  cur_name = os.path.basename(cur_model_path)
+  global_step = int(cur_name.split('-')[1])
+  return global_step
+
 def save_cur_model_as_best_acc(model_dir):
   import glob, os, shutil
   cur_model_path = tf.train.latest_checkpoint(model_dir)
   cur_name = os.path.basename(cur_model_path)
+  global_step = int(cur_name.split('-')[1])
   cur_fns = glob.glob(cur_model_path+'*')
   new_fns = [fn.replace(cur_name, 'best_acc') for fn in cur_fns]
   for i in range(3):
