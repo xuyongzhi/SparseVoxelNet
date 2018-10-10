@@ -534,21 +534,14 @@ def net_main(
     schedule = [flags_obj.epochs_between_evals for _ in range(int(n_loops))]
     schedule[-1] = flags_obj.train_epochs - sum(schedule[:-1])  # over counting.
 
-    classifier.train(input_fn=lambda: input_fn_train(1) ,hooks=train_hooks, max_steps=10)
+    classifier.train(input_fn=lambda: input_fn_train(1) ,hooks=train_hooks, max_steps=50)
     with tf.Session() as sess:
       max_memory_usage_v = sess.run(max_memory_usage)
       tf.logging.info('\n\nmemory usage: %0.3f G\n\n'%(max_memory_usage_v*1.0/1e9))
 
-  best_acc = 0
+  best_acc = load_saved_best(flags_obj.model_dir)
   for cycle_index, num_train_epochs in enumerate(schedule):
     tf.logging.info('Starting cycle: %d/%d', cycle_index, int(n_loops))
-
-    #train_spec = tf.estimator.TrainSpec(
-    #                    input_fn=lambda: input_fn_train(num_train_epochs),
-    #                    hooks=train_hooks, max_steps=flags_obj.max_train_steps)
-    #eval_spec = tf.estimator.EvalSpec(input_fn=input_fn_eval,
-    #                                  steps=flags_obj.max_train_steps)
-    #eval_results = tf.estimator.train_and_evaluate(classifier, train_spec, eval_spec)
 
     if num_train_epochs:
       classifier.train(input_fn=lambda: input_fn_train(num_train_epochs),
@@ -562,7 +555,7 @@ def net_main(
     # eval (which is generally unimportant in those circumstances) to terminate.
     # Note that eval will run for max_train_steps each loop, regardless of the
     # global_step count.
-    only_train = True and (not flags_obj.eval_only) and (not flags_obj.pred_ply)
+    only_train = False and (not flags_obj.eval_only) and (not flags_obj.pred_ply)
     if not only_train:
       eval_results = classifier.evaluate(input_fn=input_fn_eval,
                                         steps=flags_obj.max_train_steps)
@@ -579,8 +572,8 @@ def net_main(
 
       cur_is_best = ''
       if num_train_epochs and  eval_results['accuracy'] > best_acc:
-        best_acc = eval_results
-        #save_cur_model_as_best_acc(flags_obj.model_dir)
+        best_acc = eval_results['accuracy']
+        save_cur_model_as_best_acc(flags_obj.model_dir, best_acc)
         cur_is_best = 'best'
       global_step = cur_global_step(flags_obj.model_dir)
       epoch = global_step / flags_obj.examples_per_epoch
@@ -602,7 +595,17 @@ def cur_global_step(model_dir):
   global_step = int(cur_name.split('-')[1])
   return global_step
 
-def save_cur_model_as_best_acc(model_dir):
+def load_saved_best(model_dir):
+  bafn = model_dir+'/best_accuracy.txt'
+  if not os.path.exists(bafn):
+    return 0
+  with open(bafn, 'r') as bf:
+    for line in bf:
+      best_acc = float(line.strip())
+      return best_acc
+
+
+def save_cur_model_as_best_acc(model_dir, best_acc):
   import glob, os, shutil
   cur_model_path = tf.train.latest_checkpoint(model_dir)
   cur_name = os.path.basename(cur_model_path)
@@ -611,6 +614,9 @@ def save_cur_model_as_best_acc(model_dir):
   new_fns = [fn.replace(cur_name, 'best_acc') for fn in cur_fns]
   for i in range(3):
     shutil.copyfile(cur_fns[i], new_fns[i])
+
+  with open(model_dir+'/best_accuracy.txt', 'w') as bf:
+    bf.write(str(best_acc))
 
 
 def define_net_flags():

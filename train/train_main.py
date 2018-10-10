@@ -62,7 +62,7 @@ def get_filenames_1(is_training, data_dir):
     fn_glob = os.path.join(data_dir, '17DRP5sb8fy_region*.tfrecord')
     #fn_glob = os.path.join(data_dir, '2t7WUuJeko7_region0*.tfrecord')
   all_fnls = glob.glob(fn_glob)
-  all_fnls = all_fnls[0:2]
+  #all_fnls = all_fnls[0:2]
   assert len(all_fnls) > 0, fn_glob
   print('\ngot {} training files for training={}\n'.format(len(all_fnls), is_training))
   return all_fnls
@@ -395,20 +395,20 @@ def define_network_flags():
   net_run_loop.define_net_flags()
   flags.adopt_module_key_flags(net_run_loop)
   data_dir = os.path.join(DATA_DIR,'MATTERPORT_TF/mesh_tfrecord')
-  flags_core.set_defaults(train_epochs=220,
+  flags_core.set_defaults(train_epochs=300,
                           data_dir=data_dir,
                           batch_size=2,
-                          num_gpus=1,
-                          epochs_between_evals=2,)
+                          num_gpus=2,
+                          epochs_between_evals=3,)
 
   flags.DEFINE_string('net_flag','5A','5A')
   flags.DEFINE_string('optimizer','adam','adam momentum')
   flags.DEFINE_float('weight_decay', short_name='wd', default=1e-4, help="wd")
   flags.DEFINE_float('lr0', default=1e-3, help="base lr")
-  flags.DEFINE_float('lrd_rate', default=0.7, help="learning rate decay rate")
+  flags.DEFINE_float('lrd_rate', default=0.6, help="learning rate decay rate")
   flags.DEFINE_float('bnd0', default=0.6, help="base bnd")
-  flags.DEFINE_float('bnd_decay', default=0.5, help="")
-  flags.DEFINE_integer('lrd_epochs', default=30, help="learning_rate decay epoches")
+  flags.DEFINE_float('bnd_decay', default=0.3, help="")
+  flags.DEFINE_integer('lrd_epochs', default=20, help="learning_rate decay epoches")
   flags.DEFINE_string('feed_data','xyz-nxnynz','xyz-nxnynz-color')
   flags.DEFINE_bool(name='residual', short_name='rs', default=False,
       help=flags_core.help_wrap('Is use reidual architecture'))
