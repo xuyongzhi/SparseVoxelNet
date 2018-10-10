@@ -534,7 +534,7 @@ def net_main(
     schedule = [flags_obj.epochs_between_evals for _ in range(int(n_loops))]
     schedule[-1] = flags_obj.train_epochs - sum(schedule[:-1])  # over counting.
 
-    classifier.train(input_fn=lambda: input_fn_train(1) ,hooks=train_hooks, max_steps=50)
+    classifier.train(input_fn=lambda: input_fn_train(1) ,hooks=train_hooks, max_steps=10)
     with tf.Session() as sess:
       max_memory_usage_v = sess.run(max_memory_usage)
       tf.logging.info('\n\nmemory usage: %0.3f G\n\n'%(max_memory_usage_v*1.0/1e9))

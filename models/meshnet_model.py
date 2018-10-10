@@ -149,8 +149,8 @@ class Model(ResConvOps):
     vertices = []
     for e in self.data_configs['feed_data']:
       ele = self.get_ele(features, e)
-      if e=='xyz':
-        ele = self.normalize_xyz(ele)
+      #if e=='xyz':
+      #  ele = self.normalize_xyz(ele)
       vertices.append(ele)
     inputs['vertices'] = vertices = tf.concat(vertices, -1)
     vshape = get_tensor_shape(vertices)
