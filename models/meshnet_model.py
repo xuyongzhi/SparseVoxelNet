@@ -66,6 +66,7 @@ class Model(ResConvOps):
       with tf.variable_scope('FanCnn'):
         vertices = self.mesh_cnn.update_vertex(scale, is_training, vertices,
               edgev_per_vertex, valid_ev_num_pv)
+        #vertices = self.mesh_cnn.pool_mesh(vertices, edgev_per_vertex)
 
     vertices = self.add_global(vertices)
     flogits, flabel_weight = self.face_classifier(vertices, vidx_per_face, valid_num_face)
@@ -182,6 +183,29 @@ class FanCnn():
                                is_training, 'S%d'%( scale),
                                edgev_per_vertex=edgev_per_vertex)
     return edgev
+
+  def pool_mesh(vertices, edgev_per_vertex, pool_method='mean', pool_rate=0.5):
+    '''
+    max mean identity
+    '''
+    if pool_method == 'identity':
+      pass
+    else:
+      if pool_method == 'max':
+        pool_fn = tf.reduce_max
+      elif pool_method == 'mean':
+        pool_fn = tf.reduce_mean
+      vertices = gather_second_d(vertices, edgev_per_vertex)
+      vertices = tf.reduce_max(vertices, 2)
+
+    vn = get_tensor_shape(vertices)[0]
+    new_vn = int(pool_rate * vn)
+    remain_idx = random.sample(range(vn), new_vn)
+    remain_idx.sort()
+    new_vertices = tf.gather(vertices, remain_idx, axis=1)
+    import pdb; pdb.set_trace()  # XXX BREAKPOINT
+    pass
+
 
 class TriangleCnn():
   def __init__(self, blocks_layers_fn=None, block_fn=None, block_paras=None,
