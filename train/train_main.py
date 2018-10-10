@@ -57,9 +57,9 @@ def get_filenames_1(is_training, data_dir):
   """Return filenames for dataset."""
   data_dir = os.path.join(data_dir, 'data')
   if is_training:
-    fn_glob = os.path.join(data_dir, '17DRP5sb8fy_region*.tfrecord')
+    fn_glob = os.path.join(data_dir, '*_region*.tfrecord')
   else:
-    fn_glob = os.path.join(data_dir, '17DRP5sb8fy_region*.tfrecord')
+    fn_glob = os.path.join(data_dir, '*_region*.tfrecord')
     #fn_glob = os.path.join(data_dir, '2t7WUuJeko7_region0*.tfrecord')
   all_fnls = glob.glob(fn_glob)
   #all_fnls = all_fnls[0:2]
@@ -85,7 +85,8 @@ def update_examples_num(is_training, data_dir):
   all_fnls = get_filenames(is_training, data_dir)
   tot = 'train' if is_training else 'validation'
   _NUM_EXAMPLES[tot] = get_global_block_num(all_fnls)
-  print('update training global block num:{}'.format(_NUM_EXAMPLES[tot]))
+  if is_training:
+    print('examples_per_epoch:{}'.format(_NUM_EXAMPLES[tot]))
 
 def get_global_block_num(fnls):
   t0 = time.time()

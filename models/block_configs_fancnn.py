@@ -28,11 +28,14 @@ def block_configs(net_flag='default'):
     filters['vertex']     = [ [32, 64, 64, 128, 128, 256, 256],]
     kernels['vertex']     = [ [6 for _ in range(7)],  ]
 
-  elif net_flag == '8A':
+  elif net_flag == '8A' or net_flag== '8B':
     block_sizes['vertex'] = [ [1 for _ in range(8)],  ]
     filters['vertex']     = [ [32, 32, 64, 64, 128, 128, 256, 256],]
     kernels['vertex']     = [ [6 for _ in range(8)],  ]
     flayers['vertex'] = [3, 5, 7]
+
+    if net_flag == '8B':
+      block_configs['global_filters'] = []
 
 
   else:
