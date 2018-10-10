@@ -539,7 +539,7 @@ def net_main(
       max_memory_usage_v = sess.run(max_memory_usage)
       tf.logging.info('\n\nmemory usage: %0.3f G\n\n'%(max_memory_usage_v*1.0/1e9))
 
-  best_acc = load_saved_best(flags_obj.model_dir)
+  best_acc, best_acc_checkpoint = load_saved_best(flags_obj.model_dir)
   for cycle_index, num_train_epochs in enumerate(schedule):
     tf.logging.info('Starting cycle: %d/%d', cycle_index, int(n_loops))
 
@@ -558,7 +558,8 @@ def net_main(
     only_train = False and (not flags_obj.eval_only) and (not flags_obj.pred_ply)
     if not only_train:
       eval_results = classifier.evaluate(input_fn=input_fn_eval,
-                                        steps=flags_obj.max_train_steps)
+                                        steps=flags_obj.max_train_steps,
+                                        checkpoint_path=best_acc_checkpoint)
 
       if flags_obj.pred_ply:
         pred_generator = classifier.predict(input_fn=input_fn_eval)
@@ -597,12 +598,13 @@ def cur_global_step(model_dir):
 
 def load_saved_best(model_dir):
   bafn = model_dir+'/best_accuracy.txt'
-  if not os.path.exists(bafn):
-    return 0
+  best_acc_checkpoint = model_dir + '/best_acc'
+  if not os.path.exists(bafn) or not os.path.exists(best_acc_checkpoint+'.meta'):
+    return 0, None
   with open(bafn, 'r') as bf:
     for line in bf:
       best_acc = float(line.strip())
-      return best_acc
+      return best_acc, best_acc_checkpoint
 
 
 def save_cur_model_as_best_acc(model_dir, best_acc):
