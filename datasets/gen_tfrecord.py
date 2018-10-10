@@ -1,14 +1,16 @@
 import os, glob,sys
 import numpy as np
 import tensorflow as tf
-#from datasets.block_data_prep_util import Raw_H5f
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+ROOT_DIR = os.path.dirname(BASE_DIR)
+sys.path.append(BASE_DIR)
+sys.path.append(ROOT_DIR)
+
 from datasets.all_datasets_meta.datasets_meta import DatasetsMeta
 import math
 from tfrecord_util import MeshSampling
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-sys.path.append(BASE_DIR)
-ROOT_DIR = os.path.dirname(BASE_DIR)
 
 Vertex_feles = ['xyz','nxnynz', 'color']
 Vertex_ieles = ['fidx_per_vertex', 'fidx_pv_empty_mask', \
@@ -493,6 +495,7 @@ def main_matterport():
 
   scene_name = '17DRP5sb8fy'
   scene_name = '2t7WUuJeko7'
+  scene_name = '*'
   region_name = 'region*'
   raw_glob = os.path.join(dset_path, '{}/*/region_segmentations/{}.ply'.format(
                                 scene_name, region_name))

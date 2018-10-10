@@ -138,9 +138,20 @@ class Model(ResConvOps):
   def get_ele(self, features, ele):
     return ele_in_feature(features, ele, self.dset_shape_idx)
 
+
+  def normalize_xyz(self, xyz):
+    mean_xyz = tf.reduce_mean(xyz, 1, keepdims=True)
+    xyz = xyz - mean_xyz
+    return xyz
+
   def parse_inputs(self, features):
     inputs = {}
-    vertices = [self.get_ele(features,e) for e in self.data_configs['feed_data']]
+    vertices = []
+    for e in self.data_configs['feed_data']:
+      ele = self.get_ele(features, e)
+      if e=='xyz':
+        ele = self.normalize_xyz(ele)
+      vertices.append(ele)
     inputs['vertices'] = vertices = tf.concat(vertices, -1)
     vshape = get_tensor_shape(vertices)
     #self.batch_size = vshape[0]
