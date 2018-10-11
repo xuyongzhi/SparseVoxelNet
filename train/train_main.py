@@ -61,7 +61,7 @@ def get_filenames_1(is_training, data_dir):
   #else:
   #  fn_glob = os.path.join(data_dir, '*_region*.tfrecord')
   #  #fn_glob = os.path.join(data_dir, '2t7WUuJeko7_region0*.tfrecord')
-  fn_glob = os.path.join(data_dir, '17DRP5sb8fy_region0*.tfrecord')
+  fn_glob = os.path.join(data_dir, '*.tfrecord')
   all_fnls = glob.glob(fn_glob)
   all_fnls.sort()
   all_fnls = all_fnls[0:4]
