@@ -140,17 +140,28 @@ class Model(ResConvOps):
 
 
   def normalize_xyz(self, xyz):
-    mean_xyz = tf.reduce_mean(xyz, 1, keepdims=True)
-    xyz = xyz - mean_xyz
-    return xyz
+    norm_xyz_method = self.data_configs['norm_xyz']
+    if norm_xyz_method == 'mean0':
+      mean_xyz = tf.reduce_mean(xyz, 1, keepdims=True)
+      new_xyz = xyz - mean_xyz
+    elif norm_xyz_method == 'min0':
+      min_xyz = tf.reduce_min(xyz, 1, keepdims=True)
+      new_xyz = xyz - min_xyz
+    elif norm_xyz_method == 'raw':
+      new_xyz = xyz
+      pass
+    else:
+      raise NotImplementedError
+    import pdb; pdb.set_trace()  # XXX BREAKPOINT
+    return new_xyz
 
   def parse_inputs(self, features):
     inputs = {}
     vertices = []
     for e in self.data_configs['feed_data']:
       ele = self.get_ele(features, e)
-      #if e=='xyz':
-      #  ele = self.normalize_xyz(ele)
+      if e=='xyz':
+        ele = self.normalize_xyz(ele)
       vertices.append(ele)
     inputs['vertices'] = vertices = tf.concat(vertices, -1)
     vshape = get_tensor_shape(vertices)

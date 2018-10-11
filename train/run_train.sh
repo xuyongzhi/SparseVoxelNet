@@ -5,9 +5,11 @@ ng=2
 bs=2
 rs=--rs
 #rs=''
+normxyz=raw
+normxyz=mean0
 
 ply=''
-ipython  ./train_main.py -- --num_gpus $ng --net_flag $net_flag --batch_size $bs  $ply  $rs
+ipython  ./train_main.py -- --num_gpus $ng --net_flag $net_flag --batch_size $bs  $ply  $rs --normxyz $normxyz
 
 
 

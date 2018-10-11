@@ -311,7 +311,7 @@ def parse_flags_update_configs(flags_obj):
   data_configs['model_dir'] = flags_obj.model_dir
   data_configs['feed_data_eles'] = flags_obj.feed_data
   data_configs['feed_data'] = feed_data
-  data_configs['spl_label_wt'] = [0.2, 0.8]
+  data_configs['normxyz'] = flags_obj.normxyz
 
   net_data_configs['data_configs'] = data_configs
 
@@ -359,6 +359,7 @@ def define_model_dir(flags_obj, net_data_configs):
   logname += '_bc'+net_data_configs['block_configs']['block_flag']
 
   logname += '-'+flags_obj.feed_data.replace('nxnynz', 'n')
+  logname += '-'+flags_obj.normxyz
   logname += '-'+flags_obj.optimizer
   logname += '-Drop'+flags_obj.drop_imo
   logname +='-Bs'+str(flags_obj.batch_size)
@@ -411,6 +412,7 @@ def define_network_flags():
   flags.DEFINE_float('bnd_decay', default=0.3, help="")
   flags.DEFINE_integer('lrd_epochs', default=20, help="learning_rate decay epoches")
   flags.DEFINE_string('feed_data','xyz-nxnynz','xyz-nxnynz-color')
+  flags.DEFINE_string('normxyz','mean_zero','raw, mean0, min0')
   flags.DEFINE_bool(name='residual', short_name='rs', default=False,
       help=flags_core.help_wrap('Is use reidual architecture'))
   flags.DEFINE_string('shortcut','C','C Z')

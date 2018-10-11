@@ -331,25 +331,27 @@ class MeshSampling():
     raw_vertex_nums = [e.shape[0] if type(e)!=type(None) else raw_datas['xyz'].shape[0]\
                          for e in splited_vidx]
     with tf.Graph().as_default():
-      raw_datas_pl = {}
-      for item in raw_datas:
-        type_i = eval( 'tf.' + str(raw_datas[item].dtype) )
-        shape_i = raw_datas[item].shape
-        raw_datas_pl[item] = tf.placeholder(type_i, shape_i, item+'_pl')
-      block_num = len(splited_vidx)
-      splited_vidx_pl = []
-      if block_num==1:
-        splited_vidx_pl_ = [None]
-      else:
-        for bi in range(block_num):
-          splited_vidx_pl.append( tf.placeholder(tf.int32, splited_vidx[bi].shape,
-                                                 'splited_vidx_%d_pl'%(bi)) )
-        splited_vidx_pl_ = [tf.identity(e) for e in splited_vidx_pl]
+      with tf.device('/device:GPU:0'):
+        raw_datas_pl = {}
+        for item in raw_datas:
+          type_i = eval( 'tf.' + str(raw_datas[item].dtype) )
+          shape_i = raw_datas[item].shape
+          raw_datas_pl[item] = tf.placeholder(type_i, shape_i, item+'_pl')
+        block_num = len(splited_vidx)
+        splited_vidx_pl = []
+        if block_num==1:
+          splited_vidx_pl_ = [None]
+        else:
+          for bi in range(block_num):
+            splited_vidx_pl.append( tf.placeholder(tf.int32, splited_vidx[bi].shape,
+                                                  'splited_vidx_%d_pl'%(bi)) )
+          splited_vidx_pl_ = [tf.identity(e) for e in splited_vidx_pl]
 
-      splited_sampled_datas_ = MeshSampling.main_split_sampling_rawmesh(\
-                raw_datas_pl.copy(), _num_vertex_sp, splited_vidx_pl_, dset_metas, ply_dir)
+        splited_sampled_datas_ = MeshSampling.main_split_sampling_rawmesh(\
+                  raw_datas_pl.copy(), _num_vertex_sp, splited_vidx_pl_, dset_metas, ply_dir)
 
-      with tf.Session() as sess:
+      config=tf.ConfigProto(allow_soft_placement=True)
+      with tf.Session(config=config) as sess:
         feed_dict = {}
         for item in raw_datas:
           feed_dict[raw_datas_pl[item]] = raw_datas[item]
