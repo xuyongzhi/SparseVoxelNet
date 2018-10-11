@@ -8,6 +8,7 @@ rs=--rs
 normxyz='raw'
 #normxyz='mean0'
 #normxyz='min0'
+#normxyz='max1'
 
 ply=''
 ipython  ./train_main.py -- --num_gpus $ng --net_flag $net_flag --batch_size $bs  $ply  $rs --normxyz $normxyz

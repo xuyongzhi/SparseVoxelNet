@@ -147,6 +147,10 @@ class Model(ResConvOps):
     elif norm_xyz_method == 'min0':
       min_xyz = tf.reduce_min(xyz, 1, keepdims=True)
       new_xyz = xyz - min_xyz
+    elif norm_xyz_method == 'max1':
+      min_xyz = tf.reduce_min(xyz, 1, keepdims=True)
+      new_xyz = xyz - min_xyz
+      new_xyz = new_xyz / 5.0
     elif norm_xyz_method == 'raw':
       new_xyz = xyz
       pass

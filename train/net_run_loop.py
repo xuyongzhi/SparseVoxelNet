@@ -25,6 +25,7 @@ from __future__ import print_function
 
 import math
 import os
+import time
 
 # pylint: disable=g-bad-import-order
 from absl import flags
@@ -185,7 +186,7 @@ def learning_rate_with_decay(
   boundaries = [int(batches_per_epoch * epoch) for epoch in boundary_epochs]
   n = len(boundaries)
   lr_vals = [initial_learning_rate * pow(lr_decay_rate, i) for i in range(n+1)]
-  lr_vals = [max(l, 3e-5) for l in lr_vals]
+  lr_vals = [max(l, 5e-5) for l in lr_vals]
   bnd_vals = [(1-initial_bnd_rate) * pow(bnd_decay_rate, i) for i in range(n+1)]
   bnd_vals = [min(1-d, 0.999) for d in bnd_vals]
 
@@ -543,9 +544,11 @@ def net_main(
   for cycle_index, num_train_epochs in enumerate(schedule):
     tf.logging.info('Starting cycle: %d/%d', cycle_index, int(n_loops))
 
+    t0 = time.time()
     if num_train_epochs:
       classifier.train(input_fn=lambda: input_fn_train(num_train_epochs),
                        hooks=train_hooks, max_steps=flags_obj.max_train_steps)
+      train_t = (time.time()-t0)/num_train_epochs
 
     tf.logging.info('Starting to evaluate.')
 
@@ -557,9 +560,11 @@ def net_main(
     # global_step count.
     only_train = False and (not flags_obj.eval_only) and (not flags_obj.pred_ply)
     if not only_train:
+      t0 = time.time()
       eval_results = classifier.evaluate(input_fn=input_fn_eval,
                                         steps=flags_obj.max_train_steps,
                                         checkpoint_path=best_acc_checkpoint)
+      eval_t = time.time()-t0
 
       if flags_obj.pred_ply:
         pred_generator = classifier.predict(input_fn=input_fn_eval)
@@ -578,8 +583,8 @@ def net_main(
         cur_is_best = 'best'
       global_step = cur_global_step(flags_obj.model_dir)
       epoch = int( global_step / flags_obj.examples_per_epoch * flags_obj.num_gpus)
-      metric_logf.write('{} eval acc: {} {}\n'.format(epoch,
-                                          eval_results['accuracy'], cur_is_best))
+      metric_logf.write('{} train t:{:.1f}  eval t:{:.1f} eval acc: {} {}\n'.format(epoch,
+                        train_t, eval_t, eval_results['accuracy'], cur_is_best))
       metric_logf.flush()
 
   if flags_obj.export_dir is not None:
