@@ -140,7 +140,7 @@ class Model(ResConvOps):
 
 
   def normalize_xyz(self, xyz):
-    norm_xyz_method = self.data_configs['norm_xyz']
+    norm_xyz_method = self.data_configs['normxyz']
     if norm_xyz_method == 'mean0':
       mean_xyz = tf.reduce_mean(xyz, 1, keepdims=True)
       new_xyz = xyz - mean_xyz
@@ -152,7 +152,6 @@ class Model(ResConvOps):
       pass
     else:
       raise NotImplementedError
-    import pdb; pdb.set_trace()  # XXX BREAKPOINT
     return new_xyz
 
   def parse_inputs(self, features):
