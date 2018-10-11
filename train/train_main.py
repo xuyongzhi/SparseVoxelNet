@@ -415,7 +415,7 @@ def define_network_flags():
   flags.DEFINE_float('bnd0', default=0.8, help="base bnd")
   flags.DEFINE_float('bnd_decay', default=0.1, help="")
   flags.DEFINE_integer('lrd_epochs', default=20, help="learning_rate decay epoches")
-  flags.DEFINE_string('feed_data','xyz','xyz-nxnynz-color')
+  flags.DEFINE_string('feed_data','xyz-nxnynz','xyz-nxnynz-color')
   flags.DEFINE_string('normxyz','raw','raw, mean0, min0')
   flags.DEFINE_string('normedge','raw','raw, l0, all')
   flags.DEFINE_bool(name='residual', short_name='rs', default=False,

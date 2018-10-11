@@ -295,7 +295,7 @@ class ResConvOps(object):
     self._activation_size += np.prod(activation.shape.as_list()[1:]) \
                              * activation.dtype.size
 
-  def batch_norm(self, inputs, training, activation):
+  def batch_norm(self, inputs, training, activation=None):
     """Performs a batch normalization using a standard set of parameters."""
     # We set fused=True for a significant performance boost. See
     # https://www.tensorflow.org/performance/performance_guide#common_fused_ops
@@ -311,6 +311,7 @@ class ResConvOps(object):
           momentum=batch_norm_decay , epsilon=_BATCH_NORM_EPSILON, center=True,
           scale=True, training=training, fused=True)
 
+    activation = tf.nn.leaky_relu
     if activation!=None:
       inputs = activation(inputs)
       if batch_size >1:
@@ -545,7 +546,7 @@ class ResConvOps(object):
 
     shortcut = vertices
     if not initial_layer:
-      vertices = self.batch_norm(vertices, training, tf.nn.relu)
+      vertices = self.batch_norm(vertices, training)
 
     if edgev_per_vertex is not None:
       # gather edgev after BN
@@ -570,7 +571,7 @@ class ResConvOps(object):
         self.log_tensor_c(edgev, kernels, strides, pad_stride1,
                         tf.get_variable_scope().name)
       vertices += edgev
-    vertices = self.batch_norm(vertices, training, tf.nn.relu)
+    vertices = self.batch_norm(vertices, training)
 
     with tf.variable_scope('c1'):
       if edgev is not None:
@@ -619,7 +620,7 @@ class ResConvOps(object):
 
     shortcut = inputs
     if not no_ini_bn:
-      inputs = self.batch_norm(inputs, training, tf.nn.relu)
+      inputs = self.batch_norm(inputs, training)
     if projection_shortcut == 'FirstResUnit':
       # For pointnet, projection shortcut is not needed at the First ResUnit.
       # However, BN and Activation is still required at the First ResUnit for
@@ -641,7 +642,7 @@ class ResConvOps(object):
       self.log_tensor_c(inputs, kernels, strides, pad_stride1,
                         tf.get_variable_scope().name)
     if half_layer: return inputs
-    inputs = self.batch_norm(inputs, training, tf.nn.relu)
+    inputs = self.batch_norm(inputs, training)
 
     with tf.variable_scope('c1'):
       inputs = self.conv1d2d3d(inputs, filters, kernels, 1, 's')
@@ -694,7 +695,7 @@ class ResConvOps(object):
 
     shortcut = inputs
     if not no_ini_bn:
-      inputs = self.batch_norm(inputs, training, tf.nn.relu)
+      inputs = self.batch_norm(inputs, training)
 
     # The projection shortcut should come after the first batch norm and ReLU
     # since it performs a 1x1 convolution.
@@ -705,14 +706,14 @@ class ResConvOps(object):
       inputs = self.conv1d2d3d(inputs, filters//4, 1, 1, 's')
       self.log_tensor_c(inputs, 1, 1, 's', tf.get_variable_scope().name)
 
-    inputs = self.batch_norm(inputs, training, tf.nn.relu)
+    inputs = self.batch_norm(inputs, training)
 
     with tf.variable_scope('c1'):
       inputs = self.conv1d2d3d(inputs, filters//4, kernels, strides, pad_stride1)
       self.log_tensor_c(inputs, kernels, strides, pad_stride1,
                         tf.get_variable_scope().name)
 
-    inputs = self.batch_norm(inputs, training, tf.nn.relu)
+    inputs = self.batch_norm(inputs, training)
 
     with tf.variable_scope('c2'):
       inputs = self.conv1d2d3d(inputs, filters, 1, 1, 's')
@@ -768,7 +769,7 @@ class ResConvOps(object):
     """
     shortcut = inputs
     if not no_ini_bn:
-      inputs = self.batch_norm(inputs, training, tf.nn.relu)
+      inputs = self.batch_norm(inputs, training)
 
     # The projection shortcut should come after the first batch norm and ReLU
     # since it performs a 1x1 convolution.
@@ -786,7 +787,7 @@ class ResConvOps(object):
           if l==0:
             inputs_b = inputs
           else:
-            inputs_b = self.batch_norm(inputs_b, training, tf.nn.relu)
+            inputs_b = self.batch_norm(inputs_b, training)
           inputs_b = self.operation(op, inputs_b, pre_indent)
       inputs_branches.append(inputs_b)
     self._inception_block_layer += max([len(ops_branch) for ops_branch in icp_block_ops])
@@ -927,7 +928,7 @@ class ResConvOps(object):
         self.log_dotted_line(scope+'_Block%d'%(bi), 1)
         inputs = self.block_layer(scale, inputs, blocks_params[bi], block_fn,
                                 is_training, scope+'_b%d'%(bi), edgev_per_vertex=edgev_per_vertex)
-    inputs = self.batch_norm(inputs, is_training, tf.nn.relu)
+    inputs = self.batch_norm(inputs, is_training)
     self.log_dotted_line(scope)
     return inputs
 
@@ -981,7 +982,7 @@ class ResConvOps(object):
       inputs = tf.layers.dense(inputs, f)
       if self.IsShowModel: self.log_tensor_p(inputs, '', 'dense_%d'%(i))
       if i!=n-1:
-        inputs = self.batch_norm(inputs, is_training, tf.nn.relu)
+        inputs = self.batch_norm(inputs, is_training)
         if out_drop_rate>0:
           if self.IsShowModel: self.log('dropout {}'.format(out_drop_rate))
           inputs = tf.layers.dropout(inputs, out_drop_rate, training=is_training)
