@@ -22,6 +22,8 @@ def block_configs(net_flag='default'):
     block_sizes['vertex'] = [ [1, 1, 1, 1, 1],  ]
     filters['vertex']     = [ [32, 64, 64, 128, 128],]
     kernels['vertex']     = [ [7, 7, 7, 7, 7],  ]
+    block_configs['global_filters'] = [64, 64]
+    block_configs['dense_filters'] = [84, 84]
 
   elif net_flag == '7A':
     block_sizes['vertex'] = [ [1, 1, 1, 1, 1, 1, 1],  ]
