@@ -56,11 +56,12 @@ _NUM_CLASSES = DsetMetas.num_classes
 def get_filenames_1(is_training, data_dir):
   """Return filenames for dataset."""
   data_dir = os.path.join(data_dir, 'data')
-  if is_training:
-    fn_glob = os.path.join(data_dir, '*_region*.tfrecord')
-  else:
-    fn_glob = os.path.join(data_dir, '*_region*.tfrecord')
-    #fn_glob = os.path.join(data_dir, '2t7WUuJeko7_region0*.tfrecord')
+  #if is_training:
+  #  fn_glob = os.path.join(data_dir, '*_region*.tfrecord')
+  #else:
+  #  fn_glob = os.path.join(data_dir, '*_region*.tfrecord')
+  #  #fn_glob = os.path.join(data_dir, '2t7WUuJeko7_region0*.tfrecord')
+  fn_glob = os.path.join(data_dir, '17DRP5sb8fy_region0*.tfrecord')
   all_fnls = glob.glob(fn_glob)
   #all_fnls = all_fnls[0:2]
   assert len(all_fnls) > 0, fn_glob
