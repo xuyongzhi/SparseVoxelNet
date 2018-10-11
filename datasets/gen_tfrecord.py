@@ -102,11 +102,11 @@ class Raw_To_Tfrecord():
         continue
 
       if self.dataset_name == "MATTERPORT":
-        block_num, valid_block_num, num_points_splited = self.transfer_onefile_matterport(rawfn)
+        block_num, valid_block_num, num_points_splited, xyz_scope_str = self.transfer_onefile_matterport(rawfn)
 
       with open(scene_bs_fn, 'w') as bsf:
         bsf.write('intact\n')
-        bnstr = '{} \tblock_num:{} \tvalid block num:{}\n\n'.format(region_name, block_num, valid_block_num)
+        bnstr = '{} \tblock_num:{} \tvalid block num:{}\n{}\n\n'.format(region_name, block_num, valid_block_num, xyz_scope_str)
         bsf.write(bnstr)
         vnstr = '\n'+'\n'.join(['{}_{}: {}'.format(region_name, i, num_points_splited[i]) for i in range(valid_block_num)])
         bsf.write(vnstr)
@@ -267,7 +267,12 @@ class Raw_To_Tfrecord():
       tfrecord_fn = os.path.join(self.data_path, base_name)+tmp + '.tfrecord'
       self.transfer_one_block(tfrecord_fn, splited_sampled_datas[bi], raw_vertex_nums[bi])
     print('finish {} th file: {}'.format(self.fi, rawfn))
-    return block_num, valid_block_num, num_points_splited
+    min_xyz = np.min(raw_datas['xyz'],0)
+    max_xyz = np.max(raw_datas['xyz'],0)
+    scope = max_xyz - min_xyz
+    strs = [np.array2string(d, precision=2) for d in [min_xyz, max_xyz, scope] ]
+    xyz_scope_str = 'min: {}, max:{}, scope:{}'.format(strs[0], strs[1], strs[2])
+    return block_num, valid_block_num, num_points_splited, xyz_scope_str
 
   def transfer_one_block(self, tfrecord_fn, block_sampled_datas, raw_vertex_num):
     from tfrecord_util import bytes_feature, int64_feature
@@ -509,11 +514,11 @@ def main_matterport():
   dataset_name = 'MATTERPORT'
   dset_path = '/DS/Matterport3D/Matterport3D_WHOLE_extracted/v1/scans'
   num_point = {'MODELNET40':None, 'MATTERPORT':100000}
-  block_size = {'MODELNET40':None, 'MATTERPORT':np.array([3.0, 3.0, 5.0]) }
+  block_size = {'MODELNET40':None, 'MATTERPORT':np.array([5.0, 5.0, 5.0]) }
 
   scene_name = '17DRP5sb8fy'
   #scene_name = '2t7WUuJeko7'
-  scene_name = '*'
+  #scene_name = '*'
   region_name = 'region*'
   raw_glob = os.path.join(dset_path, '{}/*/region_segmentations/{}.ply'.format(
                                 scene_name, region_name))
@@ -524,7 +529,7 @@ def main_matterport():
   raw_fns.sort()
   main_write_multi(dataset_name, raw_fns, tfrecord_path, num_point[dataset_name],\
               block_size[dataset_name], ply_dir,
-              multiprocessing=6)
+              multiprocessing=0)
 
   #main_merge_tfrecord(dataset_name, tfrecord_path)
 

@@ -2,13 +2,15 @@ import h5py, os, glob,sys
 import numpy as np
 import tensorflow as tf
 #from datasets.block_data_prep_util import Raw_H5f
-from datasets.all_datasets_meta.datasets_meta import DatasetsMeta
 import math
-import utils.ply_util as ply_util
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-sys.path.append(BASE_DIR)
 ROOT_DIR = os.path.dirname(BASE_DIR)
+sys.path.append(BASE_DIR)
+sys.path.append(ROOT_DIR)
+
+from datasets.all_datasets_meta.datasets_meta import DatasetsMeta
+import utils.ply_util as ply_util
 
 MAX_FLOAT_DRIFT = 1e-6
 DEBUG = False
@@ -219,7 +221,7 @@ def read_tfrecord(dataset_name, tf_path, loss_lw_gama=-1):
                                       buffer_size=1024*100,
                                       num_parallel_reads=1)
 
-    batch_size = 2
+    batch_size = 1
     is_training = False
 
     dataset = dataset.prefetch(buffer_size=batch_size)

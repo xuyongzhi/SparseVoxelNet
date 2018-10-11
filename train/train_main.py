@@ -64,7 +64,7 @@ def get_filenames_1(is_training, data_dir):
   fn_glob = os.path.join(data_dir, '*.tfrecord')
   all_fnls = glob.glob(fn_glob)
   all_fnls.sort()
-  all_fnls = all_fnls[0:4]
+  #all_fnls = all_fnls[0:4]
   assert len(all_fnls) > 0, fn_glob
   print('\ngot {} training files for training={}\n'.format(len(all_fnls), is_training))
   return all_fnls

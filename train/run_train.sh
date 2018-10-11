@@ -1,8 +1,8 @@
-#export CUDA_VISIBLE_DEVICES=1
+export CUDA_VISIBLE_DEVICES=1
 
-net_flag='8A'
-ng=2
-bs=2
+net_flag='7A'
+ng=1
+bs=1
 rs=--rs
 #rs=''
 normxyz='raw'
