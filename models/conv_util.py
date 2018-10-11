@@ -189,7 +189,7 @@ class ResConvOps(object):
 
   def __init__(self, net_data_configs, data_format, dtype):
     self.net_data_configs = net_data_configs
-    net_configs = net_data_configs['net_configs']
+    self.net_configs = net_configs = net_data_configs['net_configs']
     data_configs = net_data_configs['data_configs']
     self.data_format = data_format
     if data_format == None:
@@ -205,6 +205,7 @@ class ResConvOps(object):
     self.use_bias = True
     self.block_style = 'Regular'
     self.drop_imo = net_configs['drop_imo']
+    self.normedge = net_configs['normedge']
 
     #self.batch_norm_decay = _BATCH_NORM_DECAY
     self.batch_norm_decay_fn = net_configs['bn_decay_fn']
@@ -549,7 +550,9 @@ class ResConvOps(object):
     if edgev_per_vertex is not None:
       # gather edgev after BN
       edgev = gather_second_d(tf.squeeze(vertices, 2), edgev_per_vertex)
-      self.log_tensor_p(edgev, 'edgev', 'vertice neighbor ')
+      if self.normedge == 'all' or (self.normedge=='l0' and initial_layer):
+        edgev = edgev - vertices
+      self.log_tensor_p(edgev, 'norm '+self.normedge, 'edgev')
 
     # The projection shortcut should come after the first batch norm and ReLU
     # since it performs a 1x1 convolution.

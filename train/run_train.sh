@@ -10,8 +10,10 @@ normxyz='raw'
 #normxyz='min0'
 #normxyz='max1'
 
+normedge='l0'
+
 ply=''
-ipython  ./train_main.py -- --num_gpus $ng --net_flag $net_flag --batch_size $bs  $ply  $rs --normxyz $normxyz
+ipython  ./train_main.py -- --num_gpus $ng --net_flag $net_flag --batch_size $bs  $ply  $rs --normxyz $normxyz --normedge $normedge
 
 
 

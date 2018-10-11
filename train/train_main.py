@@ -336,6 +336,7 @@ def parse_flags_update_configs(flags_obj):
   net_configs['optimizer'] = flags_obj.optimizer
   net_configs['eval_only'] = flags_obj.eval_only
   net_configs['pred_ply'] = flags_obj.pred_ply
+  net_configs['normedge'] = flags_obj.normedge
 
   net_data_configs['net_configs'] = net_configs
 
@@ -362,6 +363,7 @@ def define_model_dir(flags_obj, net_data_configs):
 
   logname += '-'+flags_obj.feed_data.replace('nxnynz', 'n')
   logname += '-'+flags_obj.normxyz
+  logname += '-'+flags_obj.normedge
   logname += '-'+flags_obj.optimizer
   logname += '-Drop'+flags_obj.drop_imo
   logname +='-Bs'+str(flags_obj.batch_size)
@@ -414,7 +416,8 @@ def define_network_flags():
   flags.DEFINE_float('bnd_decay', default=0.1, help="")
   flags.DEFINE_integer('lrd_epochs', default=20, help="learning_rate decay epoches")
   flags.DEFINE_string('feed_data','xyz','xyz-nxnynz-color')
-  flags.DEFINE_string('normxyz','mean_zero','raw, mean0, min0')
+  flags.DEFINE_string('normxyz','raw','raw, mean0, min0')
+  flags.DEFINE_string('normedge','raw','raw, l0, all')
   flags.DEFINE_bool(name='residual', short_name='rs', default=False,
       help=flags_core.help_wrap('Is use reidual architecture'))
   flags.DEFINE_string('shortcut','C','C Z')
