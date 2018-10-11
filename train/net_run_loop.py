@@ -577,7 +577,7 @@ def net_main(
         save_cur_model_as_best_acc(flags_obj.model_dir, best_acc)
         cur_is_best = 'best'
       global_step = cur_global_step(flags_obj.model_dir)
-      epoch = global_step / flags_obj.examples_per_epoch
+      epoch = int( global_step / flags_obj.examples_per_epoch * flags_obj.num_gpus)
       metric_logf.write('{} eval acc: {} {}\n'.format(epoch,
                                           eval_results['accuracy'], cur_is_best))
       metric_logf.flush()

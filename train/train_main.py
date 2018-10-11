@@ -402,7 +402,7 @@ def define_network_flags():
                           data_dir=data_dir,
                           batch_size=2,
                           num_gpus=2,
-                          epochs_between_evals=3,)
+                          epochs_between_evals=5,)
 
   flags.DEFINE_string('net_flag','5A','5A')
   flags.DEFINE_string('optimizer','adam','adam momentum')
