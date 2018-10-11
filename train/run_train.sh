@@ -11,10 +11,18 @@ normxyz='raw'
 #normxyz='max1'
 
 normedge='l0'
+ipython  ./train_main.py -- --num_gpus $ng --net_flag $net_flag --batch_size $bs   $rs --normxyz $normxyz --normedge $normedge
 
-ply=''
-ipython  ./train_main.py -- --num_gpus $ng --net_flag $net_flag --batch_size $bs  $ply  $rs --normxyz $normxyz --normedge $normedge
+normedge='all'
+ipython  ./train_main.py -- --num_gpus $ng --net_flag $net_flag --batch_size $bs   $rs --normxyz $normxyz --normedge $normedge
 
+
+normxyz='mean0'
+normedge='l0'
+ipython  ./train_main.py -- --num_gpus $ng --net_flag $net_flag --batch_size $bs   $rs --normxyz $normxyz --normedge $normedge
+
+normedge='all'
+ipython  ./train_main.py -- --num_gpus $ng --net_flag $net_flag --batch_size $bs   $rs --normxyz $normxyz --normedge $normedge
 
 
 #ply=--eval_only
