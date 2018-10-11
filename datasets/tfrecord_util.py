@@ -331,7 +331,8 @@ class MeshSampling():
     raw_vertex_nums = [e.shape[0] if type(e)!=type(None) else raw_datas['xyz'].shape[0]\
                          for e in splited_vidx]
     with tf.Graph().as_default():
-      with tf.device('/device:GPU:0'):
+      #with tf.device('/device:GPU:0'):
+      with tf.device('/CPU:0'):
         raw_datas_pl = {}
         for item in raw_datas:
           type_i = eval( 'tf.' + str(raw_datas[item].dtype) )
@@ -350,7 +351,11 @@ class MeshSampling():
         splited_sampled_datas_ = MeshSampling.main_split_sampling_rawmesh(\
                   raw_datas_pl.copy(), _num_vertex_sp, splited_vidx_pl_, dset_metas, ply_dir)
 
-      config=tf.ConfigProto(allow_soft_placement=True)
+      config=tf.ConfigProto(allow_soft_placement=True,
+                            device_count={"CPU": 8},
+                            inter_op_parallelism_threads=6,
+                            intra_op_parallelism_threads=6)
+      config.gpu_options.allow_growth = True
       with tf.Session(config=config) as sess:
         feed_dict = {}
         for item in raw_datas:

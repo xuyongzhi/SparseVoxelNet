@@ -8,7 +8,7 @@ sys.path.append(BASE_DIR)
 sys.path.append(ROOT_DIR)
 
 from datasets.all_datasets_meta.datasets_meta import DatasetsMeta
-import math
+import math, time
 from tfrecord_util import MeshSampling
 
 
@@ -48,7 +48,7 @@ def random_choice(org_vector, sample_N, random_sampl_pro=None,
 
 
 class Raw_To_Tfrecord():
-  def __init__(self, dataset_name, tfrecord_path, num_point=None, block_size=None, ply_dir=None):
+  def __init__(self, dataset_name, tfrecord_path, num_point=None, block_size=None, ply_dir=None, is_multi_pro=False):
     self.dataset_name = dataset_name
     self.tfrecord_path = tfrecord_path
     self.data_path = os.path.join(self.tfrecord_path, 'data')
@@ -65,6 +65,7 @@ class Raw_To_Tfrecord():
     self.dataset_meta = DatasetsMeta(self.dataset_name)
 
     self.ply_dir = ply_dir
+    self.is_multi_pro = is_multi_pro
 
   def __call__(self, rawfns):
     bsfn0 = os.path.join(self.tfrecord_path, 'block_split_settings.txt')
@@ -130,6 +131,8 @@ class Raw_To_Tfrecord():
     self.ele_idxs = ele_idxs
 
     metas_fn = os.path.join(self.tfrecord_path, 'shape_idx.txt')
+    if self.is_multi_pro and os.path.exists(metas_fn):
+      return
     with open(metas_fn, 'w') as f:
       f.write('dataset_name:{}\n'.format(self.dataset_name))
       for item in self.eles_sorted:
@@ -360,11 +363,24 @@ def get_label_num_weights(dataset_summary, loss_lw_gama):
     plt.show()
 
 
-def main_write(dataset_name, rawh5_glob, tfrecord_path, num_point, block_size, ply_dir):
-  raw_fns = glob.glob(rawh5_glob)
-
-  raw_to_tf = Raw_To_Tfrecord(dataset_name, tfrecord_path, num_point, block_size, ply_dir)
+def main_write(dataset_name, raw_fns, tfrecord_path, num_point, block_size, ply_dir, is_multi_pro):
+  raw_to_tf = Raw_To_Tfrecord(dataset_name, tfrecord_path, num_point, block_size, ply_dir, is_multi_pro)
   raw_to_tf(raw_fns)
+
+
+def main_write_multi(dataset_name, raw_fns, tfrecord_path, num_point, block_size, ply_dir, multiprocessing=5):
+  if multiprocessing<2:
+    main_write(dataset_name, raw_fns, tfrecord_path, num_point, block_size, ply_dir, False)
+    return
+
+  import multiprocessing as mp
+  pool = mp.Pool(multiprocessing)
+  for fn in raw_fns:
+    pool.apply_async(main_write, (dataset_name, [fn], tfrecord_path, num_point, block_size, ply_dir, True))
+  pool.close()
+  pool.join()
+
+  main_write(dataset_name, raw_fns, tfrecord_path, num_point, block_size, ply_dir, False)
 
 def split_fn_ls( tfrecordfn_ls, merged_n):
     nf = len(tfrecordfn_ls)
@@ -489,13 +505,14 @@ def gen_ply_onef(dataset_name, tf_path, filename, scene):
       create_ply_dset( dataset_name, all_points[...,0:3],  ply_fn, all_label_categories)
 
 def main_matterport():
+  t0 = time.time()
   dataset_name = 'MATTERPORT'
   dset_path = '/DS/Matterport3D/Matterport3D_WHOLE_extracted/v1/scans'
   num_point = {'MODELNET40':None, 'MATTERPORT':100000}
   block_size = {'MODELNET40':None, 'MATTERPORT':np.array([3.0, 3.0, 5.0]) }
 
   scene_name = '17DRP5sb8fy'
-  scene_name = '2t7WUuJeko7'
+  #scene_name = '2t7WUuJeko7'
   scene_name = '*'
   region_name = 'region*'
   raw_glob = os.path.join(dset_path, '{}/*/region_segmentations/{}.ply'.format(
@@ -503,12 +520,16 @@ def main_matterport():
   tfrecord_path = '/DS/Matterport3D/MATTERPORT_TF/mesh_tfrecord'
   ply_dir = os.path.join(tfrecord_path, 'plys/{}/{}'.format(scene_name, region_name))
 
-  main_write(dataset_name, raw_glob, tfrecord_path, num_point[dataset_name],\
-             block_size[dataset_name], ply_dir)
+  raw_fns = glob.glob(raw_glob)
+  raw_fns.sort()
+  main_write_multi(dataset_name, raw_fns, tfrecord_path, num_point[dataset_name],\
+              block_size[dataset_name], ply_dir,
+              multiprocessing=6)
 
   #main_merge_tfrecord(dataset_name, tfrecord_path)
 
   #main_gen_ply(dataset_name, tfrecord_path)
+  print('total time: {} sec'.format(time.time() - t0))
 
 
 
