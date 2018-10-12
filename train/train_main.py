@@ -320,6 +320,8 @@ def parse_flags_update_configs(flags_obj):
   #*****************************************************************************
   # net_configs
   net_configs = {}
+  net_configs['bn'] = flags_obj.bn
+  net_configs['act'] = flags_obj.act
   net_configs['residual'] = flags_obj.residual
   net_configs['shortcut'] = flags_obj.shortcut
   net_configs['drop_imo_str'] = flags_obj.drop_imo
@@ -359,13 +361,21 @@ def define_model_dir(flags_obj, net_data_configs):
     return modelname
 
   logname =  model_name()
+  if not flags_obj.bn:
+    logname += '-Nbn'
+  if flags_obj.act != 'Relu':
+    logname += '-'+flags_obj.act
   logname += '_bc'+net_data_configs['block_configs']['block_flag']
 
   logname += '-'+flags_obj.feed_data.replace('nxnynz', 'n')
-  logname += '-'+flags_obj.normxyz
-  logname += '-'+flags_obj.normedge
-  logname += '-'+flags_obj.optimizer
-  logname += '-Drop'+flags_obj.drop_imo
+  if flags_obj.normxyz!='raw':
+    logname += '-'+flags_obj.normxyz
+  if flags_obj.normedge!='raw':
+    logname += '-'+flags_obj.normedge
+  if flags_obj.optimizer!='adam':
+    logname += '-'+flags_obj.optimizer
+  if flags_obj.drop_imo!='000':
+    logname += '-Drop'+flags_obj.drop_imo
   logname +='-Bs'+str(flags_obj.batch_size)
   logname +=  '-Lr'+str(int(flags_obj.lr0*1000)) +\
               '_' + str(int(10*flags_obj.lrd_rate)) + \
@@ -409,6 +419,8 @@ def define_network_flags():
 
   flags.DEFINE_string('net_flag','5A','5A')
   flags.DEFINE_string('optimizer','adam','adam momentum')
+  flags.DEFINE_bool('bn', default=True, help ="")
+  flags.DEFINE_string('act', default='Relu', help ="Relu, Lrelu")
   flags.DEFINE_float('weight_decay', short_name='wd', default=1e-4, help="wd")
   flags.DEFINE_float('lr0', default=1e-3, help="base lr")
   flags.DEFINE_float('lrd_rate', default=0.7, help="learning rate decay rate")
@@ -418,7 +430,7 @@ def define_network_flags():
   flags.DEFINE_string('feed_data','xyz-nxnynz','xyz-nxnynz-color')
   flags.DEFINE_string('normxyz','raw','raw, mean0, min0')
   flags.DEFINE_string('normedge','raw','raw, l0, all')
-  flags.DEFINE_bool(name='residual', short_name='rs', default=False,
+  flags.DEFINE_bool('residual', short_name='rs', default=False,
       help=flags_core.help_wrap('Is use reidual architecture'))
   flags.DEFINE_string('shortcut','C','C Z')
   flags.DEFINE_string('drop_imo','000','dropout rate for input, middle and out')

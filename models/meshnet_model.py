@@ -68,18 +68,21 @@ class Model(ResConvOps):
               edgev_per_vertex, valid_ev_num_pv)
         #vertices = self.mesh_cnn.pool_mesh(vertices, edgev_per_vertex)
 
-    vertices = self.add_global(vertices)
+      vertices = self.add_global(vertices, scale)
+
     flogits, flabel_weight = self.face_classifier(vertices, vidx_per_face, valid_num_face)
     self.log_model_summary()
     return flogits, flabel_weight
 
-  def add_global(self, vertices):
-    global_filters = self.block_paras.global_filters
-    if len(global_filters) == 0:
+  def add_global(self, vertices, scale):
+    blocks_params = self.block_paras.get_block_paras('global', scale)
+    if not blocks_params:
       return vertices
 
     global_f = tf.reduce_max(vertices, 1, keepdims=True)
-    global_f = self.dense_block(global_f, global_filters, self.is_training)
+    global_f = self.blocks_layers(scale, global_f, blocks_params, self.block_fn,
+                                  self.is_training, 'S%d_Global'%(scale),
+                                  with_initial_layer=False)
     nv = get_tensor_shape(vertices)[1]
     global_f = tf.tile(global_f, [1, nv, 1, 1])
     vertices = tf.concat([vertices, global_f], -1)
@@ -326,11 +329,28 @@ class BlockParas():
       self.use_face_global_scale0 = block_configs['use_face_global_scale0']
 
     self.dense_filters = block_configs['dense_filters']
-    self.global_filters = block_configs['global_filters']
+    #self.with_globals = [len(fs)>0 for fs in filters['global']]
 
     all_paras = {}
-    for item in block_sizes:
-      all_paras[item] = BlockParas.complete_scales_paras(block_sizes[item], filters[item], kernels[item])
+    for item in filters:
+      # Always 1 if not exist
+      block_size_1 = item not in block_sizes
+      kernel_1 = item not in kernels
+      if block_size_1:
+        block_sizes[item] = []
+      if kernel_1:
+        kernels[item] = []
+
+      if block_size_1 or kernel_1:
+        scale_num  = len(filters[item])
+        for s in range(scale_num):
+          if block_size_1:
+            block_sizes[item].append([1 for _ in range(len(filters[item][s]))])
+          if kernel_1:
+            kernels[item].append([1 for _ in range(len(filters[item][s]))])
+
+      all_paras[item] = BlockParas.complete_scales_paras(block_sizes[item],
+                                                filters[item], kernels[item])
     self.all_paras = all_paras
 
   def get_block_paras(self, element, scale):
@@ -351,6 +371,8 @@ class BlockParas():
 
   @staticmethod
   def complete_paras_1scale(block_size, filters, kernels):
+    if len(block_size) == 0:
+      return None
     assert not isinstance(block_size[0], list)
     block_size  = np.array(block_size)
     filters     = np.array(filters)
