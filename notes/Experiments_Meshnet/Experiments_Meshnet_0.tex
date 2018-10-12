@@ -1,0 +1,48 @@
+\documentclass[,table,dvipsnames]{article}
+\usepackage[usenames, dvipsnames]{color}
+\usepackage{graphicx}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{hyperref}
+\usepackage{longtable}
+\usepackage{float}
+\usepackage{tikz}
+\usetikzlibrary{shapes.geometric, arrows}
+\usepackage{xcolor}
+
+\graphicspath{ {images/} {images/mat60_1AG/} }
+\title{Sparse Voxel Net}
+\author{xyz}
+\date{Oct 2018}
+
+
+\begin{document}
+	
+\noindent
+\begin{titlepage}
+	\maketitle
+\end{titlepage}	
+
+\section{Training 70 Files}
+\noindent\begin{tabular}{|p{10cm}|p{5.5cm}| }	
+\hline \hline
+\rowcolor{green!20}
+RC8A  & 130 0.9633 \\
+P8A & 150 0.934416532516 \\
+RC8A,  edgev norm: l0 & 150 0.972146570683 \\
+RC8A, No Batch norm  & 150 0.865 \\
+RC8A, No Batch norm,  edgev norm: l0  & 145:0.8601 \\
+ \hline 	
+P8A, min0  & 150 0.9327 \\
+RC8A, min0  & 150 0.9700 \\
+RC8A, min0, normedgev:l0  & 150 0.96844 \\
+RC8A, min0, Nbn & 145 0.8856 \\
+RC8A, min0, normedgev:l0, Nbn  & 145 0.87868 \\
+ \hline
+RC8A, max1  & 150 0.969998 \\
+ \hline 
+RC8B, min0  & 150 0.9704 \\
+ \hline 
+\end{tabular}
+ 
+\end{document}
