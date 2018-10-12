@@ -207,30 +207,43 @@ class FanCnn():
     vertices = tf.expand_dims(vertices, 2)
 
     blocks_params = self.block_paras.get_block_paras('vertex', scale)
-    edgev = self.blocks_layers(scale, vertices, blocks_params, self.block_fn,
+    vertices = self.blocks_layers(scale, vertices, blocks_params, self.block_fn,
                                is_training, 'S%d'%( scale),
                                edgev_per_vertex=edgev_per_vertex)
-    return edgev
+    return vertices
 
-  def pool_mesh(vertices, edgev_per_vertex, pool_method='mean', pool_rate=0.5):
+  def pool_mesh(self, vertices, edgev_per_vertex, pool_method='mean', pool_rate=0.5):
     '''
     max mean identity
     '''
+    import random
     if pool_method == 'identity':
       pass
     else:
+      # (1) replace vertice features by max/mean group features
       if pool_method == 'max':
         pool_fn = tf.reduce_max
       elif pool_method == 'mean':
         pool_fn = tf.reduce_mean
-      vertices = gather_second_d(vertices, edgev_per_vertex)
+      vertices = gather_second_d(tf.squeeze(vertices,2), edgev_per_vertex)
       vertices = tf.reduce_max(vertices, 2)
 
-    vn = get_tensor_shape(vertices)[0]
+    # (2) Downsampling vertices
+    vn = get_tensor_shape(vertices)[1]
     new_vn = int(pool_rate * vn)
-    remain_idx = random.sample(range(vn), new_vn)
-    remain_idx.sort()
-    new_vertices = tf.gather(vertices, remain_idx, axis=1)
+    remain_idx = []
+    batch_size = get_tensor_shape(vertices)[0]
+    for bi in range(batch_size):
+      remain_idx.append( tf.expand_dims(tf.random_shuffle(tf.range(vn))[0:new_vn], 0))
+    remain_idx = tf.expand_dims(tf.concat(remain_idx, 0), -1)
+    new_vertices = tf.squeeze(gather_second_d(vertices, remain_idx), 2)
+
+    # (3) New edges
+    batch_idx = tf.reshape(tf.range(batch_size), [-1,1,1])
+    batch_idx = tf.tile(batch_idx, [1, new_vn, 1])
+    remain_idx = tf.concat([batch_idx, remain_idx], -1)
+    remain_mask = tf.scatter_nd(remain_idx, tf.ones([batch_size, new_vn], tf.int32), tf.constant([batch_size, vn]))
+    edgev_per_vertex1 = gather_second_d(remain_mask, edgev_per_vertex)
     import pdb; pdb.set_trace()  # XXX BREAKPOINT
     pass
 

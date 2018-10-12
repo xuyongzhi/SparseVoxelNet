@@ -21,6 +21,12 @@ def block_configs(net_flag='default'):
     if net_flag == '8B':
       filters['global']     = [ [],]
 
+  elif net_flag == '3A':
+    block_sizes['vertex'] = [ [1, 1, 1],  ]
+    filters['vertex']     = [ [32, 32, 64],]
+    kernels['vertex']     = [ [6 for _ in range(3)],  ]
+    filters['global']     = [ [],]
+
 
   else:
     raise NotImplementedError
