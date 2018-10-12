@@ -302,6 +302,8 @@ class ResConvOps(object):
     # https://www.tensorflow.org/performance/performance_guide#common_fused_ops
     logstr = ''
     if self.bn:
+      if DEBUG_TMP:
+        training = True
       global_step = tf.train.get_or_create_global_step()
       batch_norm_decay = self.bn_decay_fn(global_step)
       inputs = tf.layers.batch_normalization(
@@ -531,7 +533,8 @@ class ResConvOps(object):
 
 
   def fan_block_v2(self, vertices, block_params, training, projection_shortcut,
-                        half_layer=None, initial_layer=False, edgev_per_vertex=None):
+                        half_layer=None, initial_layer=False, edgev_per_vertex=None,
+                        no_prenorm=False):
     filters = block_params['filters']
     kernels = block_params['kernels']
     strides = block_params['strides']
@@ -543,7 +546,7 @@ class ResConvOps(object):
       assert len(get_tensor_shape(edgev_per_vertex)) == 3
 
     shortcut = vertices
-    if not initial_layer:
+    if not initial_layer and not no_prenorm:
       vertices = self.batch_norm_act(vertices, training)
 
     if edgev_per_vertex is not None:
@@ -924,16 +927,18 @@ class ResConvOps(object):
         inputs = block_fn(inputs, blocks_params[0], is_training, projection_shortcut=None,
                           initial_layer=True, edgev_per_vertex=edgev_per_vertex)
 
-    for bi in range(1, len(blocks_params)):
+    for bi in range(0+with_initial_layer, len(blocks_params)):
       with tf.variable_scope(scope+'_b%d'%(bi)):
         self.log_dotted_line(scope+'_Block%d'%(bi), 1)
+        no_prenorm = not with_initial_layer and bi == 0
         inputs = self.block_layer(scale, inputs, blocks_params[bi], block_fn,
-                                is_training, scope+'_b%d'%(bi), edgev_per_vertex=edgev_per_vertex)
+                                is_training, scope+'_b%d'%(bi), edgev_per_vertex=edgev_per_vertex,
+                                  no_prenorm=no_prenorm)
     inputs = self.batch_norm_act(inputs, is_training)
     self.log_dotted_line(scope)
     return inputs
 
-  def block_layer(self, scale, inputs, block_params, block_fn, is_training, name, edgev_per_vertex=None):
+  def block_layer(self, scale, inputs, block_params, block_fn, is_training, name, edgev_per_vertex=None, no_prenorm=False):
     """Creates one layer of block_size for the ResNet model.
 
     Args:
@@ -964,7 +969,7 @@ class ResConvOps(object):
     # and pad_stride1
     with tf.variable_scope('L0'):
       inputs = block_fn(inputs, block_params, is_training, shortcut_projection,
-                        edgev_per_vertex=edgev_per_vertex)
+                        edgev_per_vertex=edgev_per_vertex, no_prenorm=no_prenorm)
 
     block_params['strides'] = 1
     block_params['pad_stride1'] = 's'
