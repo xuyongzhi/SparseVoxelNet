@@ -319,6 +319,7 @@ class ResConvOps(object):
         act_fn = tf.nn.leaky_relu
       else:
         raise NotImplementedError
+      inputs = act_fn(inputs)
       logstr += ' '+self.act
 
     if self.IsShowModel:  self.log('%30s'%(logstr))
