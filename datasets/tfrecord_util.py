@@ -1140,12 +1140,29 @@ class MeshSampling():
   def replace_neg(edgev_per_vertex0, invalid_num, round_id):
     edgev_per_vertex1, invalid_num = MeshSampling.move_neg_left (edgev_per_vertex0)
     edgev_per_vertex1, invalid_num = MeshSampling.move_neg_right(edgev_per_vertex1)
-
-    #is_left = tf.equal(tf.mod(round_id,2), 0)
-    #edgev_per_vertex1, invalid_num = tf.cond(is_left,
-    #        lambda edgev_per_vertex0: MeshSampling.move_neg_left (edgev_per_vertex0),
-    #        lambda edgev_per_vertex0: MeshSampling.move_neg_right(edgev_per_vertex0) )
     return edgev_per_vertex1, invalid_num, round_id+1
+
+  @staticmethod
+  def replace_neg_vertices_by_left_or_right(edgev_per_vertex_new1):
+      invalid_num = tf.reduce_sum(tf.cast(tf.less(edgev_per_vertex_new1,0), tf.int32))
+      round_id = tf.constant(0)
+      cond = lambda edgev_per_vertex_new1, invalid_num, round_id: tf.logical_and(tf.greater(invalid_num, 0), tf.less(round_id, 2))
+      edgev_per_vertex_new2, invalid_num2, round_id2 = tf.while_loop(cond,
+                MeshSampling.replace_neg,
+                [edgev_per_vertex_new1, invalid_num, round_id])
+      return edgev_per_vertex_new2
+
+  @staticmethod
+  def update_valid_ev_num_pv(edgev_per_vertex_new1, valid_ev_num_pv, vertex_sp_indices):
+      rmed_edgev_mask0 = tf.less(edgev_per_vertex_new1, 0)
+      eshape = get_tensor_shape(edgev_per_vertex_new1)
+      tmp = tf.tile(tf.reshape(tf.range(eshape[1]), [1,-1]), [eshape[0],1])
+      valid_ev_num_pv_new = tf.gather(valid_ev_num_pv, tf.squeeze(vertex_sp_indices,1))
+      valid_mask = tf.less(tmp, valid_ev_num_pv_new)
+      rmed_edgev_mask = tf.logical_and(rmed_edgev_mask0, valid_mask)
+      rmed_edgev_num = tf.reduce_sum(tf.cast(rmed_edgev_mask, tf.int32), 1)
+      valid_ev_num_pv_new = valid_ev_num_pv_new - tf.expand_dims(rmed_edgev_num,1)
+      return valid_ev_num_pv_new
 
   @staticmethod
   def down_sampling_face(vertex_sp_indices, num_vertex0, vidx_per_face, \
@@ -1161,23 +1178,8 @@ class MeshSampling():
       edgev_per_vertex_new0 = tf.gather(edgev_per_vertex, tf.squeeze(vertex_sp_indices,1))
       edgev_per_vertex_new1 = tf.gather(raw_vidx_2_sp_vidx, edgev_per_vertex_new0)
 
-      # update valid_ev_num_pv
-      rmed_edgev_mask0 = tf.less(edgev_per_vertex_new1, 0)
-      eshape = get_tensor_shape(edgev_per_vertex_new1)
-      tmp = tf.tile(tf.reshape(tf.range(eshape[1]), [1,-1]), [eshape[0],1])
-      valid_ev_num_pv_new = tf.gather(valid_ev_num_pv, tf.squeeze(vertex_sp_indices,1))
-      valid_mask = tf.less(tmp, valid_ev_num_pv_new)
-      rmed_edgev_mask = tf.logical_and(rmed_edgev_mask0, valid_mask)
-      rmed_edgev_num = tf.reduce_sum(tf.cast(rmed_edgev_mask, tf.int32), 1)
-      valid_ev_num_pv_new = valid_ev_num_pv_new - tf.expand_dims(rmed_edgev_num,1)
-
-      # replace the neg vertices by left or right
-      invalid_num = tf.reduce_sum(tf.cast(tf.less(edgev_per_vertex_new1,0), tf.int32))
-      round_id = tf.constant(0)
-      cond = lambda edgev_per_vertex_new1, invalid_num, round_id: tf.logical_and(tf.greater(invalid_num, 0), tf.less(round_id, 2))
-      edgev_per_vertex_new2, invalid_num2, round_id2 = tf.while_loop(cond,
-                MeshSampling.replace_neg,
-                [edgev_per_vertex_new1, invalid_num, round_id])
+      valid_ev_num_pv_new = MeshSampling.update_valid_ev_num_pv(edgev_per_vertex_new1, valid_ev_num_pv, vertex_sp_indices)
+      edgev_per_vertex_new2 = MeshSampling.replace_neg_vertices_by_left_or_right(edgev_per_vertex_new1)
 
       # there may still be some negative, but very few. Just handle as lonely
       # points. Assign self vertex idx to the lonely edges
