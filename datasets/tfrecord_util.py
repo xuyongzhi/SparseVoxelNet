@@ -1161,11 +1161,16 @@ class MeshSampling():
     pass
 
   @staticmethod
-  def twounit_edgev(edgev_per_vertex, xyz):
-    edgev_edgev = tf.gather(edgev_per_vertex,  edgev_per_vertex)
-    edgev_xyz = tf.gather(xyz, edgev_per_vertex)
-    edgev_edgev_xyz = tf.gather(xyz, edgev_edgev)
-    xyz = tf.expand_dims(xyz, 1)
+  def twounit_edgev(edgev_per_vertex0, xyz0, raw_vidx_2_sp_vidx, vertex_sp_indices):
+    vertex_sp_indices = tf.squeeze(vertex_sp_indices, 1)
+    #  the edgev of edgev: geodesic distance = 2 unit
+    edgev_edgev0 = tf.gather(edgev_per_vertex0,  edgev_per_vertex0)
+    edgev_edgev = tf.gather(edgev_edgev0, vertex_sp_indices)
+
+    edgev_per_vertex = tf.gather(edgev_per_vertex0, vertex_sp_indices)
+    edgev_xyz = tf.gather(xyz0, edgev_per_vertex)
+    edgev_edgev_xyz = tf.gather(xyz0, edgev_edgev)
+    xyz = tf.expand_dims(tf.gather(xyz0, vertex_sp_indices), 1)
     # get the vector from base vertex to edgev
     V0 = edgev_xyz - xyz
     V0 = tf.expand_dims(V0, 2)
@@ -1173,27 +1178,56 @@ class MeshSampling():
     # get the vector from base vertex to edgev_edgev
     V1 = edgev_edgev_xyz - xyz
 
-    # At tht other side of edgev: project_l > 1
+    # (1) At tht other side of edgev: project_l > 1
     V0_normal = tf.norm(V0, axis=-1, keepdims=True)
     V0 = V0 / V0_normal
     project_l = tf.reduce_sum(V0 * V1,-1) / tf.squeeze(V0_normal,3)
-    other_side_mask = tf.cast( tf.greater(project_l, 1), tf.float32)
+    other_side_mask = tf.cast(tf.greater(project_l, 1), tf.float32)
+    # (2) valid mask
+    edgev_edgev_sampled = tf.gather(raw_vidx_2_sp_vidx, edgev_edgev)
+    valid_mask = tf.cast(tf.greater(edgev_edgev_sampled, 0), tf.float32)
 
-    # Close to projection line
+    # (3) Distance to the projection line: want the colest one
     vn, evn = get_tensor_shape(edgev_per_vertex)
     tmp = tf.cross(tf.tile(V0, [1,1,evn,1]), V1)
     dis_to_proj_line = tf.abs(tf.reduce_sum(tmp, -1))
 
-    dis_to_proj_line += (1 - other_side_mask)*100
+    # make all the vertices not at the other side very big
+    dis_to_proj_line += (1 - other_side_mask)*10
+    dis_to_proj_line += (1 - valid_mask)*100
+
     min_idx = tf.argmin(dis_to_proj_line, axis=-1,  output_type=tf.int32)
     min_idx = tf.expand_dims(min_idx, -1)
-    # gather
+    # gather twounit_edgev satisfy three requiements
     v_idx = tf.tile(tf.reshape(tf.range(vn), [-1,1,1]), [1,evn,1])
     ev_idx = tf.tile(tf.reshape(tf.range(evn),[1,-1,1]), [vn,1,1])
     closest_idx = tf.concat([v_idx, ev_idx, min_idx], -1)
     twounit_edgev = tf.gather_nd(edgev_edgev, closest_idx)
 
-    return twounit_edgev
+    # transfer to sampled idx
+    twounit_edgev_new = tf.gather(raw_vidx_2_sp_vidx, twounit_edgev)
+
+    min_idx = tf.reduce_min(twounit_edgev_new)
+    if min_idx.numpy()<0:
+      # check min dis
+      min_dis = tf.reduce_min(dis_to_proj_line, -1)
+      max_mindis = tf.reduce_max(min_dis)
+      invalid_mask = tf.greater(min_dis, 100)
+      invalid_num = tf.reduce_sum(tf.cast(invalid_mask, tf.int32))
+      invalid_idx = tf.where(invalid_mask)
+      import pdb; pdb.set_trace()  # XXX BREAKPOINT
+      pass
+
+    check = tf.assert_greater(min_idx, 0)
+    with tf.control_dependencies([check]):
+      twounit_edgev_new = tf.identity(twounit_edgev_new)
+    return twounit_edgev_new
+
+  @staticmethod
+  def replace_neg_by_2unit_edgev(edgev_per_vertex_new1, twounit_edgev):
+    neg_mask = tf.cast(tf.less(edgev_per_vertex_new1, 0), tf.int32)
+    edgev_per_vertex_new = edgev_per_vertex_new1 * (1-neg_mask) + twounit_edgev * (neg_mask)
+    return edgev_per_vertex_new
 
   @staticmethod
   def update_valid_ev_num_pv(edgev_per_vertex_new1, valid_ev_num_pv, vertex_sp_indices):
@@ -1208,39 +1242,75 @@ class MeshSampling():
       return valid_ev_num_pv_new
 
   @staticmethod
+  def rm_lost_face(vidx_per_face, raw_vidx_2_sp_vidx):
+    vidx_per_face_new = tf.gather(raw_vidx_2_sp_vidx, vidx_per_face)
+    remain_mask = tf.reduce_all(tf.greater(vidx_per_face_new, -1),1)
+    face_sp_indices = tf.squeeze(tf.where(remain_mask), 1)
+    face_sp_indices = tf.cast(face_sp_indices, tf.int32)
+
+    vidx_per_face_new = tf.gather(vidx_per_face_new, face_sp_indices)
+    return face_sp_indices, vidx_per_face_new
+
+  @staticmethod
+  def edgev_to_face(edgev, valid_ev_num_pv):
+    eshape = get_tensor_shape(edgev)
+    v0 = tf.expand_dims(edgev[:,0:-1], 2)
+    v1 = tf.expand_dims(edgev[:,1:], 2)
+    v2 = tf.tile(tf.reshape(tf.range(eshape[0]), [-1,1,1]), [1,eshape[1]-1,1])
+    face = tf.concat([v2, v0, v1], -1)
+
+    tmp = tf.tile( tf.reshape(tf.range(eshape[1]), [1, -1]), [eshape[0],1])
+    valid_mask = tf.less(tmp, valid_ev_num_pv-1)
+    valid_idx = tf.where(valid_mask)
+    vidx_per_face_new = tf.gather_nd(face, valid_idx)
+    return vidx_per_face_new
+
+  @staticmethod
+  def update_face(vidx_per_face, raw_vidx_2_sp_vidx, edgev, twounit_edgev):
+    vidx_per_face_new = tf.gather(raw_vidx_2_sp_vidx, vidx_per_face)
+    remain_mask = tf.reduce_all(tf.greater(vidx_per_face_new, -1),1)
+    face_sp_indices = tf.squeeze(tf.where(remain_mask), 1)
+    face_sp_indices = tf.cast(face_sp_indices, tf.int32)
+
+    import pdb; pdb.set_trace()  # XXX BREAKPOINT
+    vidx_per_face_new = tf.gather(vidx_per_face_new, face_sp_indices)
+    return face_sp_indices, vidx_per_face_new
+
+  @staticmethod
   def down_sampling_face(vertex_sp_indices, num_vertex0, vidx_per_face, \
                          edgev_per_vertex=None, valid_ev_num_pv=None, xyz=None):
     _num_vertex_sp = get_tensor_shape(vertex_sp_indices)[0]
     vertex_sp_indices = tf.expand_dims(tf.cast(vertex_sp_indices, tf.int32),1)
     # scatter new vertex index
     raw_vidx_2_sp_vidx = tf.scatter_nd(vertex_sp_indices, tf.range(_num_vertex_sp)+1, [num_vertex0])-1
-    vidx_per_face_new = tf.gather(raw_vidx_2_sp_vidx, vidx_per_face)
 
     # update edgev_per_vertex
-    if edgev_per_vertex is not None:
-      MeshSampling.update_new_edges(edgev_per_vertex, vertex_sp_indices, xyz)
-      import pdb; pdb.set_trace()  # XXX BREAKPOINT
+    if edgev_per_vertex is None:
+        face_sp_indices, vidx_per_face_new = MeshSampling.rm_lost_face(vidx_per_face, raw_vidx_2_sp_vidx)
+    else:
+      #coarsening_edge_method = 'remove'
+      coarsening_edge_method = 'twounit'
 
       edgev_per_vertex_new0 = tf.gather(edgev_per_vertex, tf.squeeze(vertex_sp_indices,1))
       edgev_per_vertex_new1 = tf.gather(raw_vidx_2_sp_vidx, edgev_per_vertex_new0)
 
+      if coarsening_edge_method == 'twounit':
+        twounit_edgev = MeshSampling.twounit_edgev(edgev_per_vertex, xyz, raw_vidx_2_sp_vidx, vertex_sp_indices)
+        edgev_per_vertex_new2 = MeshSampling.replace_neg_by_2unit_edgev(edgev_per_vertex_new1, twounit_edgev)
+        valid_ev_num_pv_new = tf.gather( valid_ev_num_pv, tf.squeeze(vertex_sp_indices,1) )
+        #vidx_per_face_new = MeshSampling.edgev_to_face(edgev_per_vertex_new2, valid_ev_num_pv_new)
+        vidx_per_face_new = MeshSampling.update_face(vidx_per_face, raw_vidx_2_sp_vidx, edgev_per_vertex_new2, twounit_edgev)
 
-      valid_ev_num_pv_new = MeshSampling.update_valid_ev_num_pv(edgev_per_vertex_new1, valid_ev_num_pv, vertex_sp_indices)
-      edgev_per_vertex_new2 = MeshSampling.replace_neg_vertices_by_left_or_right(edgev_per_vertex_new1)
+      elif coarsening_edge_method == 'remove':
+        valid_ev_num_pv_new = MeshSampling.update_valid_ev_num_pv(edgev_per_vertex_new1, valid_ev_num_pv, vertex_sp_indices)
+        edgev_per_vertex_new2 = MeshSampling.replace_neg_vertices_by_left_or_right(edgev_per_vertex_new1)
+        face_sp_indices, vidx_per_face_new = MeshSampling.rm_lost_face(vidx_per_face, raw_vidx_2_sp_vidx)
 
       # there may still be some negative, but very few. Just handle as lonely
       # points. Assign self vertex idx to the lonely edges
       lonely_vidx = tf.cast(tf.where(tf.less(edgev_per_vertex_new2, 0)), tf.int32)
       tmp = tf.scatter_nd(lonely_vidx, lonely_vidx[:,0]+1, tf.shape(edgev_per_vertex_new2))
       edgev_per_vertex_new3 = edgev_per_vertex_new2 + tmp
-
-
-    # rm lost faces
-    remain_mask = tf.reduce_all(tf.greater(vidx_per_face_new, -1),1)
-    face_sp_indices = tf.squeeze(tf.where(remain_mask), 1)
-    face_sp_indices = tf.cast(face_sp_indices, tf.int32)
-
-    vidx_per_face_new = tf.gather(vidx_per_face_new, face_sp_indices)
 
     if MeshSampling._check_optial:
       max_vidx = tf.reduce_max(vidx_per_face_new)
