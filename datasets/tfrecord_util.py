@@ -403,7 +403,7 @@ class MeshSampling():
     IsGenply_Cleaned = False
     IsGenply_SameMask = False
     IsGenply_Splited = False
-    IsGenply_SplitedSampled = False
+    IsGenply_SplitedSampled = True
 
     if IsGenply_Raw:
       MeshSampling.gen_mesh_ply_basic(raw_datas, 'Raw', 'raw', ply_dir)
@@ -961,9 +961,14 @@ class MeshSampling():
 
   @staticmethod
   def down_sampling_mesh(_num_vertex_sp, raw_datas):
+    vertex_downsample_method = 'random'
     num_vertex0 = get_shape0(raw_datas['xyz'])
-    vertex_sp_indices = MeshSampling.down_sampling_vertex(
+    if vertex_downsample_method == 'prefer_simple':
+      vertex_sp_indices = MeshSampling.down_sampling_vertex_presimple(
                                 raw_datas['same_normal_mask'], _num_vertex_sp)
+    elif vertex_downsample_method == 'random':
+      vertex_sp_indices = MeshSampling.down_sampling_vertex_random(
+                                num_vertex0, _num_vertex_sp)
 
     face_sp_indices, vidx_per_face_new, edgev_per_vertex_new, valid_ev_num_pv_new =\
                     MeshSampling.down_sampling_face(
@@ -1012,7 +1017,14 @@ class MeshSampling():
     return vertex_sp_indices
 
   @staticmethod
-  def down_sampling_vertex(same_normal_mask, _num_vertex_sp):
+  def down_sampling_vertex_random(num_vertex0, _num_vertex_sp):
+    vertex_sp_indices = tf.random_shuffle(tf.range(num_vertex0))[0:_num_vertex_sp]
+    vertex_sp_indices = tf.contrib.framework.sort(vertex_sp_indices)
+    return vertex_sp_indices
+
+
+  @staticmethod
+  def down_sampling_vertex_presimple(same_normal_mask, _num_vertex_sp):
     same_normal_mask = tf.squeeze(same_normal_mask)
     num_vertex0 = tf.shape(same_normal_mask)[0]
     sampling_rate = 1.0 * tf.cast(_num_vertex_sp, tf.float32) / tf.cast(num_vertex0, tf.float32)
@@ -1138,10 +1150,7 @@ class MeshSampling():
   @staticmethod
   def down_sampling_face(vertex_sp_indices, num_vertex0, vidx_per_face, \
                          edgev_per_vertex=None, valid_ev_num_pv=None):
-    if isinstance(vertex_sp_indices, tf.Tensor):
-      _num_vertex_sp = tf.shape(vertex_sp_indices)[0]
-    else:
-      _num_vertex_sp = vertex_sp_indices.shape[0]
+    _num_vertex_sp = get_tensor_shape(vertex_sp_indices)[0]
     vertex_sp_indices = tf.expand_dims(tf.cast(vertex_sp_indices, tf.int32),1)
     # scatter new vertex index
     raw_vidx_2_sp_vidx = tf.scatter_nd(vertex_sp_indices, tf.range(_num_vertex_sp)+1, [num_vertex0])-1
