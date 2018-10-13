@@ -973,7 +973,8 @@ class MeshSampling():
     face_sp_indices, vidx_per_face_new, edgev_per_vertex_new, valid_ev_num_pv_new =\
                     MeshSampling.down_sampling_face(
                     vertex_sp_indices, num_vertex0, raw_datas['vidx_per_face'],
-                    raw_datas['edgev_per_vertex'], raw_datas['valid_ev_num_pv'])
+                    raw_datas['edgev_per_vertex'], raw_datas['valid_ev_num_pv'],
+                    xyz=raw_datas['xyz'])
     raw_datas = MeshSampling.gather_datas(raw_datas, vertex_sp_indices,
                                     face_sp_indices, vidx_per_face_new,
                                     edgev_per_vertex_new, valid_ev_num_pv_new)
@@ -1152,6 +1153,48 @@ class MeshSampling():
                 [edgev_per_vertex_new1, invalid_num, round_id])
       return edgev_per_vertex_new2
 
+
+  @staticmethod
+  def update_new_edges(edgev_per_vertex, vertex_sp_indices, xyz):
+    twounit_edgev = MeshSampling.twounit_edgev(edgev_per_vertex, xyz)
+    import pdb; pdb.set_trace()  # XXX BREAKPOINT
+    pass
+
+  @staticmethod
+  def twounit_edgev(edgev_per_vertex, xyz):
+    edgev_edgev = tf.gather(edgev_per_vertex,  edgev_per_vertex)
+    edgev_xyz = tf.gather(xyz, edgev_per_vertex)
+    edgev_edgev_xyz = tf.gather(xyz, edgev_edgev)
+    xyz = tf.expand_dims(xyz, 1)
+    # get the vector from base vertex to edgev
+    V0 = edgev_xyz - xyz
+    V0 = tf.expand_dims(V0, 2)
+    xyz = tf.expand_dims(xyz, 1)
+    # get the vector from base vertex to edgev_edgev
+    V1 = edgev_edgev_xyz - xyz
+
+    # At tht other side of edgev: project_l > 1
+    V0_normal = tf.norm(V0, axis=-1, keepdims=True)
+    V0 = V0 / V0_normal
+    project_l = tf.reduce_sum(V0 * V1,-1) / tf.squeeze(V0_normal,3)
+    other_side_mask = tf.cast( tf.greater(project_l, 1), tf.float32)
+
+    # Close to projection line
+    vn, evn = get_tensor_shape(edgev_per_vertex)
+    tmp = tf.cross(tf.tile(V0, [1,1,evn,1]), V1)
+    dis_to_proj_line = tf.abs(tf.reduce_sum(tmp, -1))
+
+    dis_to_proj_line += (1 - other_side_mask)*100
+    min_idx = tf.argmin(dis_to_proj_line, axis=-1,  output_type=tf.int32)
+    min_idx = tf.expand_dims(min_idx, -1)
+    # gather
+    v_idx = tf.tile(tf.reshape(tf.range(vn), [-1,1,1]), [1,evn,1])
+    ev_idx = tf.tile(tf.reshape(tf.range(evn),[1,-1,1]), [vn,1,1])
+    closest_idx = tf.concat([v_idx, ev_idx, min_idx], -1)
+    twounit_edgev = tf.gather_nd(edgev_edgev, closest_idx)
+
+    return twounit_edgev
+
   @staticmethod
   def update_valid_ev_num_pv(edgev_per_vertex_new1, valid_ev_num_pv, vertex_sp_indices):
       rmed_edgev_mask0 = tf.less(edgev_per_vertex_new1, 0)
@@ -1166,7 +1209,7 @@ class MeshSampling():
 
   @staticmethod
   def down_sampling_face(vertex_sp_indices, num_vertex0, vidx_per_face, \
-                         edgev_per_vertex=None, valid_ev_num_pv=None):
+                         edgev_per_vertex=None, valid_ev_num_pv=None, xyz=None):
     _num_vertex_sp = get_tensor_shape(vertex_sp_indices)[0]
     vertex_sp_indices = tf.expand_dims(tf.cast(vertex_sp_indices, tf.int32),1)
     # scatter new vertex index
@@ -1175,8 +1218,12 @@ class MeshSampling():
 
     # update edgev_per_vertex
     if edgev_per_vertex is not None:
+      MeshSampling.update_new_edges(edgev_per_vertex, vertex_sp_indices, xyz)
+      import pdb; pdb.set_trace()  # XXX BREAKPOINT
+
       edgev_per_vertex_new0 = tf.gather(edgev_per_vertex, tf.squeeze(vertex_sp_indices,1))
       edgev_per_vertex_new1 = tf.gather(raw_vidx_2_sp_vidx, edgev_per_vertex_new0)
+
 
       valid_ev_num_pv_new = MeshSampling.update_valid_ev_num_pv(edgev_per_vertex_new1, valid_ev_num_pv, vertex_sp_indices)
       edgev_per_vertex_new2 = MeshSampling.replace_neg_vertices_by_left_or_right(edgev_per_vertex_new1)
