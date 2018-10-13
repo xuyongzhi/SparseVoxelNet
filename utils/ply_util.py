@@ -294,7 +294,7 @@ def gen_mesh_ply(ply_fn, vertices0, vidx_per_face, face_label=None,
     num_vertex = vertices0.shape[0]
     assert np.max(vidx_per_face) < num_vertex
 
-    is_vertex_color = (vertex_label is not None) and (vertex_color is not None)
+    is_vertex_color = (vertex_label is not None) or (vertex_color is not None)
     if not is_vertex_color:
       vertex = np.zeros( shape=(num_vertex) ).astype([('x', 'f8'), ('y', 'f8'),('z', 'f8')])
     else:

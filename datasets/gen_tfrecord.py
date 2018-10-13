@@ -56,7 +56,7 @@ class Raw_To_Tfrecord():
     if not os.path.exists(self.data_path):
       os.makedirs(self.data_path)
     self.num_point = num_point
-    self.num_face = num_point * 2
+    self.num_face = int(num_point * 3)
     self.block_size = block_size
     if type(block_size)!=type(None):
       self.block_stride = block_size * 0.5
@@ -293,7 +293,7 @@ class Raw_To_Tfrecord():
     # fix face_i shape
     face_shape = dls['face_i'].shape
     tile_num = self.num_face - face_shape[0]
-    assert tile_num>=0, "face num > buffer"
+    assert tile_num>=0, "face num > buffer: {}>{}".format(self.num_face, face_shape[0])
     tmp = np.tile( dls['face_i'][0:1,:], [tile_num, 1])
     #tmp = np.ones([self.num_face - face_shape[0], face_shape[1]], np.int32) * (-777)
     dls['face_i'] = np.concatenate([dls['face_i'], tmp], 0)
@@ -519,7 +519,7 @@ def main_matterport():
   scene_name = '17DRP5sb8fy'
   #scene_name = '2t7WUuJeko7'
   #scene_name = '*'
-  region_name = 'region0'
+  region_name = 'region1'
   raw_glob = os.path.join(dset_path, '{}/*/region_segmentations/{}.ply'.format(
                                 scene_name, region_name))
   tfrecord_path = '/DS/Matterport3D/MATTERPORT_TF/mesh_tfrecord'
