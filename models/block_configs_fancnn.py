@@ -21,11 +21,14 @@ def block_configs(net_flag='default'):
     if net_flag == '8B':
       filters['global']     = [ [],]
 
-  elif net_flag == '7A':
+  elif net_flag == '7A' or '7B':
     block_sizes['vertex'] = [ [1, 1, 1, 1, 1, 1, 1],  ]
     filters['vertex']     = [ [32, 32, 64, 64, 128, 128, 128],]
     kernels['vertex']     = [ [6 for _ in range(7)],  ]
-    filters['global']     = [ [128, 64],]
+    if net_flag == '7A':
+      filters['global']     = [ [128, 64],]
+    if net_flag == '7B':
+      filters['global']     = [ [],]
 
   elif net_flag == '3A':
     block_sizes['vertex'] = [ [1, 1, 1],  ]
