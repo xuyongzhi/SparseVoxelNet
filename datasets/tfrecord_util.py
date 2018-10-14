@@ -427,6 +427,13 @@ class MeshSampling():
       raw_datas, splited_vidx = MeshSampling.rm_some_labels(raw_datas, dset_metas, splited_vidx)
     if IsGenply_Cleaned:
       MeshSampling.gen_mesh_ply_basic(raw_datas, 'Cleaned', 'Cleaned', ply_dir)
+    # check not all void vertices
+    valid_num_vertex = tf.shape(raw_datas['xyz'])[0]
+    check_enough_nonvoid = tf.assert_greater(valid_num_vertex, 1000,
+          message="not enough nonvoid vertex: {}. Add to bad file list".format(
+                  valid_num_vertex))
+    with tf.control_dependencies([check_enough_nonvoid]):
+      raw_datas['xyz'] = tf.identity(raw_datas['xyz'])
     #***************************************************************************
     #face idx per vetex, edges per vertyex
     num_vertex0 = get_shape0(raw_datas['xyz'])

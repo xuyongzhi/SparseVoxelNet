@@ -28,7 +28,8 @@ MATTERPORT_Meta['label26'] = {}
 MATTERPORT_Meta['unlabelled_categories'] = [0,41]
 MATTERPORT_Meta['easy_categories'] = []
 
-MATTERPORT_Meta['bad_files'] = ['YFuZgdQ5vWj_region19', 'VFuaQ6m2Qom_region38', 'VFuaQ6m2Qom_region40'] # all void
+bad_files = [('YFuZgdQ5vWj','region19'), ('VFuaQ6m2Qom','region38'), ('VFuaQ6m2Qom','region40')] # all void
+MATTERPORT_Meta['bad_files'] = ['%s/%s/region_segmentations/%s.ply'%(e[0], e[0], e[1]) for e in bad_files]
 
 with open(mpcat40_fn,'r') as f:
     reader = csv.reader(f,delimiter='\t')

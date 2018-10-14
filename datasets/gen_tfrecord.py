@@ -87,6 +87,7 @@ class Raw_To_Tfrecord():
     #rawfns = rawfns[5577:]
     rawfns.sort()
     min_sp_rate = 1
+    fi = -1
     for fi, rawfn in enumerate(rawfns):
       self.fi = fi
       region_name = os.path.splitext(os.path.basename(rawfn))[0]
@@ -274,6 +275,7 @@ class Raw_To_Tfrecord():
   def transfer_onefile_matterport(self, rawfn):
     from MATTERPORT_util import parse_ply_file, parse_ply_vertex_semantic
 
+    print('starting {} th file: {}'.format(self.fi, rawfn))
     base_name = os.path.splitext(os.path.basename(rawfn))[0]
     base_name1 = os.path.basename(os.path.dirname(os.path.dirname(rawfn)))
     base_name = base_name1 + '_' + base_name
@@ -298,7 +300,6 @@ class Raw_To_Tfrecord():
         raw_datas, self.num_point, splited_vidx, self.dataset_meta, self.ply_dir)
 
 
-    print('starting {} th file: {}'.format(self.fi, rawfn))
     for bi in range(block_num):
       tmp = '' if block_num==1 else '_'+str(bi)
       tfrecord_fn = os.path.join(self.data_path, base_name)+tmp + '.tfrecord'
@@ -549,6 +550,12 @@ def gen_ply_onef(dataset_name, tf_path, filename, scene):
       ply_fn = os.path.join(ply_dir+'_labeled', base_name+'.ply')
       create_ply_dset( dataset_name, all_points[...,0:3],  ply_fn, all_label_categories)
 
+def clean_bad_files(dataset_name, raw_fns, dset_path):
+  datasets_meta = DatasetsMeta(dataset_name)
+  bad_files = [dset_path+'/'+bf for bf in datasets_meta.bad_files]
+  raw_fns_cleaned = [fn for fn in raw_fns if fn not in bad_files]
+  return raw_fns_cleaned
+
 def main_matterport():
   t0 = time.time()
   dataset_name = 'MATTERPORT'
@@ -559,13 +566,15 @@ def main_matterport():
   scene_name = '17DRP5sb8fy'
   #scene_name = '2t7WUuJeko7'
   scene_name = '*'
-  region_name = 'region*'
+  scene_name = 'VFuaQ6m2Qom'
+  region_name = '*'
   raw_glob = os.path.join(dset_path, '{}/*/region_segmentations/{}.ply'.format(
                                 scene_name, region_name))
   tfrecord_path = '/DS/Matterport3D/MATTERPORT_TF/mesh_tfrecord'
   ply_dir = os.path.join(tfrecord_path, 'plys/{}/{}'.format(scene_name, region_name))
 
   raw_fns = glob.glob(raw_glob)
+  raw_fns = clean_bad_files(dataset_name, raw_fns, dset_path)
   raw_fns.sort()
   main_write_multi(dataset_name, raw_fns, tfrecord_path, num_point[dataset_name],\
               block_size[dataset_name], ply_dir,
