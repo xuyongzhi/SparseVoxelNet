@@ -72,6 +72,7 @@ def parse_record(tfrecord_serialized, is_training, dset_shape_idx, \
     features_map = {
         'vertex_f': tf.FixedLenFeature([], tf.string),
         'vertex_i': tf.FixedLenFeature([], tf.string),
+        'vertex_uint8': tf.FixedLenFeature([], tf.string),
         'face_i':   tf.FixedLenFeature([], tf.string),
         'valid_num_face': tf.FixedLenFeature([1], tf.int64, default_value=-1)
     }
@@ -87,14 +88,18 @@ def parse_record(tfrecord_serialized, is_training, dset_shape_idx, \
     vertex_f = tf.decode_raw(tfrecord_features['vertex_f'], tf.float32)
     vertex_f = tf.reshape(vertex_f, dset_shape_idx['shape']['vertex_f'])
 
+    vertex_uint8 = tf.decode_raw(tfrecord_features['vertex_uint8'], tf.uint8)
+    vertex_uint8 = tf.reshape(vertex_uint8, dset_shape_idx['shape']['vertex_uint8'])
+
     face_i = tf.decode_raw(tfrecord_features['face_i'], tf.int32)
     face_i = tf.reshape(face_i, dset_shape_idx['shape']['face_i'])
     valid_num_face = tfrecord_features['valid_num_face']
 
     #*************
     features = {"vertex_i": vertex_i, "vertex_f": vertex_f, \
-                    "face_i": face_i, "valid_num_face": valid_num_face}
-    labels = tf.squeeze(get_ele(features, 'label_category', dset_shape_idx),1)
+                "vertex_uint8": vertex_uint8, "face_i": face_i, "valid_num_face": valid_num_face}
+    #labels = tf.squeeze(get_ele(features, 'label_category', dset_shape_idx),1)
+    labels = face_i
 
     return features, labels
 
@@ -156,7 +161,7 @@ def get_dset_shape_idxs(tf_path):
 
     shapes = {}
     indices = {}
-    the_items = ['vertex_i', 'vertex_f', 'face_i', 'vertex_uint8', 'vertex_b']
+    the_items = ['vertex_i', 'vertex_f', 'face_i', 'vertex_uint8']
     for item in the_items:
       shapes[item] = {}
       indices[item] = {}
@@ -197,6 +202,7 @@ def get_ele(datas, ele, dset_shape_idx):
 
 
 def read_tfrecord(dataset_name, tf_path, loss_lw_gama=-1):
+  #tf.enable_eager_execution()
   dset_shape_idx = get_dset_shape_idxs(tf_path)
   dataset_summary = read_dataset_summary(tf_path)
   if dataset_summary['intact']:
@@ -284,6 +290,9 @@ def read_tfrecord(dataset_name, tf_path, loss_lw_gama=-1):
               for bi in range(batch_size):
                 ply_fn = os.path.join(ply_dir, 'batch_%d/b%d_simplicity.ply'%(batch_num, bi))
                 ply_util.gen_mesh_ply(ply_fn, xyz[bi], vidx_per_face[bi,0:valid_num_face[bi,0],:], vertex_label=vertex_simplicity[bi])
+
+          import pdb; pdb.set_trace()  # XXX BREAKPOINT
+          pass
 
       #except:
       #  print(label_hist)

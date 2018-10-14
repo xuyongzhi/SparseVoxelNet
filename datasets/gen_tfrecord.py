@@ -18,8 +18,7 @@ Vertex_ieles = ['fidx_per_vertex',  \
                 #'same_normal_mask', 'same_category_mask',
                 ]
                 #'edges_per_vertex','edges_pv_empty_mask',\
-Vertex_uint8_eles = ['color']
-Vertex_beles = ['fidx_pv_empty_mask']
+Vertex_uint8_eles = ['color', 'fidx_pv_empty_mask']
 Face_ieles = ['vidx_per_face', 'label_category']
               #'label_simplity']
               #+ ['label_instance', 'label_material', 'label_raw_category'] \
@@ -136,7 +135,6 @@ class Raw_To_Tfrecord():
     self.eles_sorted['vertex_f'] = [e for e in Vertex_feles if e in all_eles]
     self.eles_sorted['vertex_i'] = [e for e in Vertex_ieles if e in all_eles]
     self.eles_sorted['vertex_uint8'] = [e for e in Vertex_uint8_eles if e in all_eles]
-    self.eles_sorted['vertex_b'] = [e for e in Vertex_beles if e in all_eles]
     self.eles_sorted['face_i'] = [e for e in Face_ieles if e in all_eles]
 
   def record_shape_idx(self, raw_datas, dls):
@@ -326,7 +324,7 @@ class Raw_To_Tfrecord():
         data = block_sampled_datas[e]
         dls[item].append( data )
       if len(dls[item]) >  0:
-        dls[item] = np.concatenate(dls[item], -1)
+        dls[item] = np.concatenate(dls[item], -1) # dtye auto transform here if needed
 
     #*************************************************************************
     # fix face_i shape
@@ -341,7 +339,6 @@ class Raw_To_Tfrecord():
     # convert to expample
     assert dls['vertex_i'].dtype == np.int32
     assert dls['vertex_uint8'].dtype == np.uint8
-    assert dls['vertex_b'].dtype == np.bool
     assert dls['vertex_f'].dtype == np.float32
     assert dls['face_i'].dtype == np.int32
     if not hasattr(self, 'ele_idxs'):
@@ -353,14 +350,16 @@ class Raw_To_Tfrecord():
                                           max_category, self.dataset_meta.num_classes)
 
     vertex_f_bin = dls['vertex_f'].tobytes()
-    vertex_i_shape_bin = np.array(dls['vertex_i'].shape, np.int32).tobytes()
+    #vertex_i_shape_bin = np.array(dls['vertex_i'].shape, np.int32).tobytes()
     vertex_i_bin = dls['vertex_i'].tobytes()
+    vertex_uint8_bin = dls['vertex_uint8'].tobytes()
     face_i_bin = dls['face_i'].tobytes()
 
 
     features_map = {
       'vertex_f': bytes_feature(vertex_f_bin),
       'vertex_i': bytes_feature(vertex_i_bin),
+      'vertex_uint8': bytes_feature(vertex_uint8_bin),
       'face_i':   bytes_feature(face_i_bin),
       #'raw_num_vertex':int64_feature(raw_vertex_num),
       'valid_num_face':int64_feature(face_shape[0])
@@ -559,8 +558,8 @@ def main_matterport():
 
   scene_name = '17DRP5sb8fy'
   scene_name = '2t7WUuJeko7'
-  scene_name = '*'
-  region_name = 'region*'
+  #scene_name = '*'
+  region_name = 'region0'
   raw_glob = os.path.join(dset_path, '{}/*/region_segmentations/{}.ply'.format(
                                 scene_name, region_name))
   tfrecord_path = '/DS/Matterport3D/MATTERPORT_TF/mesh_tfrecord'
