@@ -56,7 +56,7 @@ class Raw_To_Tfrecord():
     if not os.path.exists(self.data_path):
       os.makedirs(self.data_path)
     self.num_point = num_point
-    self.num_face = int(num_point * 3)
+    self.num_face = int(num_point * 5)
     self.block_size = block_size
     if type(block_size)!=type(None):
       self.block_stride = block_size * 0.5
@@ -102,7 +102,8 @@ class Raw_To_Tfrecord():
         continue
 
       if self.dataset_name == "MATTERPORT":
-        block_num, valid_block_num, num_points_splited, xyz_scope_str = self.transfer_onefile_matterport(rawfn)
+        block_num, valid_block_num, num_points_splited, xyz_scope_str,mesh_summary \
+          = self.transfer_onefile_matterport(rawfn)
 
       with open(scene_bs_fn, 'w') as bsf:
         bsf.write('intact\n')
@@ -110,6 +111,8 @@ class Raw_To_Tfrecord():
         bsf.write(bnstr)
         vnstr = '\n'+'\n'.join(['{}_{}: {}'.format(region_name, i, num_points_splited[i]) for i in range(valid_block_num)])
         bsf.write(vnstr)
+        for key in mesh_summary:
+          bsf.write('\n{}: {}'.format(key, mesh_summary[key]))
     print('All {} file are converted to tfreord'.format(fi+1))
 
   def sort_eles(self, all_eles):
@@ -257,7 +260,7 @@ class Raw_To_Tfrecord():
 
     main_split_sampling_rawmesh = MeshSampling.eager_split_sampling_rawmesh
     #main_split_sampling_rawmesh = MeshSampling.sess_split_sampling_rawmesh
-    splited_sampled_datas, raw_vertex_nums = main_split_sampling_rawmesh(
+    splited_sampled_datas, raw_vertex_nums, mesh_summary = main_split_sampling_rawmesh(
         raw_datas, self.num_point, splited_vidx, self.dataset_meta, self.ply_dir)
 
 
@@ -272,7 +275,7 @@ class Raw_To_Tfrecord():
     scope = max_xyz - min_xyz
     strs = [np.array2string(d, precision=2) for d in [min_xyz, max_xyz, scope] ]
     xyz_scope_str = 'min: {}, max:{}, scope:{}'.format(strs[0], strs[1], strs[2])
-    return block_num, valid_block_num, num_points_splited, xyz_scope_str
+    return block_num, valid_block_num, num_points_splited, xyz_scope_str, mesh_summary
 
   def transfer_one_block(self, tfrecord_fn, block_sampled_datas, raw_vertex_num):
     from tfrecord_util import bytes_feature, int64_feature
@@ -293,7 +296,7 @@ class Raw_To_Tfrecord():
     # fix face_i shape
     face_shape = dls['face_i'].shape
     tile_num = self.num_face - face_shape[0]
-    assert tile_num>=0, "face num > buffer: {}>{}".format(self.num_face, face_shape[0])
+    assert tile_num>=0, "face num > buffer: {}>{}".format(face_shape[0], self.num_face)
     tmp = np.tile( dls['face_i'][0:1,:], [tile_num, 1])
     #tmp = np.ones([self.num_face - face_shape[0], face_shape[1]], np.int32) * (-777)
     dls['face_i'] = np.concatenate([dls['face_i'], tmp], 0)
