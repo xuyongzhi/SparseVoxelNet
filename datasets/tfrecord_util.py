@@ -268,7 +268,7 @@ def read_tfrecord(dataset_name, tf_path, loss_lw_gama=-1):
             valid_num_face = features['valid_num_face']
             vidx_per_face = get_ele(features, 'vidx_per_face', dset_shape_idx)
 
-            if 'edgev_per_vertex' in dset_idx['vertex_i']:
+            if 'edgev_per_vertex' in dset_idx['vertex_i'] and False:
               edgev_per_vertex = get_ele(features, 'edgev_per_vertex', dset_shape_idx)
               for i in range(10):
                 xyz_i = np.take(xyz[0,:,:], edgev_per_vertex[0:100,i,:], axis=0)
@@ -291,7 +291,6 @@ def read_tfrecord(dataset_name, tf_path, loss_lw_gama=-1):
                 ply_fn = os.path.join(ply_dir, 'batch_%d/b%d_simplicity.ply'%(batch_num, bi))
                 ply_util.gen_mesh_ply(ply_fn, xyz[bi], vidx_per_face[bi,0:valid_num_face[bi,0],:], vertex_label=vertex_simplicity[bi])
 
-          import pdb; pdb.set_trace()  # XXX BREAKPOINT
           pass
 
       #except:
