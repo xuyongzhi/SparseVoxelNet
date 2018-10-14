@@ -460,7 +460,7 @@ class MeshSampling():
       splited_datas = [raw_datas]
     else:
       with tf.variable_scope('split_vertex'):
-        splited_datas = MeshSampling.split_vertex(raw_datas, splited_vidx)
+        splited_datas = MeshSampling.split_vertex(raw_datas, splited_vidx, mesh_summary)
 
     if IsGenply_Splited:
       for bi in range(block_num):
@@ -486,7 +486,7 @@ class MeshSampling():
 
 
   @staticmethod
-  def split_vertex(raw_datas, splited_vidx):
+  def split_vertex(raw_datas, splited_vidx, mesh_summary):
     num_vertex0 = get_shape0(raw_datas['xyz'])
 
     # get splited_fidx
@@ -499,7 +499,7 @@ class MeshSampling():
         face_sp_indices, vidx_per_face_new, edgev_per_vertex_new, valid_ev_num_pv_new \
                   = MeshSampling.update_face_edgev(\
                   block_vidx, num_vertex0, raw_datas['vidx_per_face'],
-                  raw_datas['edgev_per_vertex'], raw_datas['valid_ev_num_pv'], raw_datas['xyz'])
+                  raw_datas['edgev_per_vertex'], raw_datas['valid_ev_num_pv'], raw_datas['xyz'], mesh_summary)
       splited_fidx.append(face_sp_indices)
       vidx_per_face_new_ls.append(vidx_per_face_new)
       edgev_per_vertex_new_ls.append(edgev_per_vertex_new)
