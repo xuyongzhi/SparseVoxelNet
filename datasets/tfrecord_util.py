@@ -156,7 +156,7 @@ def get_dset_shape_idxs(tf_path):
 
     shapes = {}
     indices = {}
-    the_items = ['vertex_i', 'vertex_f', 'face_i']
+    the_items = ['vertex_i', 'vertex_f', 'face_i', 'vertex_uint8', 'vertex_b']
     for item in the_items:
       shapes[item] = {}
       indices[item] = {}
