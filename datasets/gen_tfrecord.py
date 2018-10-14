@@ -61,7 +61,7 @@ class Raw_To_Tfrecord():
     self.num_face = int(num_point * 5)
     self.block_size = block_size
     if type(block_size)!=type(None):
-      self.block_stride = block_size * 0.5
+      self.block_stride = block_size * 0.8
     self.min_pn_inblock = min(self.num_point * 0.1, 2000)
     self.sampling_rates = []
     self.dataset_meta = DatasetsMeta(self.dataset_name)
@@ -558,7 +558,7 @@ def main_matterport():
 
   scene_name = '17DRP5sb8fy'
   #scene_name = '2t7WUuJeko7'
-  #scene_name = '*'
+  scene_name = '*'
   region_name = 'region*'
   raw_glob = os.path.join(dset_path, '{}/*/region_segmentations/{}.ply'.format(
                                 scene_name, region_name))
@@ -569,7 +569,7 @@ def main_matterport():
   raw_fns.sort()
   main_write_multi(dataset_name, raw_fns, tfrecord_path, num_point[dataset_name],\
               block_size[dataset_name], ply_dir,
-              multiprocessing=6) # 6 to process data, 0 to check
+              multiprocessing=0) # 6 to process data, 0 to check
 
   #main_merge_tfrecord(dataset_name, tfrecord_path)
 

@@ -1173,7 +1173,24 @@ class MeshSampling():
       edgev_per_vertex_new2, invalid_num2, round_id2 = tf.while_loop(cond,
                 MeshSampling.replace_neg,
                 [edgev_per_vertex_new1, invalid_num, round_id])
+
       return edgev_per_vertex_new2
+
+  @staticmethod
+  def replace_neg_by_self(edgev_per_vertex_new2):
+    lonely_mask = tf.less(edgev_per_vertex_new2, 0)
+    any_lonely = tf.reduce_any(lonely_mask)
+    def do_replace_by_self():
+      lonely_vidx = tf.cast(tf.where(lonely_mask), tf.int32)
+      lonely_num = tf.cast(tf.shape(lonely_vidx)[0], tf.float32)
+      vn = tf.cast(get_tensor_shape(edgev_per_vertex_new2)[0], tf.float32)
+      lonely_rate = lonely_num / vn
+      tmp = tf.scatter_nd(lonely_vidx, lonely_vidx[:,0]+1, tf.shape(edgev_per_vertex_new2))
+      return edgev_per_vertex_new2 + tmp
+    def no_op():
+      return edgev_per_vertex_new2
+    edgev_per_vertex_new3 = tf.cond(any_lonely, do_replace_by_self, no_op)
+    return edgev_per_vertex_new3
 
 
   @staticmethod
@@ -1241,25 +1258,23 @@ class MeshSampling():
       # (b) Spliting lead to some lost near the boundary
       check_fail = tf.assert_less(fail_2unit_rate, 5e-3)
       with tf.control_dependencies([check_fail]):
-        return MeshSampling.replace_neg_by_lr(twounit_edgev_new), fail_2uedge_num
+        twounit_edgev_new_2 = MeshSampling.replace_neg_by_lr(twounit_edgev_new)
+        return MeshSampling.replace_neg_by_self(twounit_edgev_new_2), fail_2uedge_num
     def no_op():
       return twounit_edgev_new, tf.constant(0, tf.float32)
     twounit_edgev_new, fail_2uedge_num = tf.cond(any_2unit_failed, rm_invalid_2uedgev, no_op)
 
     # (6)final check
     min_idx = tf.reduce_min(twounit_edgev_new)
-    check = tf.assert_greater(min_idx, 0)
-    with tf.control_dependencies([check]):
-      twounit_edgev_new = tf.identity(twounit_edgev_new)
     #if min_idx.numpy() < 0:
     #  # check min dis
-    #  min_dis = tf.reduce_min(dis_to_proj_line, -1)
-    #  max_mindis = tf.reduce_max(min_dis)
-    #  invalid_mask = tf.greater(min_dis, 100)
-    #  invalid_num = tf.reduce_sum(tf.cast(invalid_mask, tf.int32))
+    #  invalid_mask = tf.less(twounit_edgev_new,0)
     #  invalid_idx = tf.where(invalid_mask)
     #  import pdb; pdb.set_trace()  # XXX BREAKPOINT
     #  pass
+    check = tf.assert_greater(min_idx, 0, message="twounit_edgev_new")
+    with tf.control_dependencies([check]):
+      twounit_edgev_new = tf.identity(twounit_edgev_new)
     return twounit_edgev_new, fail_2uedge_num
 
   @staticmethod
@@ -1342,9 +1357,7 @@ class MeshSampling():
 
     # there may still be some negative, but very few. Just handle as lonely
     # points. Assign self vertex idx to the lonely edges
-    lonely_vidx = tf.cast(tf.where(tf.less(edgev_per_vertex_new2, 0)), tf.int32)
-    tmp = tf.scatter_nd(lonely_vidx, lonely_vidx[:,0]+1, tf.shape(edgev_per_vertex_new2))
-    edgev_per_vertex_new3 = edgev_per_vertex_new2 + tmp
+    edgev_per_vertex_new3 = MeshSampling.replace_neg_by_self(edgev_per_vertex_new2)
     return edgev_per_vertex_new3, valid_ev_num_pv_new
 
   @staticmethod
