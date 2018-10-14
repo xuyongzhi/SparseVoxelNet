@@ -1,6 +1,6 @@
 #export CUDA_VISIBLE_DEVICES=1
 
-net_flag='8A'
+net_flag='7A'
 ng=2
 bs=2
 rs=--rs
@@ -11,13 +11,13 @@ normedge='raw'
 
 
 ipython  ./train_main.py -- --num_gpus $ng --net_flag $net_flag --batch_size $bs   $rs --normxyz $normxyz --normedge $normedge
-ipython  ./train_main.py -- --num_gpus $ng --net_flag $net_flag --batch_size $bs   --normxyz $normxyz --normedge $normedge
-ipython  ./train_main.py -- --num_gpus $ng --net_flag $net_flag --batch_size $bs   $rs --normxyz $normxyz --normedge $normedge --nobn
-ipython  ./train_main.py -- --num_gpus $ng --net_flag $net_flag --batch_size $bs   $rs --normxyz $normxyz --normedge 'l0'
-ipython  ./train_main.py -- --num_gpus $ng --net_flag $net_flag --batch_size $bs   $rs --normxyz $normxyz --normedge 'l0' --nobn
-
-ipython  ./train_main.py -- --num_gpus $ng --net_flag $net_flag --batch_size $bs   $rs --normxyz $normxyz --normedge $normedge --act Lrelu
-
+#ipython  ./train_main.py -- --num_gpus $ng --net_flag $net_flag --batch_size $bs   --normxyz $normxyz --normedge $normedge
+#ipython  ./train_main.py -- --num_gpus $ng --net_flag $net_flag --batch_size $bs   $rs --normxyz $normxyz --normedge $normedge --nobn
+#ipython  ./train_main.py -- --num_gpus $ng --net_flag $net_flag --batch_size $bs   $rs --normxyz $normxyz --normedge 'l0'
+#ipython  ./train_main.py -- --num_gpus $ng --net_flag $net_flag --batch_size $bs   $rs --normxyz $normxyz --normedge 'l0' --nobn
+#
+#ipython  ./train_main.py -- --num_gpus $ng --net_flag $net_flag --batch_size $bs   $rs --normxyz $normxyz --normedge $normedge --act Lrelu
+#
 
 
 

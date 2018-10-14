@@ -9,7 +9,7 @@ def block_configs(net_flag='default'):
   kernels = {}
   flayers = {}
 
-  block_configs['edgevnum'] = 12
+  block_configs['edgevnum'] = 10
   block_configs['dense_filters'] = [256, 128]
 
   if net_flag == '8A' or net_flag=='8B':
@@ -20,6 +20,12 @@ def block_configs(net_flag='default'):
       filters['global']     = [ [128, 64],]
     if net_flag == '8B':
       filters['global']     = [ [],]
+
+  elif net_flag == '7A':
+    block_sizes['vertex'] = [ [1, 1, 1, 1, 1, 1, 1],  ]
+    filters['vertex']     = [ [32, 32, 64, 64, 128, 128, 128],]
+    kernels['vertex']     = [ [6 for _ in range(7)],  ]
+    filters['global']     = [ [128, 64],]
 
   elif net_flag == '3A':
     block_sizes['vertex'] = [ [1, 1, 1],  ]
@@ -42,6 +48,6 @@ def block_configs(net_flag='default'):
 
   dense_flag = '_%d'%( len(block_configs['dense_filters']))
 
-  block_configs['block_flag'] = block_flag + dense_flag
+  block_configs['block_flag'] = str(block_configs['edgevnum']) + '_' + block_flag + dense_flag
 
   return block_configs
