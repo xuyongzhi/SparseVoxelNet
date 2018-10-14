@@ -942,7 +942,7 @@ class MeshSampling():
     num_vertex0 = get_shape0(raw_datas['xyz'])
     if not isinstance(num_vertex0, tf.Tensor):
       sampling_rate = 1.0 * _num_vertex_sp / tf.cast(num_vertex0, tf.float32)
-      print('\nsampling org_num={}, fixed_num={}, rate={}\n'.format(num_vertex0, _num_vertex_sp, sampling_rate))
+      print('\nsampling org_num={}, fixed_num={}, valid_sp_rate={} (after rm void)\n'.format(num_vertex0, _num_vertex_sp, sampling_rate))
 
     is_down_sampling = tf.less(_num_vertex_sp, num_vertex0)
     sampled_datas = tf.cond(is_down_sampling,

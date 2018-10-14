@@ -12,12 +12,14 @@ import math, time
 from tfrecord_util import MeshSampling
 
 
-Vertex_feles = ['xyz','nxnynz', 'color']
-Vertex_ieles = ['fidx_per_vertex', 'fidx_pv_empty_mask', \
+Vertex_feles = ['xyz','nxnynz']
+Vertex_ieles = ['fidx_per_vertex',  \
                 'edgev_per_vertex', 'valid_ev_num_pv', \
                 #'same_normal_mask', 'same_category_mask',
                 ]
                 #'edges_per_vertex','edges_pv_empty_mask',\
+Vertex_uint8_eles = ['color']
+Vertex_beles = ['fidx_pv_empty_mask']
 Face_ieles = ['vidx_per_face', 'label_category']
               #'label_simplity']
               #+ ['label_instance', 'label_material', 'label_raw_category'] \
@@ -56,7 +58,7 @@ class Raw_To_Tfrecord():
     if not os.path.exists(self.data_path):
       os.makedirs(self.data_path)
     self.num_point = num_point
-    self.min_sample_rate = 0.7 # sample_rate = self.num_point/org_num
+    self.min_sample_rate = 0.65 # sample_rate = self.num_point/org_num
     self.num_face = int(num_point * 5)
     self.block_size = block_size
     if type(block_size)!=type(None):
@@ -125,7 +127,7 @@ class Raw_To_Tfrecord():
       all_sp_logf.write('{} {}\t sp_rates:{}\n'.format(scene_name, region_name,  sp_rates))
       all_sp_logf.flush()
     if len(rawfns)>0:
-      all_sp_logf.write('\nmin_sp_rate:{}\n'.format(min_sp_rate))
+      all_sp_logf.write('\nmin_sp_rate:{}\n\n'.format(min_sp_rate))
     print('All {} file are converted to tfreord'.format(fi+1))
 
   def sort_eles(self, all_eles):
@@ -133,6 +135,8 @@ class Raw_To_Tfrecord():
     self.eles_sorted = {}
     self.eles_sorted['vertex_f'] = [e for e in Vertex_feles if e in all_eles]
     self.eles_sorted['vertex_i'] = [e for e in Vertex_ieles if e in all_eles]
+    self.eles_sorted['vertex_uint8'] = [e for e in Vertex_uint8_eles if e in all_eles]
+    self.eles_sorted['vertex_b'] = [e for e in Vertex_beles if e in all_eles]
     self.eles_sorted['face_i'] = [e for e in Face_ieles if e in all_eles]
 
   def record_shape_idx(self, raw_datas, dls):
@@ -290,8 +294,8 @@ class Raw_To_Tfrecord():
     assert min_sp_rate > self.min_sample_rate, 'got small sample rate:{} < {}'.format(
                                               min_sp_rate, self.min_sample_rate)
 
-    #main_split_sampling_rawmesh = MeshSampling.eager_split_sampling_rawmesh
-    main_split_sampling_rawmesh = MeshSampling.sess_split_sampling_rawmesh
+    main_split_sampling_rawmesh = MeshSampling.eager_split_sampling_rawmesh
+    #main_split_sampling_rawmesh = MeshSampling.sess_split_sampling_rawmesh
     splited_sampled_datas, raw_vertex_nums, mesh_summary = main_split_sampling_rawmesh(
         raw_datas, self.num_point, splited_vidx, self.dataset_meta, self.ply_dir)
 
@@ -336,6 +340,8 @@ class Raw_To_Tfrecord():
     #*************************************************************************
     # convert to expample
     assert dls['vertex_i'].dtype == np.int32
+    assert dls['vertex_uint8'].dtype == np.uint8
+    assert dls['vertex_b'].dtype == np.bool
     assert dls['vertex_f'].dtype == np.float32
     assert dls['face_i'].dtype == np.int32
     if not hasattr(self, 'ele_idxs'):
@@ -552,9 +558,9 @@ def main_matterport():
   block_size = {'MODELNET40':None, 'MATTERPORT':np.array([5.0, 5.0, 5.0]) }
 
   scene_name = '17DRP5sb8fy'
-  scene_name = '2t7WUuJeko7'
+  #scene_name = '2t7WUuJeko7'
   #scene_name = '*'
-  region_name = 'region*'
+  region_name = 'region7'
   raw_glob = os.path.join(dset_path, '{}/*/region_segmentations/{}.ply'.format(
                                 scene_name, region_name))
   tfrecord_path = '/DS/Matterport3D/MATTERPORT_TF/mesh_tfrecord'
