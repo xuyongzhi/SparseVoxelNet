@@ -1229,7 +1229,9 @@ class MeshSampling():
       fail_2uedge_num = tf.reduce_sum(tf.cast(fail_2unit_mask, tf.float32))
       fail_2uedge_num = tf.Print(fail_2uedge_num, [fail_2uedge_num], message="fail_2uedge_num")
       fail_2unit_rate = fail_2uedge_num / tf.cast(vn, tf.float32)
-      check_fail = tf.assert_less(fail_2unit_rate, 5e-4)
+      # (a) All vertices for a path are deleted
+      # (b) Spliting lead to some lost near the boundary
+      check_fail = tf.assert_less(fail_2unit_rate, 5e-3)
       with tf.control_dependencies([check_fail]):
         return MeshSampling.replace_neg_by_lr(twounit_edgev_new), fail_2uedge_num
     def no_op():

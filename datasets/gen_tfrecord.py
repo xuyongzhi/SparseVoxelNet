@@ -56,6 +56,7 @@ class Raw_To_Tfrecord():
     if not os.path.exists(self.data_path):
       os.makedirs(self.data_path)
     self.num_point = num_point
+    self.min_sample_rate = 0.7 # sample_rate = self.num_point/org_num
     self.num_face = int(num_point * 5)
     self.block_size = block_size
     if type(block_size)!=type(None):
@@ -78,11 +79,13 @@ class Raw_To_Tfrecord():
     block_split_dir = os.path.join(self.tfrecord_path, 'block_split_summary')
     if not os.path.exists(block_split_dir):
       os.makedirs(block_split_dir)
-
+    all_sp_log_fn = os.path.join(self.tfrecord_path, 'mesh_sampling.log')
+    all_sp_logf = open(all_sp_log_fn, 'a')
 
     self.fn = len(rawfns)
     #rawfns = rawfns[5577:]
     rawfns.sort()
+    min_sp_rate = 1
     for fi, rawfn in enumerate(rawfns):
       self.fi = fi
       region_name = os.path.splitext(os.path.basename(rawfn))[0]
@@ -105,14 +108,24 @@ class Raw_To_Tfrecord():
         block_num, valid_block_num, num_points_splited, xyz_scope_str,mesh_summary \
           = self.transfer_onefile_matterport(rawfn)
 
+      sp_rates = [1.0*self.num_point/orgn for orgn in  num_points_splited]
+      if min(sp_rates) < min_sp_rate:
+        min_sp_rate = min(sp_rates)
       with open(scene_bs_fn, 'w') as bsf:
         bsf.write('intact\n')
         bnstr = '{} \tblock_num:{} \tvalid block num:{}\n{}\n\n'.format(region_name, block_num, valid_block_num, xyz_scope_str)
         bsf.write(bnstr)
-        vnstr = '\n'+'\n'.join(['{}_{}: {}'.format(region_name, i, num_points_splited[i]) for i in range(valid_block_num)])
-        bsf.write(vnstr)
+        for i in range(valid_block_num):
+          org_num_vertex_i = num_points_splited[i]
+          vnstr = '\n'+'\n'.join(['{}_{}: org_num_vertex={}, sp_rate={}'.format(region_name, i, org_num_vertex_i, sp_rates[i]) ])
+          bsf.write(vnstr)
         for key in mesh_summary:
           bsf.write('\n{}: {}'.format(key, mesh_summary[key]))
+
+      all_sp_logf.write('{} {}\t sp_rates:{}\n'.format(scene_name, region_name,  sp_rates))
+      all_sp_logf.flush()
+    if len(rawfns)>0:
+      all_sp_logf.write('\nmin_sp_rate:{}\n'.format(min_sp_rate))
     print('All {} file are converted to tfreord'.format(fi+1))
 
   def sort_eles(self, all_eles):
@@ -154,15 +167,30 @@ class Raw_To_Tfrecord():
       f.flush()
     print('write ok: {}'.format(metas_fn))
 
+  def dynamic_block_size(self, xyz_scope):
+    # keep xy area within the threshold, adjust to reduce block num
+    block_size_ = self.block_size
+    if (xyz_scope[0]<block_size_[0]) == (xyz_scope[1]<block_size_[1]):
+      return block_size_
+
+    xy_area_ = block_size_[0]*block_size_[1]
+    if xyz_scope[0] < block_size_[0]:
+      block_size = [xyz_scope[0], xy_area_ / xyz_scope[0], block_size_[2]]
+    elif xyz_scope[1] < block_size_[1]:
+      block_size = [xy_area_ / xyz_scope[1], xyz_scope[1], block_size_[2]]
+    block_size = [math.ceil(d*10)/10.0 for d in block_size]
+    return block_size
+
   def split_vertex(self, xyz):
     if type(self.block_size) == type(None):
-      return [None]
+      return [None], None
 
     xyz_min = np.min(xyz, 0)
     xyz_max = np.max(xyz, 0)
     xyz_scope = xyz_max - xyz_min
 
-    block_size = self.block_size
+    #block_size = self.block_size
+    block_size = self.dynamic_block_size(xyz_scope)
     block_stride = self.block_stride
     block_dims0 =  (xyz_scope - block_size) / block_stride + 1
     block_dims0 = np.maximum(block_dims0, 1)
@@ -180,7 +208,7 @@ class Raw_To_Tfrecord():
     #print('splited bot:\n{} splited top:\n{}'.format(bot, top))
 
     if block_num == 1:
-      return [None]
+      return [None], block_size
 
     if block_num>1:
       for i in range(block_num):
@@ -209,7 +237,7 @@ class Raw_To_Tfrecord():
         continue
       num_points_splited.append(num_point_i)
       splited_vidx.append(indices)
-    return splited_vidx
+    return splited_vidx, block_size
 
 
   @staticmethod
@@ -252,11 +280,15 @@ class Raw_To_Tfrecord():
     # 'xyz', 'nxnynz', 'label_raw_category', 'label_instance']
     raw_datas = parse_ply_file(rawfn)
 
-    splited_vidx = self.split_vertex(raw_datas['xyz'])
+    splited_vidx, dy_block_size = self.split_vertex(raw_datas['xyz'])
     block_num = len(splited_vidx)
     valid_block_num = len(splited_vidx)
     num_points_splited = [e.shape[0] if type(e)!=type(None) else raw_datas['xyz'].shape[0]\
                           for e in splited_vidx]
+    sp_rates = [1.0*self.num_point/k for k in num_points_splited]
+    min_sp_rate = min(sp_rates)
+    assert min_sp_rate > self.min_sample_rate, 'got small sample rate:{} < {}'.format(
+                                              min_sp_rate, self.min_sample_rate)
 
     #main_split_sampling_rawmesh = MeshSampling.eager_split_sampling_rawmesh
     main_split_sampling_rawmesh = MeshSampling.sess_split_sampling_rawmesh
@@ -274,7 +306,7 @@ class Raw_To_Tfrecord():
     max_xyz = np.max(raw_datas['xyz'],0)
     scope = max_xyz - min_xyz
     strs = [np.array2string(d, precision=2) for d in [min_xyz, max_xyz, scope] ]
-    xyz_scope_str = 'min: {}, max:{}, scope:{}'.format(strs[0], strs[1], strs[2])
+    xyz_scope_str = 'min: {}, max:{}, scope:{}\ndynamic block size:{}'.format(strs[0], strs[1], strs[2], dy_block_size)
     return block_num, valid_block_num, num_points_splited, xyz_scope_str, mesh_summary
 
   def transfer_one_block(self, tfrecord_fn, block_sampled_datas, raw_vertex_num):
@@ -520,7 +552,7 @@ def main_matterport():
   block_size = {'MODELNET40':None, 'MATTERPORT':np.array([5.0, 5.0, 5.0]) }
 
   scene_name = '17DRP5sb8fy'
-  #scene_name = '2t7WUuJeko7'
+  scene_name = '2t7WUuJeko7'
   #scene_name = '*'
   region_name = 'region*'
   raw_glob = os.path.join(dset_path, '{}/*/region_segmentations/{}.ply'.format(
