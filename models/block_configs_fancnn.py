@@ -31,11 +31,11 @@ def block_configs(net_flag='default'):
       filters['global']     = [ [],]
 
   elif net_flag == '2A2':
-    block_sizes['vertex'] = [ [1, ],   [1,], [1] ]
-    kernels['vertex']     = [ [6, ],   [6, ], [6]]
-    filters['vertex']     = [ [32,], [64,], [128]]
-    filters['global']     = [ [64], [64]]
-    filters['backprop']     = [ [125,], [100,]]
+    block_sizes['vertex'] = [ [1, ],  [1,], [1] ]
+    kernels['vertex']     = [ [6, ],  [6,], [6]]
+    filters['vertex']     = [ [32,],  [64,], [64]]
+    filters['global']     = [ [64],   [64]]
+    filters['backprop']   = [ [125,], [100,]]
 
 
   else:

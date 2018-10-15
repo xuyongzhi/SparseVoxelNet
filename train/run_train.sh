@@ -2,7 +2,7 @@
 
 net_flag='2A2'
 ng=1
-bs=3
+bs=2
 rs=--rs
 #normxyz='raw'
 normxyz='min0'

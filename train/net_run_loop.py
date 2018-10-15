@@ -384,12 +384,16 @@ def net_model_fn( features, labels, mode, model_class,
 
 
 def net_main_check(
-    flags_obj, model_function, input_function, net_data_configs, shape=None):
+    flags_obj, model_class, input_function, net_data_configs, shape=None):
+  tf.enable_eager_execution()
   from datasets.tfrecord_util import get_ele
   import numpy as np
+
+  model_cls = model_class(net_data_configs)
   dset_shape_idx = net_data_configs['dset_shape_idx']
 
-  with tf.Graph().as_default():
+  #with tf.Graph().as_default():
+  if True:
     def input_fn_train(num_epochs):
       return input_function(
           is_training=True, data_dir=flags_obj.data_dir,
@@ -402,19 +406,13 @@ def net_main_check(
     dataset = input_fn_train(1)
     ds_iterator = dataset.make_one_shot_iterator()
     features, labels = ds_iterator.get_next()
-    print(features)
-    import pdb; pdb.set_trace()  # XXX BREAKPOINT
+    model_cls.main_test_pool(features)
 
-    with tf.Session() as sess:
-      features_, labels_ = sess.run([features, labels])
-      vidx_per_face = get_ele(features_, 'vidx_per_face', dset_shape_idx)
-      fidx_per_vertex = get_ele(features_, 'fidx_per_vertex', dset_shape_idx)
+    vidx_per_face = get_ele(features_, 'vidx_per_face', dset_shape_idx)
+    fidx_per_vertex = get_ele(features_, 'fidx_per_vertex', dset_shape_idx)
 
-      vpf_min = np.min(vidx_per_face)
-      fpv_min = np.min(fidx_per_vertex)
-      lb_min = np.min(labels_)
-      import pdb; pdb.set_trace()  # XXX BREAKPOINT
-      pass
+    vpf_min = np.min(vidx_per_face)
+    fpv_min = np.min(fidx_per_vertex)
 
 def net_main(
     flags_obj, model_function, input_function, net_data_configs, shape=None):

@@ -1201,7 +1201,8 @@ class MeshSampling():
 
 
   @staticmethod
-  def get_twounit_edgev(edgev_per_vertex0, xyz0, raw_vidx_2_sp_vidx, vertex_sp_indices):
+  def get_twounit_edgev(edgev_per_vertex0, xyz0, raw_vidx_2_sp_vidx, vertex_sp_indices,
+                        max_fail_2unit_ev_rate=1e-4, scale=None):
     #  the edgev of edgev: geodesic distance = 2 unit
     edgev_edgev0 = tf.gather(edgev_per_vertex0,  edgev_per_vertex0)
     edgev_edgev = tf.gather(edgev_edgev0, vertex_sp_indices)
@@ -1248,22 +1249,32 @@ class MeshSampling():
 
     # (5) Failed to find 2 unit edgev: mainly because all the edgev of a vertex are
     # removed. The rate should be small. Just remove the edgev.
-    fail_2unit_mask = tf.less(twounit_edgev_new, 0)
-    any_2unit_failed = tf.reduce_any(fail_2unit_mask)
+    fail_2unit_ev_mask = tf.less(twounit_edgev_new, 0)
+    any_2unit_failed = tf.reduce_any(fail_2unit_ev_mask)
 
     def rm_invalid_2uedgev():
-      fail_2uedge_num = tf.reduce_sum(tf.cast(fail_2unit_mask, tf.float32))
-      fail_2uedge_num = tf.Print(fail_2uedge_num, [fail_2uedge_num], message="fail_2uedge_num")
-      fail_2unit_rate = fail_2uedge_num / tf.cast(vn, tf.float32)
+      # all the edgev for a vertex are lost
+      fail_2unit_e_mask = tf.reduce_all(fail_2unit_ev_mask, 1)
+      fail_2uedge_e_num = tf.reduce_sum(tf.cast(fail_2unit_e_mask, tf.float32))
+      fail_2unit_e_rate = fail_2uedge_e_num / tf.cast(vn, tf.float32)
+      check_e_fail = tf.assert_less(fail_2unit_e_rate, 1e-4,
+            message="fail_2unit_e_rate: all two unit edgev of a vertex are lost, scale {}".format(scale))
+
+      # the detailed edgev lost for each vertex
+      fail_2uedge_ev_num = tf.reduce_sum(tf.cast(fail_2unit_ev_mask, tf.float32))
+      # normally 5e-5 for downsample in data preprocess
+      fail_2unit_ev_rate = fail_2uedge_ev_num / tf.cast(vn, tf.float32) / tf.cast(evn, tf.float32)
+      #fail_2unit_ev_rate = tf.Print(fail_2unit_ev_rate, [fail_2unit_ev_rate],
+      #                              message="\n\t\tfail_2unit_ev_rate scale {}: {} > ".format(scale, max_fail_2unit_ev_rate))
       # (a) All vertices for a path are deleted
       # (b) Spliting lead to some lost near the boundary
-      check_fail = tf.assert_less(fail_2unit_rate, 5e-3)
-      with tf.control_dependencies([check_fail]):
+      check_ev_fail = tf.assert_less(fail_2unit_ev_rate, max_fail_2unit_ev_rate, message="fail_2unit_ev_rate scale {}".format(scale))
+      with tf.control_dependencies([check_e_fail, check_ev_fail]):
         twounit_edgev_new_2 = MeshSampling.replace_neg_by_lr(twounit_edgev_new)
-        return MeshSampling.replace_neg_by_self(twounit_edgev_new_2), fail_2uedge_num
+        return MeshSampling.replace_neg_by_self(twounit_edgev_new_2), fail_2unit_ev_rate
     def no_op():
       return twounit_edgev_new, tf.constant(0, tf.float32)
-    twounit_edgev_new, fail_2uedge_num = tf.cond(any_2unit_failed, rm_invalid_2uedgev, no_op)
+    twounit_edgev_new, fail_2uedge_rate = tf.cond(any_2unit_failed, rm_invalid_2uedgev, no_op)
 
     # (6)final check
     min_idx = tf.reduce_min(twounit_edgev_new)
@@ -1273,10 +1284,10 @@ class MeshSampling():
     #  invalid_idx = tf.where(invalid_mask)
     #  import pdb; pdb.set_trace()  # XXX BREAKPOINT
     #  pass
-    check = tf.assert_greater(min_idx, 0, message="twounit_edgev_new")
+    check = tf.assert_greater(min_idx, -1, message="twounit_edgev_new")
     with tf.control_dependencies([check]):
       twounit_edgev_new = tf.identity(twounit_edgev_new)
-    return twounit_edgev_new, fail_2uedge_num
+    return twounit_edgev_new, fail_2uedge_rate
 
   @staticmethod
   def replace_neg_by_2unit_edgev(edgev_per_vertex_new1, twounit_edgev):
@@ -1334,7 +1345,7 @@ class MeshSampling():
                         valid_ev_num_pv, xyz, mesh_summary):
     face_sp_indices, vidx_per_face_new, raw_vidx_2_sp_vidx = MeshSampling.down_sampling_face(\
                                   vertex_sp_indices, num_vertex0, vidx_per_face, False)
-    edgev_per_vertex_new3, valid_ev_num_pv_new, edgev_bridge0 = MeshSampling.rich_edges(vertex_sp_indices,\
+    edgev_per_vertex_new3, valid_ev_num_pv_new, raw_edgev_spvidx = MeshSampling.rich_edges(vertex_sp_indices,\
               edgev_per_vertex, xyz, raw_vidx_2_sp_vidx, valid_ev_num_pv, mesh_summary)
     return face_sp_indices, vidx_per_face_new, edgev_per_vertex_new3, valid_ev_num_pv_new
 
@@ -1348,21 +1359,22 @@ class MeshSampling():
     return raw_vidx_2_sp_vidx
 
   @staticmethod
-  def rich_edges(vertex_sp_indices, edgev_per_vertex, xyz, raw_vidx_2_sp_vidx, valid_ev_num_pv=None,  mesh_summary={}):
+  def rich_edges(vertex_sp_indices, edgev_per_vertex, xyz, raw_vidx_2_sp_vidx,
+                 valid_ev_num_pv,  mesh_summary={}, max_fail_2unit_ev_rate=1e-4, scale=None):
     assert len(get_tensor_shape(vertex_sp_indices)) == 1
     assert len(get_tensor_shape(edgev_per_vertex)) == len(get_tensor_shape(xyz)) == 2
     #rich_edge_method = 'remove'
     rich_edge_method = 'twounit_edgev'
 
-    edgev_bridge0 = tf.gather(raw_vidx_2_sp_vidx, edgev_per_vertex)
-    edgev_per_vertex_new1 = tf.gather(edgev_bridge0, vertex_sp_indices)
+    raw_edgev_spvidx = tf.gather(raw_vidx_2_sp_vidx, edgev_per_vertex)
+    edgev_per_vertex_new1 = tf.gather(raw_edgev_spvidx, vertex_sp_indices)
 
-    #edgev_bridge0 = tf.gather(edgev_per_vertex, vertex_sp_indices)
-    #edgev_per_vertex_new1 = tf.gather(raw_vidx_2_sp_vidx, edgev_bridge0)
+    #raw_edgev_spvidx = tf.gather(edgev_per_vertex, vertex_sp_indices)
+    #edgev_per_vertex_new1 = tf.gather(raw_vidx_2_sp_vidx, raw_edgev_spvidx)
 
     if rich_edge_method == 'twounit_edgev':
-      twounit_edgev, mesh_summary['fail_2uedge_num'] = MeshSampling.get_twounit_edgev(
-                    edgev_per_vertex, xyz, raw_vidx_2_sp_vidx, vertex_sp_indices)
+      twounit_edgev, mesh_summary['fail_2uedge_rate'] = MeshSampling.get_twounit_edgev(
+                    edgev_per_vertex, xyz, raw_vidx_2_sp_vidx, vertex_sp_indices, max_fail_2unit_ev_rate, scale)
       edgev_per_vertex_new2 = MeshSampling.replace_neg_by_2unit_edgev(edgev_per_vertex_new1, twounit_edgev)
       if valid_ev_num_pv is None:
         valid_ev_num_pv_new = None
@@ -1380,32 +1392,55 @@ class MeshSampling():
     # points. Assign self vertex idx to the lonely edges
     edgev_per_vertex_new3 = MeshSampling.replace_neg_by_self(edgev_per_vertex_new2)
 
-    return edgev_per_vertex_new3, valid_ev_num_pv_new, edgev_bridge0
+    return edgev_per_vertex_new3, valid_ev_num_pv_new, raw_edgev_spvidx
 
   @staticmethod
-  def get_raw2sp(raw_vidx_2_sp_vidx, valid_ev_num_pv, edgev_bridge0):
+  def get_raw2sp(edgev_per_vertex, raw_vidx_2_sp_vidx, valid_ev_num_pv, raw_edgev_spvidx,
+                 max_bp_fail_rate=5e-4, scale=None):
     ''' [vn]  [vn,12]
     (1) If a vertex is not removed, use itself in raw_vidx_2_sp_vidx
     (2) If a vertex is removed, use any edgev
+    (3) If edgev not found, use 2 unit edgev
     '''
     assert  len(get_tensor_shape(raw_vidx_2_sp_vidx)) == 1
-    assert len(get_tensor_shape(valid_ev_num_pv)) == len(get_tensor_shape(edgev_bridge0)) == 2
+    assert len(get_tensor_shape(valid_ev_num_pv)) == len(get_tensor_shape(raw_edgev_spvidx)) == 2
 
-    eshape = get_tensor_shape(edgev_bridge0)
+    eshape = get_tensor_shape(raw_edgev_spvidx)
     tmp = tf.tile(tf.reshape(tf.range(eshape[1]), [1,-1]), [eshape[0],1])
     valid_mask = tf.cast(tf.less(tmp, valid_ev_num_pv), tf.int32)
-    edgev_bridge1 = (edgev_bridge0+1) * valid_mask -1
+    edgev_bridge1 = (raw_edgev_spvidx+1) * valid_mask -1
     edgev_backp, _ = tf.nn.top_k(edgev_bridge1, 1, sorted=False)
     edgev_backp = tf.squeeze(edgev_backp, 1)
 
     lost_raw_mask = tf.cast(tf.less(raw_vidx_2_sp_vidx, 0), tf.int32)
-    raw_2_sp_vidx = raw_vidx_2_sp_vidx + lost_raw_mask * (1+edgev_backp)
+    backprop_vidx_0 = raw_vidx_2_sp_vidx + lost_raw_mask * (1+edgev_backp)
 
-    # some lost vertex cannot find edgev
-    r2s_fail_mask = tf.less(raw_2_sp_vidx, 0)
-    r2s_fail_num = tf.reduce_sum(tf.cast(r2s_fail_mask, tf.int32))
-    #fail_idx = tf.where(fail_mask)
-    return raw_2_sp_vidx, r2s_fail_mask
+    # (3) Some lost vertex cannot find edgev. Use 2 unit edgev
+    bp_fail_mask0 = tf.less(backprop_vidx_0, 0)
+    bp_fail_num0 = tf.reduce_sum(tf.cast(bp_fail_mask0, tf.float32))
+    bp_fail_rate0 = bp_fail_num0 / tf.cast(eshape[0], tf.float32)
+
+    bp_fail_idx = tf.squeeze(tf.where(bp_fail_mask0),1)
+    fail_edgev = tf.gather(edgev_per_vertex, bp_fail_idx)
+    fail_2u_edgev = tf.gather(edgev_per_vertex, fail_edgev)
+    fail_2u_edgev_sp = tf.gather(raw_vidx_2_sp_vidx, fail_2u_edgev)
+    fail_2u_edgev_sp = tf.reshape(fail_2u_edgev_sp, [-1, eshape[1]*eshape[1]])
+    edgev2u_backp, _ = tf.nn.top_k(fail_2u_edgev_sp, 1)
+    edgev2u_backp = tf.squeeze(edgev2u_backp, 1)
+    backprop_vidx_2 = tf.scatter_nd(tf.expand_dims(bp_fail_idx,1), edgev2u_backp+1, [eshape[0]])
+
+    backprop_vidx = backprop_vidx_0 + backprop_vidx_2
+
+    bp_fail_mask = tf.less(backprop_vidx, 0)
+    bp_fail_num = tf.reduce_sum(tf.cast(bp_fail_mask, tf.float32))
+    bp_fail_rate = bp_fail_num / tf.cast(eshape[0], tf.float32)
+    #backprop_vidx = tf.Print(backprop_vidx, [bp_fail_rate],
+    #                   message="bp_fail_rate scale {}: {} > ".format(scale, max_bp_fail_rate))
+    check_bp_fail = tf.assert_less(bp_fail_rate, max_bp_fail_rate,
+                  message="too many back prop fail num at scale {}".format(scale))
+    with tf.control_dependencies([bp_fail_rate]):
+      backprop_vidx = tf.identity(backprop_vidx)
+    return backprop_vidx, bp_fail_mask
 
   @staticmethod
   def down_sampling_face(vertex_sp_indices, num_vertex0, vidx_per_face, is_rm_some_label):

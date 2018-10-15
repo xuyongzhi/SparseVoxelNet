@@ -577,8 +577,13 @@ def clean_bad_files(dataset_name, raw_fns, dset_path):
 def main_matterport():
   t0 = time.time()
   dataset_name = 'MATTERPORT'
+
   dset_path = '/DS/Matterport3D/Matterport3D_WHOLE_extracted/v1/scans'
-  dset_path = '/home/z/DS/Matterport3D/Matterport3D_WHOLE_extracted/v1/scans'
+  tfrecord_path = '/DS/Matterport3D/MATTERPORT_TF/mesh_tfrecord'
+
+  #dset_path = '/home/z/DS/Matterport3D/Matterport3D_WHOLE_extracted/v1/scans'
+  #tfrecord_path = os.path.join(ROOT_DIR, 'data/MATTERPORT_TF')
+
   num_point = {'MODELNET40':None, 'MATTERPORT':150000}
   block_size = {'MODELNET40':None, 'MATTERPORT':np.array([5.0, 5.0, 5.0]) }
 
@@ -587,11 +592,9 @@ def main_matterport():
   #scene_name = '2t7WUuJeko7'
   scene_name = '*'
   #scene_name = 'VFuaQ6m2Qom'
-  region_name = 'region*'
+  region_name = 'region0'
   raw_glob = os.path.join(dset_path, '{}/*/region_segmentations/{}.ply'.format(
                                 scene_name, region_name))
-  tfrecord_path = '/DS/Matterport3D/MATTERPORT_TF/mesh_tfrecord'
-  tfrecord_path = os.path.join(ROOT_DIR, 'data/MATTERPORT_TF')
   ply_dir = os.path.join(tfrecord_path, 'plys/{}/{}'.format(scene_name, region_name))
 
   raw_fns = glob.glob(raw_glob)
