@@ -60,8 +60,7 @@ class Raw_To_Tfrecord():
     self.min_sample_rate = 0.65 # sample_rate = self.num_point/org_num
     self.num_face = int(num_point * 5)
     self.block_size = block_size
-    if type(block_size)!=type(None):
-      self.block_stride = block_size * 0.8
+    self.block_stride_rate =  0.8
     self.min_pn_inblock = min(self.num_point * 0.1, 2000)
     self.sampling_rates = []
     self.dataset_meta = DatasetsMeta(self.dataset_name)
@@ -73,9 +72,9 @@ class Raw_To_Tfrecord():
     bsfn0 = os.path.join(self.tfrecord_path, 'block_split_settings.txt')
     if type(self.block_size)!=type(None):
       with open(bsfn0, 'w') as bsf:
-        bsf.write('num_point:{}\nblock_size:{}\nblock_stride:{}\nmin_pn_inblock:{}'.format(\
+        bsf.write('num_point:{}\nblock_size:{}\nblock_stride_rate:{}\nmin_pn_inblock:{}'.format(\
                       self.num_point, self.block_size,\
-                      self.block_stride, self.min_pn_inblock))
+                      self.block_stride_rate, self.min_pn_inblock))
 
     block_split_dir = os.path.join(self.tfrecord_path, 'block_split_summary')
     if not os.path.exists(block_split_dir):
@@ -170,18 +169,35 @@ class Raw_To_Tfrecord():
       f.flush()
     print('write ok: {}'.format(metas_fn))
 
-  def dynamic_block_size(self, xyz_scope):
+  def dynamic_block_size(self, xyz_scope, num_vertex0):
     # keep xy area within the threshold, adjust to reduce block num
-    block_size_ = self.block_size
-    if (xyz_scope[0]<block_size_[0]) == (xyz_scope[1]<block_size_[1]):
-      return block_size_
+    _x,_y,_z = self.block_size
+    _xy_area = _x*_y
+    x0,y0,z0 = xyz_scope
+    xy_area0 = x0*y0
 
-    xy_area_ = block_size_[0]*block_size_[1]
-    if xyz_scope[0] < block_size_[0]:
-      block_size = [xyz_scope[0], xy_area_ / xyz_scope[0], block_size_[2]]
-    elif xyz_scope[1] < block_size_[1]:
-      block_size = [xy_area_ / xyz_scope[1], xyz_scope[1], block_size_[2]]
-    block_size = [math.ceil(d*10)/10.0 for d in block_size]
+    nv_rate = 1.0*num_vertex0/self.num_point
+
+    if xy_area0 <= _xy_area or nv_rate<=1.0:
+      #Use one block: (1) small area (2) Very small vertex number
+      x2 = x0
+      y2 = y0
+
+    else:
+      # Need to use more than one block. Try to make block num less which is
+      # make x2, y2 large.
+      # (3) Large area with large vertex number, use _x, _y
+      # (4) Large area with not loo large vertex num. Increase the block size by
+      # vertex num rate.
+      dis_rate = math.sqrt(nv_rate)
+      x1 = x0 / dis_rate * 0.9
+      y1 = y0 / dis_rate * 0.9
+      x2 = max(_x, x1)
+      y2 = max(_y, y1)
+
+    block_size= np.array([x2, y2, _z])
+    block_size = np.ceil(10*block_size)/10.0
+    print('xyz_scope:{}\nblock_size:{}'.format(xyz_scope, block_size))
     return block_size
 
   def split_vertex(self, xyz):
@@ -191,10 +207,10 @@ class Raw_To_Tfrecord():
     xyz_min = np.min(xyz, 0)
     xyz_max = np.max(xyz, 0)
     xyz_scope = xyz_max - xyz_min
+    num_vertex0 = xyz.shape[0]
 
-    #block_size = self.block_size
-    block_size = self.dynamic_block_size(xyz_scope)
-    block_stride = self.block_stride
+    block_size = self.dynamic_block_size(xyz_scope, num_vertex0)
+    block_stride = self.block_stride_rate * block_size
     block_dims0 =  (xyz_scope - block_size) / block_stride + 1
     block_dims0 = np.maximum(block_dims0, 1)
     block_dims = np.ceil(block_dims0).astype(np.int32)
@@ -240,6 +256,8 @@ class Raw_To_Tfrecord():
         continue
       num_points_splited.append(num_point_i)
       splited_vidx.append(indices)
+
+    num_vertex_splited = [d.shape[0] for d in splited_vidx]
     return splited_vidx, block_size
 
 
@@ -565,9 +583,9 @@ def main_matterport():
 
   scene_name = '17DRP5sb8fy'
   #scene_name = '2t7WUuJeko7'
-  scene_name = '*'
-  scene_name = 'VFuaQ6m2Qom'
-  region_name = '*'
+  #scene_name = '*'
+  #scene_name = 'VFuaQ6m2Qom'
+  region_name = 'region*'
   raw_glob = os.path.join(dset_path, '{}/*/region_segmentations/{}.ply'.format(
                                 scene_name, region_name))
   tfrecord_path = '/DS/Matterport3D/MATTERPORT_TF/mesh_tfrecord'

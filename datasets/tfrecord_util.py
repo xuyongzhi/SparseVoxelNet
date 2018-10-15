@@ -511,7 +511,7 @@ class MeshSampling():
     valid_ev_num_pv_new_ls = []
     for bi,block_vidx in enumerate(splited_vidx):
       with tf.variable_scope('spv_dsf_b%d'%(bi)):
-        face_sp_indices, vidx_per_face_new, edgev_per_vertex_new, valid_ev_num_pv_new \
+        face_sp_indices, vidx_per_face_new, edgev_per_vertex_new, valid_ev_num_pv_new, _ \
                   = MeshSampling.update_face_edgev(\
                   block_vidx, num_vertex0, raw_datas['vidx_per_face'],
                   raw_datas['edgev_per_vertex'], raw_datas['valid_ev_num_pv'], raw_datas['xyz'], mesh_summary)
@@ -995,7 +995,7 @@ class MeshSampling():
       vertex_sp_indices = MeshSampling.down_sampling_vertex_random(
                                 num_vertex0, _num_vertex_sp)
 
-    face_sp_indices, vidx_per_face_new, edgev_per_vertex_new, valid_ev_num_pv_new  =\
+    face_sp_indices, vidx_per_face_new, edgev_per_vertex_new, valid_ev_num_pv_new =\
         MeshSampling.update_face_edgev(
         vertex_sp_indices, num_vertex0, raw_datas['vidx_per_face'],
         raw_datas['edgev_per_vertex'], raw_datas['valid_ev_num_pv'], xyz=raw_datas['xyz'],
@@ -1201,12 +1201,6 @@ class MeshSampling():
 
 
   @staticmethod
-  def update_new_edges(edgev_per_vertex, vertex_sp_indices, xyz):
-    twounit_edgev = MeshSampling.twounit_edgev(edgev_per_vertex, xyz)
-    import pdb; pdb.set_trace()  # XXX BREAKPOINT
-    pass
-
-  @staticmethod
   def get_twounit_edgev(edgev_per_vertex0, xyz0, raw_vidx_2_sp_vidx, vertex_sp_indices):
     #  the edgev of edgev: geodesic distance = 2 unit
     edgev_edgev0 = tf.gather(edgev_per_vertex0,  edgev_per_vertex0)
@@ -1340,39 +1334,83 @@ class MeshSampling():
                         valid_ev_num_pv, xyz, mesh_summary):
     face_sp_indices, vidx_per_face_new, raw_vidx_2_sp_vidx = MeshSampling.down_sampling_face(\
                                   vertex_sp_indices, num_vertex0, vidx_per_face, False)
-    edgev_per_vertex_new3, valid_ev_num_pv_new = MeshSampling.rich_edges(vertex_sp_indices,\
-                            edgev_per_vertex, valid_ev_num_pv, xyz, raw_vidx_2_sp_vidx, mesh_summary)
+    edgev_per_vertex_new3, valid_ev_num_pv_new, edgev_bridge0 = MeshSampling.rich_edges(vertex_sp_indices,\
+              edgev_per_vertex, xyz, raw_vidx_2_sp_vidx, valid_ev_num_pv, mesh_summary)
     return face_sp_indices, vidx_per_face_new, edgev_per_vertex_new3, valid_ev_num_pv_new
 
   @staticmethod
-  def rich_edges(vertex_sp_indices, edgev_per_vertex, valid_ev_num_pv, xyz, raw_vidx_2_sp_vidx, mesh_summary):
+  def get_raw_vidx_2_sp_vidx(vertex_sp_indices, num_vertex0):
+    assert len(get_tensor_shape(vertex_sp_indices)) == 1
+    _num_vertex_sp = get_tensor_shape(vertex_sp_indices)[0]
+    vertex_sp_indices = tf.expand_dims(tf.cast(vertex_sp_indices, tf.int32),1)
+    # scatter new vertex index
+    raw_vidx_2_sp_vidx = tf.scatter_nd(vertex_sp_indices, tf.range(_num_vertex_sp)+1, [num_vertex0])-1
+    return raw_vidx_2_sp_vidx
+
+  @staticmethod
+  def rich_edges(vertex_sp_indices, edgev_per_vertex, xyz, raw_vidx_2_sp_vidx, valid_ev_num_pv=None,  mesh_summary={}):
+    assert len(get_tensor_shape(vertex_sp_indices)) == 1
+    assert len(get_tensor_shape(edgev_per_vertex)) == len(get_tensor_shape(xyz)) == 2
     #rich_edge_method = 'remove'
     rich_edge_method = 'twounit_edgev'
 
-    edgev_per_vertex_new0 = tf.gather(edgev_per_vertex, vertex_sp_indices)
-    edgev_per_vertex_new1 = tf.gather(raw_vidx_2_sp_vidx, edgev_per_vertex_new0)
+    edgev_bridge0 = tf.gather(raw_vidx_2_sp_vidx, edgev_per_vertex)
+    edgev_per_vertex_new1 = tf.gather(edgev_bridge0, vertex_sp_indices)
+
+    #edgev_bridge0 = tf.gather(edgev_per_vertex, vertex_sp_indices)
+    #edgev_per_vertex_new1 = tf.gather(raw_vidx_2_sp_vidx, edgev_bridge0)
 
     if rich_edge_method == 'twounit_edgev':
       twounit_edgev, mesh_summary['fail_2uedge_num'] = MeshSampling.get_twounit_edgev(
                     edgev_per_vertex, xyz, raw_vidx_2_sp_vidx, vertex_sp_indices)
       edgev_per_vertex_new2 = MeshSampling.replace_neg_by_2unit_edgev(edgev_per_vertex_new1, twounit_edgev)
-      valid_ev_num_pv_new = tf.gather( valid_ev_num_pv, vertex_sp_indices )
+      if valid_ev_num_pv is None:
+        valid_ev_num_pv_new = None
+      else:
+        valid_ev_num_pv_new = tf.gather( valid_ev_num_pv, vertex_sp_indices )
 
     elif rich_edge_method == 'remove':
-      valid_ev_num_pv_new = MeshSampling.update_valid_ev_num_pv(edgev_per_vertex_new1, valid_ev_num_pv, vertex_sp_indices)
+      if valid_ev_num_pv is None:
+        valid_ev_num_pv_new = None
+      else:
+        valid_ev_num_pv_new = MeshSampling.update_valid_ev_num_pv(edgev_per_vertex_new1, valid_ev_num_pv, vertex_sp_indices)
       edgev_per_vertex_new2 = MeshSampling.replace_neg_by_lr(edgev_per_vertex_new1)
 
     # there may still be some negative, but very few. Just handle as lonely
     # points. Assign self vertex idx to the lonely edges
     edgev_per_vertex_new3 = MeshSampling.replace_neg_by_self(edgev_per_vertex_new2)
-    return edgev_per_vertex_new3, valid_ev_num_pv_new
+
+    return edgev_per_vertex_new3, valid_ev_num_pv_new, edgev_bridge0
+
+  @staticmethod
+  def get_raw2sp(raw_vidx_2_sp_vidx, valid_ev_num_pv, edgev_bridge0):
+    ''' [vn]  [vn,12]
+    (1) If a vertex is not removed, use itself in raw_vidx_2_sp_vidx
+    (2) If a vertex is removed, use any edgev
+    '''
+    assert  len(get_tensor_shape(raw_vidx_2_sp_vidx)) == 1
+    assert len(get_tensor_shape(valid_ev_num_pv)) == len(get_tensor_shape(edgev_bridge0)) == 2
+
+    eshape = get_tensor_shape(edgev_bridge0)
+    tmp = tf.tile(tf.reshape(tf.range(eshape[1]), [1,-1]), [eshape[0],1])
+    valid_mask = tf.cast(tf.less(tmp, valid_ev_num_pv), tf.int32)
+    edgev_bridge1 = (edgev_bridge0+1) * valid_mask -1
+    edgev_backp, _ = tf.nn.top_k(edgev_bridge1, 1, sorted=False)
+    edgev_backp = tf.squeeze(edgev_backp, 1)
+
+    lost_raw_mask = tf.cast(tf.less(raw_vidx_2_sp_vidx, 0), tf.int32)
+    raw_2_sp_vidx = raw_vidx_2_sp_vidx + lost_raw_mask * (1+edgev_backp)
+
+    # some lost vertex cannot find edgev
+    r2s_fail_mask = tf.less(raw_2_sp_vidx, 0)
+    r2s_fail_num = tf.reduce_sum(tf.cast(r2s_fail_mask, tf.int32))
+    #fail_idx = tf.where(fail_mask)
+    return raw_2_sp_vidx, r2s_fail_mask
 
   @staticmethod
   def down_sampling_face(vertex_sp_indices, num_vertex0, vidx_per_face, is_rm_some_label):
-    _num_vertex_sp = get_tensor_shape(vertex_sp_indices)[0]
-    vertex_sp_indices = tf.expand_dims(tf.cast(vertex_sp_indices, tf.int32),1)
-    # scatter new vertex index
-    raw_vidx_2_sp_vidx = tf.scatter_nd(vertex_sp_indices, tf.range(_num_vertex_sp)+1, [num_vertex0])-1
+    assert len(get_tensor_shape(vertex_sp_indices)) == 1
+    raw_vidx_2_sp_vidx = MeshSampling.get_raw_vidx_2_sp_vidx(vertex_sp_indices, num_vertex0)
     rm_cond = 'any' if is_rm_some_label else 'all'
     face_sp_indices, vidx_per_face_new = MeshSampling.rm_lost_face(vidx_per_face, raw_vidx_2_sp_vidx, rm_cond=rm_cond)
     return face_sp_indices, vidx_per_face_new, raw_vidx_2_sp_vidx

@@ -54,39 +54,78 @@ class Model(ResConvOps):
 
   def main_fan_cnn(self, features, is_training):
     self.is_training = is_training
-    inputs = self.parse_inputs(features)
+    inputs, xyz = self.parse_inputs(features)
     vertices = inputs['vertices']
     edgev_per_vertex = inputs['edgev_per_vertex']
+    valid_ev_num_pv = inputs['valid_ev_num_pv']
     valid_ev_num_pv = inputs['valid_ev_num_pv']
     vidx_per_face = inputs['vidx_per_face']
     valid_num_face = tf.cast(inputs['valid_num_face'], tf.int32)
 
+    #***************************************************************************
+    # multi scale vertex feature encoder
+    scale_n = self.block_paras.scale_num
     vertices_scales = []
-    for scale in range(self.block_paras.scale_num):
-      with tf.variable_scope('FanCnn'):
+    raw_2_sp_vidx_scales = []
+    r2s_fail_mask_scales = []
+    for scale in range(scale_n):
+      with tf.variable_scope('FanCnn_S%d'%(scale)):
         vertices = self.mesh_cnn.update_vertex(scale, is_training, vertices,
               edgev_per_vertex, valid_ev_num_pv)
-        #vertices = self.mesh_cnn.pool_mesh(vertices, edgev_per_vertex)
+      if scale < self.block_paras.scale_num-1:
+        vertices_scales.append(vertices)
+        with tf.variable_scope('MeshPool_S%d'%(scale)):
+          vertices, edgev_per_vertex, xyz, valid_ev_num_pv, raw_2_sp_vidx, \
+            r2s_fail_mask = self.mesh_cnn.pool_mesh(
+                                vertices, edgev_per_vertex, xyz, valid_ev_num_pv)
+        raw_2_sp_vidx_scales.append(raw_2_sp_vidx)
+        r2s_fail_mask_scales.append(r2s_fail_mask)
 
-      vertices = self.add_global(vertices, scale)
+    #***************************************************************************
+    with tf.variable_scope('CatGlobal'):
+      vertices = self.add_global(vertices)
+    #***************************************************************************
+    # multi scale feature back propogation
+    for i in range(scale_n-1):
+      scale = scale_n -2 - scale
+      with tf.variable_scope('FanCnn_S%d'%(scale)):
+        self.feature_backprop(vertices, vertices_scales[scale], raw_2_sp_vidx_scales[scale], r2s_fail_mask_scales[scale])
 
+
+    import pdb; pdb.set_trace()  # XXX BREAKPOINT
     flogits, flabel_weight = self.face_classifier(vertices, vidx_per_face, valid_num_face)
     self.log_model_summary()
+    import pdb; pdb.set_trace()  # XXX BREAKPOINT
     return flogits, flabel_weight
 
-  def add_global(self, vertices, scale):
-    blocks_params = self.block_paras.get_block_paras('global', scale)
+  def feature_backprop(self, vertices, lasts_vertices, raw_2_sp_vidx, r2s_fail_mask):
+    import pdb; pdb.set_trace()  # XXX BREAKPOINT
+    pass
+
+  def add_global(self, vertices):
+    blocks_params = self.block_paras.get_block_paras('global', 0)
     if not blocks_params:
       return vertices
 
+    #***************************************************************************
     global_f = tf.reduce_max(vertices, 1, keepdims=True)
-    global_f = self.blocks_layers(scale, global_f, blocks_params, self.block_fn,
-                                  self.is_training, 'S%d_Global'%(scale),
+    # encoder global feature
+    global_f = self.blocks_layers(global_f, blocks_params, self.block_fn,
+                                  self.is_training, 'Global',
                                   with_initial_layer=False)
     nv = get_tensor_shape(vertices)[1]
     global_f = tf.tile(global_f, [1, nv, 1, 1])
     vertices = tf.concat([vertices, global_f], -1)
     self.log_tensor_p(vertices, '', 'cat global')
+
+    #***************************************************************************
+    # encoder fused vertex feature
+    blocks_params = self.block_paras.get_block_paras('global', 1)
+    if not blocks_params:
+      return vertices
+    vertices = self.blocks_layers(vertices, blocks_params, self.block_fn,
+                                  self.is_training, 'GlobalFusedV',
+                                  with_initial_layer=False)
     return vertices
 
   def face_classifier(self, vertices, vidx_per_face, valid_num_face):
@@ -167,7 +206,7 @@ class Model(ResConvOps):
     for e in self.data_configs['feed_data']:
       ele = self.get_ele(features, e)
       if e=='xyz':
-        ele = self.normalize_xyz(ele)
+        xyz = ele = self.normalize_xyz(ele)
       vertices.append(ele)
     inputs['vertices'] = vertices = tf.concat(vertices, -1)
     vshape = get_tensor_shape(vertices)
@@ -187,7 +226,7 @@ class Model(ResConvOps):
       inputs['edgev_per_vertex'] = self.get_ele(features, 'edgev_per_vertex')[:,:,0:edgevnum]
       inputs['valid_ev_num_pv'] = self.get_ele(features, 'valid_ev_num_pv')
 
-    return inputs
+    return inputs, xyz
 
   def simplicity_classifier(self, vertices):
     dense_filters = [32, 16, 2]
@@ -207,12 +246,12 @@ class FanCnn():
     vertices = tf.expand_dims(vertices, 2)
 
     blocks_params = self.block_paras.get_block_paras('vertex', scale)
-    vertices = self.blocks_layers(scale, vertices, blocks_params, self.block_fn,
+    vertices = self.blocks_layers(vertices, blocks_params, self.block_fn,
                                is_training, 'S%d'%( scale),
                                edgev_per_vertex=edgev_per_vertex)
     return vertices
 
-  def pool_mesh(self, vertices, edgev_per_vertex, pool_method='mean', pool_rate=0.5):
+  def pool_mesh(self, vertices, edgev_per_vertex, xyz, valid_ev_num_pv, pool_method='mean', pool_rate=0.5):
     '''
     max mean identity
     '''
@@ -231,22 +270,38 @@ class FanCnn():
     # (2) Downsampling vertices
     vn = get_tensor_shape(vertices)[1]
     new_vn = int(pool_rate * vn)
-    remain_idx = []
+    vertex_sp_indices = []
     batch_size = get_tensor_shape(vertices)[0]
     for bi in range(batch_size):
-      remain_idx.append( tf.expand_dims(tf.random_shuffle(tf.range(vn))[0:new_vn], 0))
-    remain_idx = tf.expand_dims(tf.concat(remain_idx, 0), -1)
-    new_vertices = tf.squeeze(gather_second_d(vertices, remain_idx), 2)
+      vertex_sp_indices.append( tf.expand_dims(tf.random_shuffle(tf.range(vn))[0:new_vn], 0))
+    vertex_sp_indices = tf.concat(vertex_sp_indices, 0)
+    vertices_new = tf.squeeze(gather_second_d(vertices, tf.expand_dims(vertex_sp_indices,-1)), 2)
+    xyz_new = tf.squeeze(gather_second_d(xyz, tf.expand_dims(vertex_sp_indices,-1)), 2)
 
     # (3) New edges
-    batch_idx = tf.reshape(tf.range(batch_size), [-1,1,1])
-    batch_idx = tf.tile(batch_idx, [1, new_vn, 1])
-    remain_idx = tf.concat([batch_idx, remain_idx], -1)
-    remain_mask = tf.scatter_nd(remain_idx, tf.ones([batch_size, new_vn], tf.int32), tf.constant([batch_size, vn]))
-    edgev_per_vertex1 = gather_second_d(remain_mask, edgev_per_vertex)
-    import pdb; pdb.set_trace()  # XXX BREAKPOINT
-    pass
+    from datasets.tfrecord_util import MeshSampling
+    edgev_per_vertex_new_ls = []
+    valid_ev_num_pv_new_ls = []
+    raw_2_sp_vidx_ls = []
+    r2s_fail_mask_ls = []
+    for bi in range(batch_size):
+      raw_vidx_2_sp_vidx = MeshSampling.get_raw_vidx_2_sp_vidx(vertex_sp_indices[bi], vn)
+      edgev_per_vertex_new, valid_ev_num_pv_new, edgev_bridge0 = MeshSampling.rich_edges(
+                  vertex_sp_indices[bi], edgev_per_vertex[bi],
+                  xyz[bi], raw_vidx_2_sp_vidx, valid_ev_num_pv[bi])
+      raw_2_sp_vidx, r2s_fail_mask = MeshSampling.get_raw2sp(raw_vidx_2_sp_vidx,
+                                                  valid_ev_num_pv[bi], edgev_bridge0)
 
+      edgev_per_vertex_new_ls.append(tf.expand_dims(edgev_per_vertex_new, 0))
+      valid_ev_num_pv_new_ls.append(tf.expand_dims(valid_ev_num_pv_new, 0))
+      raw_2_sp_vidx_ls.append(tf.expand_dims(raw_2_sp_vidx,0))
+      r2s_fail_mask_ls.append(tf.expand_dims(r2s_fail_mask,0))
+
+    edgev_per_vertex_new = tf.concat(edgev_per_vertex_new_ls, 0)
+    valid_ev_num_pv_new = tf.concat(valid_ev_num_pv_new_ls, 0)
+    raw_2_sp_vidx = tf.concat(raw_2_sp_vidx_ls, 0)
+    r2s_fail_mask = tf.concat(r2s_fail_mask_ls, 0)
+    return vertices_new, edgev_per_vertex_new, xyz_new, valid_ev_num_pv_new, raw_2_sp_vidx, r2s_fail_mask
 
 class TriangleCnn():
   def __init__(self, blocks_layers_fn=None, block_fn=None, block_paras=None,
@@ -292,7 +347,7 @@ class TriangleCnn():
       return inputs
     assert represent in ['edge', 'centroid', 'face', 'vertex']
     blocks_params = self.block_paras.get_block_paras(represent, self.scale)
-    outputs = self.blocks_layers(self.scale, inputs, blocks_params, self.block_fn,
+    outputs = self.blocks_layers(inputs, blocks_params, self.block_fn,
                                self.is_training, '%s_s%d'%(represent, self.scale) )
     return outputs
 

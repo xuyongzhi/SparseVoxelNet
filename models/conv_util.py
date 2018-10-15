@@ -916,7 +916,7 @@ class ResConvOps(object):
       raise NotImplementedError
     return shortcut
 
-  def blocks_layers(self, scale, inputs, blocks_params, block_fn, is_training,
+  def blocks_layers(self, inputs, blocks_params, block_fn, is_training,
                     scope, edgev_per_vertex=None, with_initial_layer=True):
     self.log_tensor_p(inputs, '', scope)
     self.log_dotted_line(scope)
@@ -932,14 +932,14 @@ class ResConvOps(object):
       with tf.variable_scope(scope+'_b%d'%(bi)):
         self.log_dotted_line(scope+'_Block%d'%(bi), 1)
         no_prenorm = not with_initial_layer and bi == 0
-        inputs = self.block_layer(scale, inputs, blocks_params[bi], block_fn,
+        inputs = self.block_layer( inputs, blocks_params[bi], block_fn,
                                 is_training, scope+'_b%d'%(bi), edgev_per_vertex=edgev_per_vertex,
                                   no_prenorm=no_prenorm)
     inputs = self.batch_norm_act(inputs, is_training)
     self.log_dotted_line(scope)
     return inputs
 
-  def block_layer(self, scale, inputs, block_params, block_fn, is_training, name, edgev_per_vertex=None, no_prenorm=False):
+  def block_layer(self, inputs, block_params, block_fn, is_training, name, edgev_per_vertex=None, no_prenorm=False):
     """Creates one layer of block_size for the ResNet model.
 
     Args:

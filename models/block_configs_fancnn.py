@@ -21,7 +21,7 @@ def block_configs(net_flag='default'):
     if net_flag == '8B':
       filters['global']     = [ [],]
 
-  elif net_flag == '7A' or '7B':
+  elif net_flag == '7A' or  net_flag=='7B':
     block_sizes['vertex'] = [ [1, 1, 1, 1, 1, 1, 1],  ]
     filters['vertex']     = [ [32, 32, 64, 64, 128, 128, 128],]
     kernels['vertex']     = [ [6 for _ in range(7)],  ]
@@ -30,11 +30,12 @@ def block_configs(net_flag='default'):
     if net_flag == '7B':
       filters['global']     = [ [],]
 
-  elif net_flag == '3A':
-    block_sizes['vertex'] = [ [1, 1, 1],  ]
-    filters['vertex']     = [ [32, 32, 64],]
-    kernels['vertex']     = [ [6 for _ in range(3)],  ]
-    filters['global']     = [ [],]
+  elif net_flag == '2A2':
+    block_sizes['vertex'] = [ [1, ],   [1,], [1] ]
+    kernels['vertex']     = [ [6, ],   [6, ], [6]]
+    filters['vertex']     = [ [32,], [64,], [128]]
+    filters['global']     = [ [64], [64]]
+    filters['vertex_back']     = [ [125,], [100,], [80]]
 
 
   else:
@@ -46,7 +47,6 @@ def block_configs(net_flag='default'):
   block_configs['block_sizes'] = block_sizes
   block_configs['filters'] = filters
   block_configs['kernels'] = kernels
-
   #*****************************************************************************
 
   dense_flag = '_%d'%( len(block_configs['dense_filters']))
