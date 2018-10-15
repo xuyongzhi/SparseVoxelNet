@@ -101,8 +101,12 @@ def gather_second_d(inputs, indices):
     inputs: (batch_size, n1, ...)
   '''
   idx_shape = get_tensor_shape(indices)
-  batch_idx = tf.reshape(tf.range(idx_shape[0]), [-1,1,1,1])
-  batch_idx = tf.tile(batch_idx, [1, idx_shape[1], idx_shape[2], 1])
+  if len(idx_shape)==3:
+    batch_idx = tf.reshape(tf.range(idx_shape[0]), [-1,1,1,1])
+    batch_idx = tf.tile(batch_idx, [1, idx_shape[1], idx_shape[2], 1])
+  elif len(idx_shape)==2:
+    batch_idx = tf.reshape(tf.range(idx_shape[0]), [-1,1,1])
+    batch_idx = tf.tile(batch_idx, [1, idx_shape[1],  1])
   indices = tf.expand_dims(indices, -1)
   indices = tf.concat([batch_idx, indices], -1)
   outputs = tf.gather_nd(inputs, indices)
@@ -918,7 +922,7 @@ class ResConvOps(object):
 
   def blocks_layers(self, inputs, blocks_params, block_fn, is_training,
                     scope, edgev_per_vertex=None, with_initial_layer=True):
-    self.log_tensor_p(inputs, '', scope)
+    self.log_tensor_p(inputs, 'input', scope)
     self.log_dotted_line(scope)
 
     if with_initial_layer:
@@ -929,13 +933,14 @@ class ResConvOps(object):
                           initial_layer=True, edgev_per_vertex=edgev_per_vertex)
 
     for bi in range(0+with_initial_layer, len(blocks_params)):
-      with tf.variable_scope(scope+'_b%d'%(bi)):
+      with tf.variable_scope(scope+'_B%d'%(bi)):
         self.log_dotted_line(scope+'_Block%d'%(bi), 1)
         no_prenorm = not with_initial_layer and bi == 0
         inputs = self.block_layer( inputs, blocks_params[bi], block_fn,
                                 is_training, scope+'_b%d'%(bi), edgev_per_vertex=edgev_per_vertex,
                                   no_prenorm=no_prenorm)
-    inputs = self.batch_norm_act(inputs, is_training)
+    with tf.variable_scope(scope+'_EndBn'):
+      inputs = self.batch_norm_act(inputs, is_training)
     self.log_dotted_line(scope)
     return inputs
 

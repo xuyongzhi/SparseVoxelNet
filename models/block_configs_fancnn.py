@@ -35,7 +35,7 @@ def block_configs(net_flag='default'):
     kernels['vertex']     = [ [6, ],   [6, ], [6]]
     filters['vertex']     = [ [32,], [64,], [128]]
     filters['global']     = [ [64], [64]]
-    filters['vertex_back']     = [ [125,], [100,], [80]]
+    filters['backprop']     = [ [125,], [100,]]
 
 
   else:

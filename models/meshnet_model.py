@@ -87,20 +87,27 @@ class Model(ResConvOps):
     #***************************************************************************
     # multi scale feature back propogation
     for i in range(scale_n-1):
-      scale = scale_n -2 - scale
+      scale = scale_n -2 - i
       with tf.variable_scope('FanCnn_S%d'%(scale)):
-        self.feature_backprop(vertices, vertices_scales[scale], raw_2_sp_vidx_scales[scale], r2s_fail_mask_scales[scale])
+        vertices = self.feature_backprop(scale, vertices, vertices_scales[scale],
+                      raw_2_sp_vidx_scales[scale], r2s_fail_mask_scales[scale])
 
 
-    import pdb; pdb.set_trace()  # XXX BREAKPOINT
     flogits, flabel_weight = self.face_classifier(vertices, vidx_per_face, valid_num_face)
     self.log_model_summary()
     import pdb; pdb.set_trace()  # XXX BREAKPOINT
     return flogits, flabel_weight
 
-  def feature_backprop(self, vertices, lasts_vertices, raw_2_sp_vidx, r2s_fail_mask):
-    import pdb; pdb.set_trace()  # XXX BREAKPOINT
-    pass
+  def feature_backprop(self, scale, cur_vertices, lasts_vertices, raw_2_sp_vidx, r2s_fail_mask):
+    cur_vertices = gather_second_d(cur_vertices, raw_2_sp_vidx)
+    r2s_fail_mask = tf.cast(tf.expand_dims(tf.expand_dims(r2s_fail_mask, -1),-1), tf.float32)
+    cur_vertices = cur_vertices * (1-r2s_fail_mask)
+    vertices = tf.concat([lasts_vertices, cur_vertices], -1)
+
+    blocks_params = self.block_paras.get_block_paras('backprop', scale)
+    vertices = self.blocks_layers(vertices, blocks_params, self.block_fn,
+                    self.is_training, 'BackProp_%d'%(scale), with_initial_layer=False)
+    return vertices
 
   def add_global(self, vertices):
     blocks_params = self.block_paras.get_block_paras('global', 0)
