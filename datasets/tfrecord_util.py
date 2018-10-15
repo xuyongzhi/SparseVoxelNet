@@ -511,7 +511,7 @@ class MeshSampling():
     valid_ev_num_pv_new_ls = []
     for bi,block_vidx in enumerate(splited_vidx):
       with tf.variable_scope('spv_dsf_b%d'%(bi)):
-        face_sp_indices, vidx_per_face_new, edgev_per_vertex_new, valid_ev_num_pv_new, _ \
+        face_sp_indices, vidx_per_face_new, edgev_per_vertex_new, valid_ev_num_pv_new \
                   = MeshSampling.update_face_edgev(\
                   block_vidx, num_vertex0, raw_datas['vidx_per_face'],
                   raw_datas['edgev_per_vertex'], raw_datas['valid_ev_num_pv'], raw_datas['xyz'], mesh_summary)
