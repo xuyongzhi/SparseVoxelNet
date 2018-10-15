@@ -23,7 +23,7 @@
 	\maketitle
 \end{titlepage}	
 
-\section{Training 70 Files}
+\section{Training 70 Files, 10k num point, 8A net}
 \noindent\begin{tabular}{|p{10cm}|p{5.5cm}| }	
 \hline \hline
 \rowcolor{green!20}
@@ -43,6 +43,29 @@ RC8A, max1  & 150 0.969998 \\
  \hline 
 RC8B, min0  & 150 0.9704 \\
  \hline 
+\end{tabular}
+
+\section{Training 70 Files, 15k num point, 7A net}
+\noindent\begin{tabular}{|p{10cm}|p{5.5cm}| }	
+	\hline 
+	\rowcolor{green!20}
+	RC7A  & 150, 0.9605 \\
+	RC7A, min0 & 150, 0.96292 \\
+	RC7A, max1 & 150, 0.93156 \\
+	RC7B(no gloabl), min0 & 	150, 0.9585 \\
+	RC7B, max1 & 	150, 0.9386 \\
+	\hline
+	P7A, min0 & 150, 0.95016\\
+	P7B, min0 & 150, 0.95533\\
+	\hline 
+	RC7B, min0, l0 & 	150, 0.96344 \\
+	RC7B, max1, l0 & 	150, 0.93648 \\
+	RC7A, min0, l0 & 150, 0.95619 \\
+	\hline 
+	(1) Global seems helps a bit. Only a bit, some times hurt.  \par 
+	(2) min0 is best, raw is almost same. max1 is bad. \par 
+	(3) l0 almost no effect  & \\
+	\hline
 \end{tabular}
  
 \end{document}

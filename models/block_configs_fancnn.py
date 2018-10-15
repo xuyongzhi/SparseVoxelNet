@@ -30,6 +30,16 @@ def block_configs(net_flag='default'):
     if net_flag == '7B':
       filters['global']     = [ [],]
 
+  elif net_flag == '53A' or  net_flag=='53B':
+    block_sizes['vertex'] = [ [1,1,1,1,1], [1,1,1] ]
+    filters['vertex']     = [ [32, 32, 64, 64, 128], [128, 128, 128]]
+    kernels['vertex']     = [ [6, 6, 6, 6, 6], [6,6,6]]
+    if net_flag == '53A':
+      filters['global']     = [ [64], [128]]
+    if net_flag == '53B':
+      filters['global']     = [ [],[]]
+    filters['backprop']   = [ [128,128]]
+
   elif net_flag == '2A2':
     block_sizes['vertex'] = [ [1, ],  [1,], [1] ]
     kernels['vertex']     = [ [6, ],  [6,], [6]]
