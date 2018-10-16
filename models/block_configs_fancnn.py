@@ -1,6 +1,6 @@
 import numpy as np
 
-def block_configs(net_flag='7B'):
+def block_configs(net_flag0='7B'):
 
   #*****************************************************************************
   block_configs = {}
@@ -9,43 +9,39 @@ def block_configs(net_flag='7B'):
   kernels = {}
   flayers = {}
 
-  block_configs['edgevnum'] = 10
+  tmp = net_flag0.split('_')
+  net_flag = tmp[0]
+  if len(tmp)>1:
+    edgevnum = int(tmp[1])
+  else:
+    edgevnum = 10
+  if len(tmp)>2:
+    fan_kernel = int(tmp[2])
+  else:
+    fan_kernel = 6
+
+  block_configs['edgevnum'] = edgevnum
   block_configs['dense_filters'] = [256, 128]
 
-  if net_flag == '8A' or net_flag=='8B':
-    block_sizes['vertex'] = [ [1, 1, 1, 1, 1, 1, 1, 1],  ]
-    filters['vertex']     = [ [32, 32, 64, 64, 64, 128, 128, 128],]
-    kernels['vertex']     = [ [6 for _ in range(8)],  ]
-    if net_flag == '8A':
-      filters['global']     = [ [128, 64],]
-    if net_flag == '8B':
-      filters['global']     = [ [],]
 
-  elif net_flag == '7A' or  net_flag=='7B':
+  if net_flag == '7A' or  net_flag=='7G':
     block_sizes['vertex'] = [ [1, 1, 1, 1, 1, 1, 1],  ]
-    filters['vertex']     = [ [32, 32, 64, 64, 128, 128, 128],]
-    kernels['vertex']     = [ [6 for _ in range(7)],  ]
+    filters['vertex']     = [ [32, 32, 64, 64, 128, 128, 256],]
+    kernels['vertex']     = [ [fan_kernel for _ in range(7)],  ]
+    if net_flag == '7G':
+      filters['global']     = [ [64],[128],]
     if net_flag == '7A':
-      filters['global']     = [ [128, 64],]
-    if net_flag == '7B':
       filters['global']     = [ [],]
 
-  elif net_flag == '53A' or  net_flag=='53B':
-    block_sizes['vertex'] = [ [1,1,1,1,1], [1,1,1] ]
-    filters['vertex']     = [ [32, 32, 64, 64, 128], [128, 128, 128]]
-    kernels['vertex']     = [ [6, 6, 6, 6, 6], [6,6,6]]
-    if net_flag == '53A':
+  elif net_flag == '53A' or  net_flag=='53G':
+    block_sizes['vertex'] = [ [1,1,1,1,1], [1,1] ]
+    filters['vertex']     = [ [32, 32, 64, 64, 128], [128, 128]]
+    kernels['vertex']     = [ [fan_kernel for _ in range(5)], [fan_kernel for _ in range(2)]]
+    if net_flag == '53G':
       filters['global']     = [ [64], [128]]
-    if net_flag == '53B':
+    if net_flag == '53A':
       filters['global']     = [ [],[]]
     filters['backprop']   = [ [128,128]]
-
-  elif net_flag == '2A2':
-    block_sizes['vertex'] = [ [1, ],  [1,], [1] ]
-    kernels['vertex']     = [ [6, ],  [6,], [6]]
-    filters['vertex']     = [ [32,],  [64,], [64]]
-    filters['global']     = [ [64],   [64]]
-    filters['backprop']   = [ [125,], [100,]]
 
 
   else:

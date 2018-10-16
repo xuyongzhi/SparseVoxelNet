@@ -37,14 +37,15 @@ from datasets.tfrecord_util import parse_record, get_dset_shape_idxs
 from datasets.all_datasets_meta.datasets_meta import DatasetsMeta
 
 TMPDEBUG = False
+FILE_RATE = 0.3 if TMPDEBUG else 1.0
 DATA_DIR = os.path.join(ROOT_DIR, 'data')
 
 _NUM_EXAMPLES_ALL = {}
 _NUM_EXAMPLES_ALL['MATTERPORT'] = {
-        'train': 2924, 'validation':-1}
+        'train': int(2924 * FILE_RATE), 'validation':-1}
 
-_NUM_TRAIN_FILES = 30
-_SHUFFLE_BUFFER = 300
+_NUM_TRAIN_FILES = 5 * 1
+_SHUFFLE_BUFFER = 100 * 1
 
 DATASET_NAME = 'MATTERPORT'
 _NUM_EXAMPLES = _NUM_EXAMPLES_ALL[DATASET_NAME]
@@ -86,9 +87,12 @@ def get_filenames(is_training, data_dir):
   else:
     pre = 'test_'
   fnls = glob.glob(os.path.join(data_dir, pre+'*.tfrecord'))
+  if TMPDEBUG:
+    fnls.sort()
+    n = (len(fnls) * FILE_RATE)
+    fnls = fnls[0:n]
   print('\nfound {} files, train:{}\n'.format(len(fnls), is_training))
   return fnls
-
 
 def update_examples_num(is_training, data_dir):
   all_fnls = get_filenames(is_training, data_dir)
@@ -268,7 +272,6 @@ def network_model_fn(features, labels, mode, params):
     base_lr = .1
   else:
     warmup = True
-    base_lr = .128
   ndc = params['net_data_configs']
   net_configs = ndc['net_configs']
   batches_per_epoch = params['examples_per_epoch'] /\
@@ -437,7 +440,7 @@ def define_network_flags():
   flags.DEFINE_float('weight_decay', short_name='wd', default=1e-4, help="wd")
   flags.DEFINE_float('lr0', default=1e-3, help="base lr")
   flags.DEFINE_float('lrd_rate', default=0.7, help="learning rate decay rate")
-  flags.DEFINE_float('bnd0', default=0.8, help="base bnd")
+  flags.DEFINE_float('bnd0', default=0.9, help="base bnd")
   flags.DEFINE_float('bnd_decay', default=0.1, help="")
   flags.DEFINE_integer('lrd_epochs', default=20, help="learning_rate decay epoches")
   flags.DEFINE_string('feed_data','xyz-nxnynz','xyz-nxnynz-color')
