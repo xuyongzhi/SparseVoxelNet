@@ -8,3 +8,7 @@
 **RECONSIDER**
 - [ ] Pre down sampling, leads to lost of too many edges. Need to add new edges.
 - [ ] Refine lonely vertex treatment
+
+
+#Install
+pip install requests  plyfile

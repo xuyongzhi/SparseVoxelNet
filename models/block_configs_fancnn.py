@@ -1,6 +1,6 @@
 import numpy as np
 
-def block_configs(net_flag='default'):
+def block_configs(net_flag='7B'):
 
   #*****************************************************************************
   block_configs = {}
@@ -14,7 +14,7 @@ def block_configs(net_flag='default'):
 
   if net_flag == '8A' or net_flag=='8B':
     block_sizes['vertex'] = [ [1, 1, 1, 1, 1, 1, 1, 1],  ]
-    filters['vertex']     = [ [32, 32, 64, 64, 128, 128, 128, 128],]
+    filters['vertex']     = [ [32, 32, 64, 64, 64, 128, 128, 128],]
     kernels['vertex']     = [ [6 for _ in range(8)],  ]
     if net_flag == '8A':
       filters['global']     = [ [128, 64],]

@@ -41,10 +41,10 @@ DATA_DIR = os.path.join(ROOT_DIR, 'data')
 
 _NUM_EXAMPLES_ALL = {}
 _NUM_EXAMPLES_ALL['MATTERPORT'] = {
-        'train': -1, 'validation':-1}
+        'train': 2924, 'validation':-1}
 
-_NUM_TRAIN_FILES = 200
-_SHUFFLE_BUFFER = 1000
+_NUM_TRAIN_FILES = 100
+_SHUFFLE_BUFFER = 200
 
 DATASET_NAME = 'MATTERPORT'
 _NUM_EXAMPLES = _NUM_EXAMPLES_ALL[DATASET_NAME]
@@ -71,9 +71,14 @@ def get_filenames_1(is_training, data_dir):
   print('\ngot {} training files for training={}\n'.format(len(all_fnls), is_training))
   return all_fnls
 
+def get_filenames_0(is_training, data_dir):
+  # 2924  734
+  fls = DsetMetas.get_train_test_file_list(os.path.join(data_dir, 'data'), is_training)
+  return fls
+
 def get_filenames(is_training, data_dir):
   """Return filenames for dataset."""
-  return get_filenames_1(is_training, data_dir)
+  return get_filenames_0(is_training, data_dir)
 
   data_dir = os.path.join(data_dir, 'merged_data')
   if is_training:
@@ -90,14 +95,18 @@ def update_examples_num(is_training, data_dir):
   tot = 'train' if is_training else 'validation'
   _NUM_EXAMPLES[tot] = get_global_block_num(all_fnls)
   if is_training:
-    print('examples_per_epoch:{}'.format(_NUM_EXAMPLES[tot]))
+    print('\n\nexamples_per_epoch:{}\n\n'.format(_NUM_EXAMPLES[tot]))
 
 def get_global_block_num(fnls):
   t0 = time.time()
   c = 0
-  for fn in fnls:
+  fnum = len(fnls)
+  print('\nstart get_global_block_num, {} files'.format(fnum))
+  for fi, fn in enumerate(fnls):
     for record in tf.python_io.tf_record_iterator(fn):
       c += 1
+    if fi%100==0:
+      print('read {} files, {} examples, tim={} sec'.format(fi+1, c, time.time()-t0))
   print('\nget block num for {} files: {}, time:{}\n'.format(len(fnls), c, time.time()-t0))
   return c
 

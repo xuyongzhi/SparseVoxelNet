@@ -246,7 +246,7 @@ def read_tfrecord(dataset_name, tf_path, loss_lw_gama=-1):
   #***************************************************************************
   label_hist = np.zeros(num_classes)
   batch_num = 0
-  for batch_k in range(len(filenames)):
+  for batch_k in range( min(len(filenames), 20) ):
     print('\nreading %s'%(filenames[batch_k]))
     base_fn = os.path.splitext( os.path.basename(filenames[batch_k]))[0]
     features, labels = dset_iterater.get_next()
@@ -281,7 +281,6 @@ def read_tfrecord(dataset_name, tf_path, loss_lw_gama=-1):
       for bi in range(batch_size):
         ply_fn = os.path.join(ply_dir, '%s_raw/b%d_raw_color.ply'%(base_fn, bi))
         ply_util.gen_mesh_ply(ply_fn, xyz[bi], vidx_per_face[bi,0:valid_num_face[bi,0],:], vertex_color=color[bi])
-    import pdb; pdb.set_trace()  # XXX BREAKPOINT
     pass
 
 
@@ -290,7 +289,6 @@ def read_tfrecord(dataset_name, tf_path, loss_lw_gama=-1):
   dataset_summary['label_hist'] = label_hist
   write_dataset_summary(dataset_summary, tf_path)
   get_label_num_weights(dataset_summary, loss_lw_gama)
-  import pdb; pdb.set_trace()  # XXX BREAKPOINT
   return dataset_summary
 
 

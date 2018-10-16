@@ -459,7 +459,7 @@ def split_fn_ls( tfrecordfn_ls, merged_n):
     return merged_fnls, group_name_ls
 
 def main_merge_tfrecord(dataset_name, tfrecord_path):
-  from dataset_utils import merge_tfrecord
+  from utils.dataset_utils import merge_tfrecord
   import random
 
   rawdata_dir = tfrecord_path+'/data'
@@ -473,9 +473,9 @@ def main_merge_tfrecord(dataset_name, tfrecord_path):
   test_fn_ls = datasets_meta.get_train_test_file_list(rawdata_dir, False)
   random.shuffle(test_fn_ls)
 
-  grouped_train_fnls, train_groupe_names = split_fn_ls(train_fn_ls, 10)
+  grouped_train_fnls, train_groupe_names = split_fn_ls(train_fn_ls, 100)
   train_groupe_names = ['train_'+e for e in train_groupe_names]
-  grouped_test_fnls, test_groupe_names = split_fn_ls(test_fn_ls, 5)
+  grouped_test_fnls, test_groupe_names = split_fn_ls(test_fn_ls, 6)
   test_groupe_names = ['test_'+e for e in test_groupe_names]
 
   grouped_fnls = grouped_train_fnls + grouped_test_fnls
@@ -600,11 +600,11 @@ def main_matterport():
   raw_fns = glob.glob(raw_glob)
   raw_fns = clean_bad_files(dataset_name, raw_fns, dset_path)
   raw_fns.sort()
-  main_write_multi(dataset_name, raw_fns, tfrecord_path, num_point[dataset_name],\
-              block_size[dataset_name], ply_dir,
-              multiprocessing=0) # 4 to process data, 0 to check
+  #main_write_multi(dataset_name, raw_fns, tfrecord_path, num_point[dataset_name],\
+  #            block_size[dataset_name], ply_dir,
+  #            multiprocessing=0) # 4 to process data, 0 to check
 
-  #main_merge_tfrecord(dataset_name, tfrecord_path)
+  main_merge_tfrecord(dataset_name, tfrecord_path)
 
   #main_gen_ply(dataset_name, tfrecord_path)
   print('total time: {} sec'.format(time.time() - t0))
