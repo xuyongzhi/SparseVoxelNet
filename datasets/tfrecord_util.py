@@ -202,7 +202,8 @@ def get_ele(datas, ele, dset_shape_idx):
 
 
 def read_tfrecord(dataset_name, tf_path, loss_lw_gama=-1):
-  #tf.enable_eager_execution()
+  tf.enable_eager_execution()
+
   dset_shape_idx = get_dset_shape_idxs(tf_path)
   dataset_summary = read_dataset_summary(tf_path)
   if dataset_summary['intact']:
@@ -212,8 +213,11 @@ def read_tfrecord(dataset_name, tf_path, loss_lw_gama=-1):
 
   #data_path = os.path.join(tf_path, 'merged_data')
   data_path = os.path.join(tf_path, 'data')
-  filenames = glob.glob(os.path.join(data_path,'*region*.tfrecord'))
+  scene = '*'
+  region = '*'
+  filenames = glob.glob(os.path.join(data_path,'%s_%s.tfrecord'%(scene, region)))
   assert len(filenames) > 0, data_path
+  filenames.sort()
 
   datasets_meta = DatasetsMeta(dataset_name)
   num_classes = datasets_meta.num_classes
@@ -221,88 +225,73 @@ def read_tfrecord(dataset_name, tf_path, loss_lw_gama=-1):
   gen_ply = True
   ply_dir = os.path.join(tf_path, 'plys')
 
-  with tf.Graph().as_default():
-    dataset = tf.data.TFRecordDataset(filenames,
-                                      compression_type="",
-                                      buffer_size=1024*100,
-                                      num_parallel_reads=1)
+  dataset = tf.data.TFRecordDataset(filenames,
+                                    compression_type="",
+                                    buffer_size=1024*100,
+                                    num_parallel_reads=1)
 
-    batch_size = 1
-    is_training = False
+  batch_size = 1
+  is_training = False
 
-    dataset = dataset.prefetch(buffer_size=batch_size)
-    dataset = dataset.apply(
-      tf.contrib.data.map_and_batch(
-        lambda value: parse_record(value, is_training, dset_shape_idx),
-        batch_size=batch_size,
-        num_parallel_batches=1,
-        drop_remainder=False))
-    dataset = dataset.prefetch(buffer_size=tf.contrib.data.AUTOTUNE)
-    dset_iterater = dataset.make_one_shot_iterator()
-    features_next, labels_next = dset_iterater.get_next()
+  dataset = dataset.prefetch(buffer_size=batch_size)
+  dataset = dataset.apply(
+    tf.contrib.data.map_and_batch(
+      lambda value: parse_record(value, is_training, dset_shape_idx),
+      batch_size=batch_size,
+      num_parallel_batches=1,
+      drop_remainder=False))
+  dataset = dataset.prefetch(buffer_size=tf.contrib.data.AUTOTUNE)
+  dset_iterater = dataset.make_one_shot_iterator()
 
-    with tf.Session() as sess:
-      batch_num = 0
-      point_num = 0
-      label_hist = np.zeros(num_classes)
-      #try:
-      if True:
-        while(True):
-          features, labels = sess.run([features_next, labels_next])
+  #***************************************************************************
+  label_hist = np.zeros(num_classes)
+  batch_num = 0
+  for batch_k in range(len(filenames)):
+    print('\nreading %s'%(filenames[batch_k]))
+    base_fn = os.path.splitext( os.path.basename(filenames[batch_k]))[0]
+    features, labels = dset_iterater.get_next()
+    batch_num += 1
+    labels = labels.numpy()
+    for key in features:
+      features[key] = features[key].numpy()
 
-          fidx_pv_empty_mask = get_ele(features, 'fidx_pv_empty_mask',
-                                       dset_shape_idx)
-          # generate label hist summary
-          valid_num_face = features['valid_num_face']
-          category_label = get_ele(features, 'label_category', dset_shape_idx)
-          label_hist += np.histogram(category_label, range(num_classes+1))[0]
+    dset_idx = dset_shape_idx['indices']
 
-          batch_num += 1
-          point_num += np.sum(valid_num_face)
-          print('Total: %d  %d'%(batch_num, point_num))
+    category_label = get_ele(features, 'label_category', dset_shape_idx)
+    label_hist += np.histogram(category_label, range(num_classes+1))[0]
 
-          if gen_ply:
-            dset_idx = dset_shape_idx['indices']
-            xyz = get_ele(features, 'xyz', dset_shape_idx)
-            color = get_ele(features, 'color', dset_shape_idx)
-            valid_num_face = features['valid_num_face']
-            vidx_per_face = get_ele(features, 'vidx_per_face', dset_shape_idx)
+    xyz = get_ele(features, 'xyz', dset_shape_idx)
+    color = get_ele(features, 'color', dset_shape_idx)
+    valid_num_face = features['valid_num_face']
+    vidx_per_face = get_ele(features, 'vidx_per_face', dset_shape_idx)
+    edgev_per_vertex = get_ele(features, 'edgev_per_vertex', dset_shape_idx)
+    color = get_ele(features, 'color', dset_shape_idx)
+    valid_ev_num_pv = get_ele(features, 'valid_ev_num_pv', dset_shape_idx)
 
-            if 'edgev_per_vertex' in dset_idx['vertex_i'] and False:
-              edgev_per_vertex = get_ele(features, 'edgev_per_vertex', dset_shape_idx)
-              for i in range(10):
-                xyz_i = np.take(xyz[0,:,:], edgev_per_vertex[0:100,i,:], axis=0)
-                ply_fn = os.path.join(ply_dir, 'fans/fan%d_raw_color.ply'%(i))
-                ply_util.create_ply(xyz_i, ply_fn)
+    #***************************************************************************
+    if gen_ply:
+      for bi in range(batch_size):
+        ply_fn = os.path.join(ply_dir, '%s_edgev/edgev_%d_raw_color.ply'%(base_fn, bi))
+        edgev_vidx_per_face = MeshSampling.edgev_to_face(edgev_per_vertex[bi], valid_ev_num_pv[bi])
+        edgev_vidx_per_face = edgev_vidx_per_face.numpy()
+        ply_util.gen_mesh_ply(ply_fn, xyz[bi], edgev_vidx_per_face,
+                  vertex_color=color[bi])
+
+      #***************************************************************************
+      for bi in range(batch_size):
+        ply_fn = os.path.join(ply_dir, '%s_raw/b%d_raw_color.ply'%(base_fn, bi))
+        ply_util.gen_mesh_ply(ply_fn, xyz[bi], vidx_per_face[bi,0:valid_num_face[bi,0],:], vertex_color=color[bi])
+    import pdb; pdb.set_trace()  # XXX BREAKPOINT
+    pass
 
 
-            for bi in range(batch_size):
-              ply_fn = os.path.join(ply_dir, 'batch_%d/b%d_raw_color.ply'%(batch_num, bi))
-              ply_util.gen_mesh_ply(ply_fn, xyz[bi], vidx_per_face[bi,0:valid_num_face[bi,0],:], vertex_color=color[bi])
-
-
-            if 'same_category_mask' in dset_idx['vertex_i']:
-              same_category_mask = get_ele(features, 'same_category_mask', dset_shape_idx)
-              same_category_mask = same_category_mask > 2
-              same_normal_mask = get_ele(features, 'same_normal_mask', dset_shape_idx)
-              same_normal_mask = same_normal_mask > 2
-              vertex_simplicity = np.logical_and(same_normal_mask, same_category_mask).astype(np.int8)
-              for bi in range(batch_size):
-                ply_fn = os.path.join(ply_dir, 'batch_%d/b%d_simplicity.ply'%(batch_num, bi))
-                ply_util.gen_mesh_ply(ply_fn, xyz[bi], vidx_per_face[bi,0:valid_num_face[bi,0],:], vertex_label=vertex_simplicity[bi])
-
-          pass
-
-      #except:
-      #  print(label_hist)
-      #  print(sys.exc_info()[0])
-
-      dataset_summary = {}
-      dataset_summary['size'] = batch_num
-      dataset_summary['label_hist'] = label_hist
-      write_dataset_summary(dataset_summary, tf_path)
-      get_label_num_weights(dataset_summary, loss_lw_gama)
-      return dataset_summary
+  dataset_summary = {}
+  dataset_summary['size'] = batch_num
+  dataset_summary['label_hist'] = label_hist
+  write_dataset_summary(dataset_summary, tf_path)
+  get_label_num_weights(dataset_summary, loss_lw_gama)
+  import pdb; pdb.set_trace()  # XXX BREAKPOINT
+  return dataset_summary
 
 
 def write_dataset_summary(dataset_summary, data_dir):
