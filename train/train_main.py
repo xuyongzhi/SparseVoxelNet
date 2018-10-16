@@ -43,8 +43,8 @@ _NUM_EXAMPLES_ALL = {}
 _NUM_EXAMPLES_ALL['MATTERPORT'] = {
         'train': 2924, 'validation':-1}
 
-_NUM_TRAIN_FILES = 100
-_SHUFFLE_BUFFER = 200
+_NUM_TRAIN_FILES = 30
+_SHUFFLE_BUFFER = 300
 
 DATASET_NAME = 'MATTERPORT'
 _NUM_EXAMPLES = _NUM_EXAMPLES_ALL[DATASET_NAME]
@@ -74,11 +74,11 @@ def get_filenames_1(is_training, data_dir):
 def get_filenames_0(is_training, data_dir):
   # 2924  734
   fls = DsetMetas.get_train_test_file_list(os.path.join(data_dir, 'data'), is_training)
-  return fls
+  return fls[0:100]
 
 def get_filenames(is_training, data_dir):
   """Return filenames for dataset."""
-  return get_filenames_0(is_training, data_dir)
+  #return get_filenames_0(is_training, data_dir)
 
   data_dir = os.path.join(data_dir, 'merged_data')
   if is_training:
@@ -105,8 +105,10 @@ def get_global_block_num(fnls):
   for fi, fn in enumerate(fnls):
     for record in tf.python_io.tf_record_iterator(fn):
       c += 1
-    if fi%100==0:
-      print('read {} files, {} examples, tim={} sec'.format(fi+1, c, time.time()-t0))
+    if fi%1==0:
+      t = time.time()-t0
+      t_per_example = t/c*1000
+      print('read {} files, {} examples, time={} sec, t_per_example:{} ms'.format(fi+1, c, t, t_per_example))
   print('\nget block num for {} files: {}, time:{}\n'.format(len(fnls), c, time.time()-t0))
   return c
 
@@ -447,7 +449,7 @@ def define_network_flags():
   flags.DEFINE_string('drop_imo','000','dropout rate for input, middle and out')
   flags.DEFINE_bool(name='pred_ply', default=False, help ="")
 
-  update_examples_num(True, data_dir)
+  #update_examples_num(True, data_dir)
   flags.DEFINE_integer('examples_per_epoch', default=_NUM_EXAMPLES['train'], help="")
 
 def run_network(flags_obj):
