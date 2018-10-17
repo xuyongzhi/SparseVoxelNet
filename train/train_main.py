@@ -36,7 +36,7 @@ from models import meshnet_model
 from datasets.tfrecord_util import parse_record, get_dset_shape_idxs
 from datasets.all_datasets_meta.datasets_meta import DatasetsMeta
 
-TMPDEBUG = False
+TMPDEBUG = True
 FILE_RATE = 0.3 if TMPDEBUG else 1.0
 DATA_DIR = os.path.join(ROOT_DIR, 'data')
 
@@ -89,7 +89,7 @@ def get_filenames(is_training, data_dir):
   fnls = glob.glob(os.path.join(data_dir, pre+'*.tfrecord'))
   if TMPDEBUG:
     fnls.sort()
-    n = (len(fnls) * FILE_RATE)
+    n = int(len(fnls) * FILE_RATE)
     fnls = fnls[0:n]
   print('\nfound {} files, train:{}\n'.format(len(fnls), is_training))
   return fnls
