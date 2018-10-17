@@ -26,7 +26,7 @@ def block_configs(net_flag0='7B'):
 
   if net_flag == '7A' or  net_flag=='7G':
     block_sizes['vertex'] = [ [1, 1, 1, 1, 1, 1, 1],  ]
-    filters['vertex']     = [ [32, 32, 64, 64, 128, 128, 256],]
+    filters['vertex']     = [ [32, 32, 64, 64, 128, 128, 180],]
     kernels['vertex']     = [ [fan_kernel for _ in range(7)],  ]
     if net_flag == '7G':
       filters['global']     = [ [64],[128],]
