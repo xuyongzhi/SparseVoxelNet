@@ -1545,12 +1545,17 @@ class EdgeVPath():
     batch_size, vn, evn1, evn2 = eshape0
 
     edgev_idx1, valid_ev_num = EdgeVPath.clean_duplicate_edgev(edgev_idx0)
+    org_max_valid_evn = get_tensor_shape(edgev_idx1)[-1]
     cos_angle = EdgeVPath.geodesic_angle(edgev_idx1, xyz, norm)
+    cycle_num = 6
+    if cycle_num>0:
+      cos_angle1 = cos_angle[:,:,0:cycle_num] - 4
+      cos_angle = tf.concat([cos_angle, cos_angle1], -1)
+      edgev_idx1 = tf.concat([edgev_idx1, edgev_idx1[:,:,0:cycle_num]],-1)
     sort_idx = tf.contrib.framework.argsort(cos_angle, axis=-1, direction='DESCENDING')
+    sort_idx = sort_idx[:,:,0:org_max_valid_evn]
 
     edgev_idx_sorted = gather_third_d(edgev_idx1, sort_idx)
-
-    # make it cycle
 
     if not with_batch_dim:
       edgev_idx_sorted = tf.squeeze(edgev_idx_sorted, 0)
@@ -1640,9 +1645,9 @@ class EdgeVPath():
     # [-3,1]
     cos_angle = cos_angle * sign - 2*over_pi
 
-    # (4) set cos angle for empty as -4
+    # (4) set cos angle for empty as -10
     empty_mask = tf.cast(tf.less(edgev_idx, 0), tf.float32)
-    cos_angle = cos_angle * (1-empty_mask) + empty_mask * (-4)
+    cos_angle = cos_angle * (1-empty_mask) + empty_mask * (-10)
     return cos_angle
 
   def expand_path(edgev):
