@@ -11,9 +11,13 @@ sys.path.append(ROOT_DIR)
 
 from datasets.all_datasets_meta.datasets_meta import DatasetsMeta
 import utils.ply_util as ply_util
+from models.conv_util import gather_second_d, gather_third_d
 
 MAX_FLOAT_DRIFT = 1e-6
 DEBUG = False
+
+def tsize(tensor):
+  return len(get_tensor_shape(tensor))
 
 def bytes_feature(values):
   """Returns a TF-Feature of bytes.
@@ -427,7 +431,8 @@ class MeshSampling():
     fidx_per_vertex, fidx_pv_empty_mask, edgev_per_vertex, valid_ev_num_pv, \
      edges_per_vertex, edges_pv_empty_mask, lonely_vertex_idx = \
                     MeshSampling.get_fidx_nbrv_per_vertex(
-                          raw_datas['vidx_per_face'], num_vertex0, mesh_summary)
+          raw_datas['vidx_per_face'], num_vertex0, xyz=raw_datas['xyz'],
+          norm = raw_datas['nxnynz'], mesh_summary=mesh_summary)
     raw_datas['fidx_per_vertex'] = fidx_per_vertex
     raw_datas['fidx_pv_empty_mask'] = fidx_pv_empty_mask
     raw_datas['edgev_per_vertex'] = edgev_per_vertex
@@ -544,7 +549,7 @@ class MeshSampling():
     return shape_strs
 
   @staticmethod
-  def get_fidx_nbrv_per_vertex(vidx_per_face, num_vertex0, mesh_summary):
+  def get_fidx_nbrv_per_vertex(vidx_per_face, num_vertex0, xyz=None, norm=None, mesh_summary={}):
     '''
     Inputs: [F,3] []
     Output: [N, ?]
@@ -645,7 +650,12 @@ class MeshSampling():
 
     #***************************************************************************
     # sort edge vertices by path
-    edgev_per_vertex, valid_ev_num_pv, close_flag = MeshSampling.sort_edge_vertices(edges_per_vertex)
+    edgev_sort_method = 'geodesic_angle'
+    if edgev_sort_method == 'geodesic_angle':
+      edgev_per_vertex, valid_ev_num_pv, close_flag = EdgeVPath.sort_edgev_by_angle(edges_per_vertex, xyz, norm)
+    elif edgev_sort_method == 'path':
+      edgev_per_vertex, valid_ev_num_pv, close_flag = MeshSampling.sort_edge_vertices(edges_per_vertex)
+
     valid_ev_num_ave = tf.reduce_mean(valid_ev_num_pv)
     valid_ev_num_max = tf.reduce_max(valid_ev_num_pv)
     close_num = tf.reduce_sum(tf.cast(tf.equal(close_flag, 1), tf.int32))
@@ -734,6 +744,9 @@ class MeshSampling():
 
   @staticmethod
   def sort_edge_vertices(edges_per_vertex):
+    '''
+    get edgev_per_vertex: edge vertices sorted by path
+    '''
     eshape = get_tensor_shape(edges_per_vertex)
     assert len(eshape) == 3
     vertex_num = eshape[0]
@@ -1191,8 +1204,8 @@ class MeshSampling():
   def get_twounit_edgev(edgev_per_vertex0, xyz0, raw_vidx_2_sp_vidx, vertex_sp_indices,
                         max_fail_2unit_ev_rate=1e-4, scale=None):
     #  the edgev of edgev: geodesic distance = 2 unit
-    edgev_edgev0 = tf.gather(edgev_per_vertex0,  edgev_per_vertex0)
-    edgev_edgev = tf.gather(edgev_edgev0, vertex_sp_indices)
+    edgev_edgev_idx0 = tf.gather(edgev_per_vertex0,  edgev_per_vertex0)
+    edgev_edgev = tf.gather(edgev_edgev_idx0, vertex_sp_indices)
 
     edgev_per_vertex = tf.gather(edgev_per_vertex0, vertex_sp_indices)
     edgev_xyz = tf.gather(xyz0, edgev_per_vertex)
@@ -1511,6 +1524,129 @@ class MeshSampling():
     '''
 
 
+
+class EdgeVPath():
+  @staticmethod
+  def sort_edgev_by_angle(edgev_idx_in, xyz, norm):
+    '''
+    edgev_idx0: [batch_size, vertex_num, k1, k2]
+    xyz: [batch_size, vertex_num, 3]
+    '''
+    edgev_idx0 = edgev_idx_in
+    with_batch_dim = True
+    if len(get_tensor_shape(edgev_idx0)) == 3:
+      with_batch_dim = False
+      # not include batch size dim
+      edgev_idx0 = tf.expand_dims(edgev_idx0, 0)
+      xyz = tf.expand_dims(xyz, 0)
+      norm = tf.expand_dims(norm, 0)
+    eshape0 = get_tensor_shape(edgev_idx0)
+    assert len(eshape0) == 4
+    batch_size, vn, evn1, evn2 = eshape0
+
+    edgev_idx1, valid_ev_num = EdgeVPath.clean_duplicate_edgev(edgev_idx0)
+    cos_angle = EdgeVPath.geodesic_angle(edgev_idx1, xyz, norm)
+    sort_idx = tf.contrib.framework.argsort(cos_angle, axis=-1, direction='DESCENDING')
+
+    edgev_idx_sorted = gather_third_d(edgev_idx1, sort_idx)
+
+    # make it cycle
+
+    if not with_batch_dim:
+      edgev_idx_sorted = tf.squeeze(edgev_idx_sorted, 0)
+      valid_ev_num = tf.squeeze(valid_ev_num, 0)
+    valid_ev_num = tf.expand_dims(valid_ev_num, -1)
+
+    return edgev_idx_sorted, valid_ev_num, None
+
+  @staticmethod
+  def clean_duplicate_edgev(edgev_idx0):
+    eshape0 = get_tensor_shape(edgev_idx0)
+    assert len(eshape0) == 4
+    batch_size, vn, evn1, evn2 = eshape0
+
+    # remove duplicated
+    edgev_idx0 = tf.reshape(edgev_idx0, [batch_size, vn, -1])
+    edgev_idx0 = tf.contrib.framework.sort(edgev_idx0, -1, direction='DESCENDING')
+    tmp = edgev_idx0[:, :, 0:-1]
+    dif_with_pre = tf.not_equal(edgev_idx0[:,:,1:], tmp)
+    dif_with_pre = tf.concat([tf.constant(True, tf.bool, [batch_size, vn, 1]),\
+                                dif_with_pre], -1)
+    edgev_idx0 = (1+edgev_idx0) * tf.cast(dif_with_pre, tf.int32) - 1
+    edgev_idx0 = tf.contrib.framework.sort(edgev_idx0, -1, direction='DESCENDING')
+    valid_ev_num = tf.reduce_sum(tf.cast(tf.greater(edgev_idx0, -1),tf.int32), -1)
+    max_evn = tf.reduce_max(valid_ev_num)
+    edgev_idx1 = edgev_idx0[:,:,0:max_evn]
+
+    #mean_evn = tf.reduce_mean(valid_ev_num)
+    #hist = tf.histogram_fixed_width(valid_ev_num, [1,max_evn+1], nbins=max_evn)
+    #hist = tf.cast(hist, tf.float32)
+    #hist_rates = hist / tf.reduce_sum(hist)
+    #hist_rates = tf.cast(hist_rates * 100, tf.int32)
+    #bins = tf.range(1,max_evn+1)
+    return edgev_idx1, valid_ev_num
+
+  @staticmethod
+  def get_zero_vec(norm):
+    # norm: [batch_size, vn, 3]
+    assert tsize(norm) == 4
+    x = tf.constant([1,0,0], tf.float32, [1,1,1,3])
+    x_tan, costheta_x = EdgeVPath.project_vector(x, norm)
+    use_x = tf.cast(tf.less(costheta_x, 0.2), tf.float32)
+
+    y = tf.constant([0,1,0], tf.float32, [1,1,1,3])
+    y_tan, costheta_y = EdgeVPath.project_vector(y, norm)
+
+    zero_vec = x_tan * use_x + y_tan *(1-use_x)
+    tmp = tf.norm(zero_vec, axis=-1, keepdims=True)
+    zero_vec /= tmp
+    return zero_vec
+
+
+  @staticmethod
+  def project_vector(edgev, norm):
+    # not normalized
+    assert tsize(edgev) == 4
+    assert tsize(norm) == 4
+    costheta = tf.reduce_sum(edgev * norm, -1, keepdims=True)
+    edgev_tangent = edgev - costheta * norm
+    return edgev_tangent, costheta
+
+  @staticmethod
+  def geodesic_angle(edgev_idx, xyz, norm):
+    assert tsize(edgev_idx) == 3
+    assert tsize(norm) == 3
+    batch_size, vertex_num, evn = get_tensor_shape(edgev_idx)
+
+    edgev = gather_second_d(xyz, edgev_idx) - tf.expand_dims(xyz,2)
+    norm = tf.expand_dims(norm,2)
+    # (1) Project edgev to the tangent plane: edgev_tan
+    #     Project x to the tangent to get 0 angle vec
+    edgev_tan, _ = EdgeVPath.project_vector(edgev, norm)
+    zero_vec = EdgeVPath.get_zero_vec(norm)
+
+    # (2) Get cos of the angel
+    ev_norm = tf.norm(edgev_tan, axis=-1, keepdims=True)
+    edgev_tan_normed = edgev_tan / ev_norm
+    cos_angle = tf.reduce_sum(zero_vec * edgev_tan_normed, -1)
+
+    # (3) Judge if the angle is over 180
+    # the norm for each edgev
+    edgev_norm = tf.cross(tf.tile(zero_vec,[1,1,evn,1]), edgev_tan_normed)
+    cos_nn = tf.reduce_sum(norm * edgev_norm, -1)
+    over_pi = tf.cast(tf.less(cos_nn, 0), tf.float32)
+    # (3.1)change sign if over pi. (3.2) minus 2 if over pi.
+    sign = 1-over_pi*2
+    # [-3,1]
+    cos_angle = cos_angle * sign - 2*over_pi
+
+    # (4) set cos angle for empty as -4
+    empty_mask = tf.cast(tf.less(edgev_idx, 0), tf.float32)
+    cos_angle = cos_angle * (1-empty_mask) + empty_mask * (-4)
+    return cos_angle
+
+  def expand_path(edgev):
+    return edgev_expanded
 
 if __name__ == '__main__':
   dataset_name = 'MATTERPORT'

@@ -94,12 +94,15 @@ def get_tensor_shape(tensor):
   else:
     return tensor.shape
 
+def tsize(tensor):
+  return len(get_tensor_shape(tensor))
 
 def gather_second_d(inputs, indices):
   '''
   Gather inputs by indices, indices is for the second dim.
     inputs: (batch_size, n1, ...)
   '''
+  assert tsize(inputs) >= 2
   idx_shape = get_tensor_shape(indices)
   if len(idx_shape)==3:
     batch_idx = tf.reshape(tf.range(idx_shape[0]), [-1,1,1,1])
@@ -112,6 +115,21 @@ def gather_second_d(inputs, indices):
   outputs = tf.gather_nd(inputs, indices)
   return outputs
 
+def gather_third_d(inputs, indices):
+  assert tsize(inputs) >= 3
+  idx_shape = get_tensor_shape(indices)
+  if len(idx_shape)==3:
+    # gather along evn
+    batch_size, vertex_num, evn = idx_shape
+    batch_idx = tf.reshape(tf.range(batch_size), [-1,1,1,1])
+    batch_idx = tf.tile(batch_idx, [1, vertex_num, evn, 1])
+    vn_idx = tf.reshape(tf.range(vertex_num), [1,-1,1,1])
+    vn_idx = tf.tile(vn_idx, [batch_size, 1, evn, 1])
+
+  indices = tf.expand_dims(indices, -1)
+  indices = tf.concat([batch_idx, vn_idx, indices], -1)
+  outputs = tf.gather_nd(inputs, indices)
+  return outputs
 
 def mask_reduce_mean(inputs, valid_mask, dim):
   in_shape = inputs.shape.as_list()

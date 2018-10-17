@@ -578,14 +578,16 @@ def main_matterport():
   t0 = time.time()
   dataset_name = 'MATTERPORT'
 
+  num_point = {'MODELNET40':None, 'MATTERPORT':150000}
+  block_sizes = {'MODELNET40':None, 'MATTERPORT':np.array([5.0, 5.0, 5.0]) }
+  block_size = block_sizes[dataset_name]
+  flag = ''.join([str(int(d)) for d in block_size])
+
   dset_path = '/DS/Matterport3D/Matterport3D_WHOLE_extracted/v1/scans'
-  tfrecord_path = '/DS/Matterport3D/MATTERPORT_TF/mesh_tfrecord'
+  tfrecord_path = '/DS/Matterport3D/MATTERPORT_TF/mesh_tfrecord_%s'%(flag)
 
   #dset_path = '/home/z/DS/Matterport3D/Matterport3D_WHOLE_extracted/v1/scans'
   #tfrecord_path = os.path.join(ROOT_DIR, 'data/MATTERPORT_TF')
-
-  num_point = {'MODELNET40':None, 'MATTERPORT':150000}
-  block_size = {'MODELNET40':None, 'MATTERPORT':np.array([5.0, 5.0, 5.0]) }
 
   scene_names_all = os.listdir(dset_path)
   scene_name = '17DRP5sb8fy'
@@ -600,11 +602,11 @@ def main_matterport():
   raw_fns = glob.glob(raw_glob)
   raw_fns = clean_bad_files(dataset_name, raw_fns, dset_path)
   raw_fns.sort()
-  #main_write_multi(dataset_name, raw_fns, tfrecord_path, num_point[dataset_name],\
-  #            block_size[dataset_name], ply_dir,
-  #            multiprocessing=0) # 4 to process data, 0 to check
+  main_write_multi(dataset_name, raw_fns, tfrecord_path, num_point[dataset_name],\
+              block_size, ply_dir,
+              multiprocessing=0) # 4 to process data, 0 to check
 
-  main_merge_tfrecord(dataset_name, tfrecord_path)
+  #main_merge_tfrecord(dataset_name, tfrecord_path)
 
   #main_gen_ply(dataset_name, tfrecord_path)
   print('total time: {} sec'.format(time.time() - t0))
