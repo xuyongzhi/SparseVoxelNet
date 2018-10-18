@@ -34,6 +34,7 @@ from __future__ import print_function
 import tensorflow as tf
 import numpy as np
 import os, sys
+from utils.tf_util  import TfUtil
 #BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 #ROOT_DIR = os.path.dirname(BASE_DIR)
 
@@ -45,6 +46,11 @@ _BATCH_NORM_EPSILON = 1e-5
 NoRes_InceptionReduction = True
 
 KERNEL_INI = tf.variance_scaling_initializer()       # res official
+
+def get_tensor_shape(tensor):
+  return TfUtil.get_tensor_shape(tensor)
+def gather_second_d(inputs, indices):
+  return TfUtil.gather_second_d(inputs, indices)
 
 def tensor_info(tensor_ls, tensor_name_ls=None, layer_name=None,
                 weight_num_bytes_shapes=None, batch_size=None):
@@ -82,68 +88,6 @@ def tensor_info(tensor_ls, tensor_name_ls=None, layer_name=None,
     if i < len(tensor_ls)-1:
         tensor_sum += '\n'
   return tensor_sum
-
-
-def get_tensor_shape(tensor):
-  if isinstance(tensor, tf.Tensor):
-    shape = tensor.shape.as_list()
-    for i,s in enumerate(shape):
-      if s==None:
-        shape[i] = tf.shape(tensor)[i]
-    return shape
-  else:
-    return tensor.shape
-
-def tsize(tensor):
-  return len(get_tensor_shape(tensor))
-
-def gather_second_d(inputs, indices):
-  '''
-  Gather inputs by indices, indices is for the second dim.
-    inputs: (batch_size, n1, ...)
-  '''
-  assert tsize(inputs) >= 2
-  idx_shape = get_tensor_shape(indices)
-  if len(idx_shape)==3:
-    batch_idx = tf.reshape(tf.range(idx_shape[0]), [-1,1,1,1])
-    batch_idx = tf.tile(batch_idx, [1, idx_shape[1], idx_shape[2], 1])
-  elif len(idx_shape)==2:
-    batch_idx = tf.reshape(tf.range(idx_shape[0]), [-1,1,1])
-    batch_idx = tf.tile(batch_idx, [1, idx_shape[1],  1])
-  indices = tf.expand_dims(indices, -1)
-  indices = tf.concat([batch_idx, indices], -1)
-  outputs = tf.gather_nd(inputs, indices)
-  return outputs
-
-def gather_third_d(inputs, indices):
-  assert tsize(inputs) >= 3
-  idx_shape = get_tensor_shape(indices)
-  if len(idx_shape)==3:
-    # gather along evn
-    batch_size, vertex_num, evn = idx_shape
-    batch_idx = tf.reshape(tf.range(batch_size), [-1,1,1,1])
-    batch_idx = tf.tile(batch_idx, [1, vertex_num, evn, 1])
-    vn_idx = tf.reshape(tf.range(vertex_num), [1,-1,1,1])
-    vn_idx = tf.tile(vn_idx, [batch_size, 1, evn, 1])
-
-  indices = tf.expand_dims(indices, -1)
-  indices = tf.concat([batch_idx, vn_idx, indices], -1)
-  outputs = tf.gather_nd(inputs, indices)
-  return outputs
-
-def mask_reduce_mean(inputs, valid_mask, dim):
-  in_shape = inputs.shape.as_list()
-  mask_shape = valid_mask.shape.as_list()
-  assert len(in_shape) == len(mask_shape)+1
-  assert in_shape[0:-1] == mask_shape
-
-  valid_mask = tf.cast(valid_mask, tf.float32)
-  valid_num = tf.reduce_sum(valid_mask, -1, keepdims=True)
-  valid_mask /= valid_num
-  valid_mask = tf.expand_dims(valid_mask, -1)
-  inputs = inputs * valid_mask
-  inputs = tf.reduce_sum(inputs, dim)
-  return inputs
 
 
 def unique_nd( inputs, axis=-1, unit=3 ):
