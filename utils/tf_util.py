@@ -61,6 +61,10 @@ class TfUtil():
       return tensor.shape
 
   @ staticmethod
+  def tshape0(t):
+    return TfUtil.get_tensor_shape(t)[0]
+
+  @ staticmethod
   def tsize(tensor):
     return len(TfUtil.get_tensor_shape(tensor))
 

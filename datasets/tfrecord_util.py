@@ -46,26 +46,10 @@ def int64_feature(values):
   return tf.train.Feature(int64_list=tf.train.Int64List(value=values))
 
 
-def get_tensor_shape(tensor):
-  if isinstance(tensor, tf.Tensor):
-    shape = tensor.shape.as_list()
-    for i,s in enumerate(shape):
-      if s==None:
-        shape[i] = tf.shape(tensor)[i]
-    return shape
-  else:
-    return tensor.shape
-
-
+def get_tensor_shape(t):
+  return TfUtil.get_tensor_shape(t)
 def get_shape0(t):
-  if isinstance(t, tf.Tensor):
-    s0 = t.shape[0].value
-    if s0==None:
-      s0 = tf.shape(t)[0]
-    return s0
-  else:
-    return t.shape[0]
-
+  return TfUtil.tshape0(t)
 
 def parse_record(tfrecord_serialized, is_training, dset_shape_idx, \
                     is_rm_void_labels=False, gen_ply=False):
@@ -653,7 +637,7 @@ class MeshSampling():
     # sort edge vertices by path
     edgev_sort_method = 'geodesic_angle'
     if edgev_sort_method == 'geodesic_angle':
-      edgev_per_vertex, valid_ev_num_pv = EdgeVPath.sort_edgev_by_angle(edges_per_vertex, xyz, norm, cycle_idx=True, max_evnum_next=MeshSampling._edgev_num)
+      edgev_per_vertex, valid_ev_num_pv = EdgeVPath.sort_edgev_by_angle(edges_per_vertex, xyz, norm, cycle_idx=True, max_evnum_next=MeshSampling._edgev_num, geodis=1)
       EdgeVPath.main_test_expand_path(edgev_per_vertex, valid_ev_num_pv, xyz, norm)
     elif edgev_sort_method == 'path':
       edgev_per_vertex, valid_ev_num_pv, close_flag = MeshSampling.sort_edge_vertices(edges_per_vertex)
@@ -1443,7 +1427,7 @@ class MeshSampling():
 
   @staticmethod
   def down_sampling_face(vertex_sp_indices, num_vertex0, vidx_per_face, is_rm_some_label):
-    assert len(get_tensor_shape(vertex_sp_indices)) == 1
+    assert  TfUtil.tsize(vertex_sp_indices) == 1
     raw_vidx_2_sp_vidx = MeshSampling.get_raw_vidx_2_sp_vidx(vertex_sp_indices, num_vertex0)
     rm_cond = 'any' if is_rm_some_label else 'all'
     face_sp_indices, vidx_per_face_new = MeshSampling.rm_lost_face(vidx_per_face, raw_vidx_2_sp_vidx, rm_cond=rm_cond)
@@ -1526,7 +1510,7 @@ class MeshSampling():
 
 class EdgeVPath():
   @staticmethod
-  def sort_edgev_by_angle(edge_aug_vidx, xyz, norm, cycle_idx=False, max_evnum_next=None, edge_vidx_base=None):
+  def sort_edgev_by_angle(edge_aug_vidx, xyz, norm, xyz_raw=None, cycle_idx=False, max_evnum_next=None, edge_vidx_base=None, geodis=None):
     '''
     edge_aug_vidx: [batch_size, vertex_num, k1, k2]
     xyz: [batch_size, vertex_num, 3]
@@ -1544,6 +1528,8 @@ class EdgeVPath():
         edge_aug_vidx = tf.expand_dims(edge_aug_vidx, 0)
         xyz = tf.expand_dims(xyz, 0)
         norm = tf.expand_dims(norm, 0)
+        if xyz_raw is not None:
+          xyz_raw = tf.expand(xyz_raw, 0)
         if edge_vidx_base is not None:
           edge_vidx_base = tf.expand(edge_vidx_base, 0)
 
@@ -1564,7 +1550,7 @@ class EdgeVPath():
         edge_vidx_next = edge_vidx_next[:,:,0:max_evnum_next]
 
       org_max_valid_evn = get_tensor_shape(edge_vidx_next)[-1]
-      cos_angle = EdgeVPath.geodesic_angle(edge_vidx_next, xyz, norm, valid_ev_num_next)
+      cos_angle = EdgeVPath.get_geodesic_angle(edge_vidx_next, xyz, norm, valid_ev_num_next, xyz_raw, geodis=geodis)
 
       # cycle idx
       if cycle_idx:
@@ -1595,17 +1581,19 @@ class EdgeVPath():
     return edge_vidx_next_sorted, valid_ev_num_next
 
   @staticmethod
-  def set_inner_idx_neg(edge_vidx_base_aug, edge_vidx_base, xyz):
+  def set_inner_idx_neg(edge_vidx_base_aug, edge_vidx_base, xyz, xyz_raw=None):
     '''
     Assume all the outside vertices have angle > 90
     '''
     assert tsize(edge_vidx_base) == 3
     assert tsize(edge_vidx_base_aug) == 4
     with tf.variable_scope('set_inner_idx_neg'):
-      edge2u_v = TfUtil.gather_second_d(xyz, edge_vidx_base)
+      if xyz_raw is None:
+        xyz_raw = xyz
+      edge2u_v = TfUtil.gather_second_d(xyz_raw, edge_vidx_base)
       edge2u = edge2u_v - tf.expand_dims(xyz, 2)
       edge2u = tf.expand_dims(edge2u, 3)
-      edge2u_aug_v = TfUtil.gather_second_d(xyz, edge_vidx_base_aug)
+      edge2u_aug_v = TfUtil.gather_second_d(xyz_raw, edge_vidx_base_aug)
       edge2u_aug = edge2u_aug_v - tf.expand_dims(edge2u_v, 3)
 
       # the angle between edge and edge2u
@@ -1734,7 +1722,7 @@ class EdgeVPath():
     return edgev_tangent, costheta
 
   @staticmethod
-  def geodesic_angle(edgev_idx, xyz, norm, valid_ev_num=None):
+  def get_geodesic_angle(edgev_idx, xyz, norm, valid_ev_num=None, xyz_raw=None, geodis=None):
     assert tsize(edgev_idx) == 3
     assert tsize(norm) == 3
     batch_size, vertex_num, evn = get_tensor_shape(edgev_idx)
@@ -1742,10 +1730,12 @@ class EdgeVPath():
     with tf.variable_scope('geodesic_angle'):
       empty_mask = tf.cast(tf.less(edgev_idx, 0), tf.float32)
       edgev_idx = EdgeVPath.replace_neg_by_first_or_last(edgev_idx, 'first')
-      edgev = TfUtil.gather_second_d(xyz, edgev_idx) - tf.expand_dims(xyz,2)
-      norm = tf.expand_dims(norm,2)
+      if xyz_raw is None:
+        xyz_raw = xyz
+      edgev = TfUtil.gather_second_d(xyz_raw, edgev_idx) - tf.expand_dims(xyz,2)
       # (1) Project edgev to the tangent plane: edgev_tan
       #     Project x to the tangent to get 0 angle vec
+      norm = tf.expand_dims(norm,2)
       edgev_tan, _ = EdgeVPath.project_vector(edgev, norm)
       zero_vec = EdgeVPath.get_zero_vec(norm)
 
@@ -1758,11 +1748,13 @@ class EdgeVPath():
         valid_mask = TfUtil.valid_num_to_mask(valid_ev_num, evn)
         ev_norm_rate = ev_tan_norm / (ev_norm+1e-5)
         # For a manifold, ev_norm_rate shoul close to 1
+        min_norm_rate = TfUtil.mask_reduce_min(tf.squeeze(ev_norm_rate,-1), valid_mask)
+        # normally 0.98 for geodis=1; 0.97617507 for geodis=2;
+        # 0.96850145 for geodis=3
         mean_norm_rate = TfUtil.mask_reduce_mean(tf.squeeze(ev_norm_rate,-1), valid_mask)
-        check_manifold = tf.assert_greater(mean_norm_rate, 0.8, message="check manifold failed")
+        check_manifold = tf.assert_greater(mean_norm_rate, 0.93, message="check manifold failed geodis={}".format(geodis))
         with tf.control_dependencies([check_manifold]):
           ev_norm = tf.identity(ev_norm)
-        min_norm_rate = TfUtil.mask_reduce_min(tf.squeeze(ev_norm_rate,-1), valid_mask)
 
       edgev_tan_normed = edgev_tan / (ev_norm+1e-5)
       cos_angle = tf.reduce_sum(zero_vec * edgev_tan_normed, -1)
@@ -1790,7 +1782,7 @@ class EdgeVPath():
 
   @staticmethod
   def expand_path(edge_vidx_base, valid_ev_num_base, edge_vidx_interval,
-                  valid_ev_num_interval, xyz, norm, geodis, max_evnum_next):
+                  valid_ev_num_interval, xyz, norm, xyz_raw=None, geodis=None, max_evnum_next=None):
     '''
     expand path from edge_vidx_base by edge_vidx_interval
     '''
@@ -1805,10 +1797,13 @@ class EdgeVPath():
       valid_ev_num_interval = tf.expand_dims(valid_ev_num_interval, 0)
       xyz = tf.expand_dims(xyz, 0)
       norm = tf.expand_dims(norm, 0)
+      if xyz_raw:
+        xyz_raw = tf.expand_dims(xyz_raw,0)
     assert tsize(edge_vidx_base) == tsize(edge_vidx_interval) == \
       tsize(valid_ev_num_base) == tsize(valid_ev_num_interval) == \
       tsize(xyz) == tsize(norm) ==  3
 
+    #***************************************************************************
     max_evn_base = tf.reduce_max(valid_ev_num_base)
     edge_vidx_base = edge_vidx_base[:,:,0:max_evn_base]
 
@@ -1817,30 +1812,88 @@ class EdgeVPath():
 
     with tf.variable_scope('expand_path_%s'%(geodis)):
       edge_vidx_base_aug = TfUtil.gather_second_d(edge_vidx_interval, edge_vidx_base)
-      edge_vidx_base_aug = EdgeVPath.set_inner_idx_neg(edge_vidx_base_aug, edge_vidx_base, xyz)
+      edge_vidx_base_aug = EdgeVPath.set_inner_idx_neg(edge_vidx_base_aug, edge_vidx_base, xyz, xyz_raw)
       edge_vidx_next, valid_ev_num_next = EdgeVPath.sort_edgev_by_angle(edge_vidx_base_aug,
-              xyz, norm, cycle_idx=True, max_evnum_next=max_evnum_next, edge_vidx_base=edge_vidx_base)
+              xyz, norm, xyz_raw, cycle_idx=True, max_evnum_next=max_evnum_next, edge_vidx_base=edge_vidx_base, geodis=geodis)
+
+    #***************************************************************************
+    is_ply = False
+    if is_ply:
+      EdgeVPath.edge_vidx_ply(edge_vidx_next[0], xyz_raw[0], valid_ev_num_next[0], geodis)
+      if geodis==2:
+        EdgeVPath.edge_vidx_ply(edge_vidx_base[0], xyz_raw[0], valid_ev_num_base[0], 1)
 
     if not with_batch_dim:
       edge_vidx_next = tf.squeeze(edge_vidx_next, 0)
       valid_ev_num_next = tf.squeeze(valid_ev_num_next, 0)
       xyz = tf.squeeze(xyz, 0)
 
-      is_ply = False
-      if is_ply:
-        EdgeVPath.edge_vidx_ply(edge_vidx_next, xyz, valid_ev_num_next, geodis)
-        if geodis==2:
-          EdgeVPath.edge_vidx_ply(edge_vidx_base[0], xyz, valid_ev_num_base, 1)
     return edge_vidx_next, valid_ev_num_next
 
   @staticmethod
+  def random_down_sp_idx(org_num, batch_size, sp_rate):
+    aim_num = tf.cast(tf.ceil(org_num * sp_rate), tf.int32)
+    sp_idx_ls = []
+    for i in range(batch_size):
+      sp_idx_i = tf.random_shuffle(tf.range(org_num))[0:aim_num]
+      sp_idx_ls.append( tf.expand_dims(sp_idx_i, 0) )
+    sp_idx = tf.concat(sp_idx_ls, 0)
+    return sp_idx
+
+  @staticmethod
+  def down_sample_edgevidx(sp_rate, edge_vidx, valid_ev_num, xyz, norm):
+    assert tsize(edge_vidx) == 3
+    batch_size, org_num, evn = TfUtil.get_tensor_shape(edge_vidx)
+    sp_idx = EdgeVPath.random_down_sp_idx(org_num, batch_size, sp_rate)
+    #sp_idx = tf.contrib.framework.sort(sp_idx, -1, direction='ASCENDING')
+
+    #sp_idx = tf.reshape(tf.range(180000,180000+10), [1,-1])
+
+    edge_vidx_dsp = TfUtil.gather_second_d(edge_vidx, sp_idx)
+    valid_ev_num_dsp = TfUtil.gather_second_d(valid_ev_num, sp_idx)
+    norm_dsp = TfUtil.gather_second_d(norm, sp_idx)
+    xyz_dsp = TfUtil.gather_second_d(xyz, sp_idx)
+    return edge_vidx_dsp, valid_ev_num_dsp, xyz_dsp, norm_dsp, sp_idx
+
+  @staticmethod
   def main_test_expand_path(edge1u_vidx, valid_1uev_num, xyz, norm):
+    with_batch_dim = True
+    if TfUtil.tsize(edge1u_vidx) == 2:
+      with_batch_dim = False
+      edge1u_vidx = tf.expand_dims(edge1u_vidx, 0)
+      valid_1uev_num = tf.expand_dims(valid_1uev_num, 0)
+      xyz = tf.expand_dims(xyz, 0)
+      norm = tf.expand_dims(norm, 0)
+
+    xyz_raw = xyz
+    edge1u_vidx_raw = edge1u_vidx
+    valid_1uev_num_raw = valid_1uev_num
+    sp_rate = 0.0001
+
+    #-------------------------------
+    if sp_rate<1.0:
+      edge1u_vidx, valid_1uev_num, xyz, norm, sp_idx_1u = \
+        EdgeVPath.down_sample_edgevidx(sp_rate, edge1u_vidx, valid_1uev_num, xyz, norm)
+
     edge2u_vidx, valid_2uev_num = EdgeVPath.expand_path(edge1u_vidx, valid_1uev_num,
-                edge1u_vidx, valid_1uev_num, xyz, norm, geodis=2, max_evnum_next=28)
+          edge1u_vidx_raw, valid_1uev_num_raw, xyz, norm, xyz_raw, geodis=2, max_evnum_next=28)
+
+    return
+    #-------------------------------
+    if sp_rate<1.0:
+      edge2u_vidx, valid_2uev_num, xyz, norm, sp_idx_2u = \
+        EdgeVPath.down_sample_edgevidx(sp_rate, edge2u_vidx, valid_2uev_num, xyz, norm)
+
     edge3u_vidx, valid_3uev_num = EdgeVPath.expand_path(edge2u_vidx, valid_2uev_num,
-                edge1u_vidx, valid_1uev_num, xyz, norm, geodis=3, max_evnum_next=48)
+                edge1u_vidx_raw, valid_1uev_num_raw, xyz, norm, xyz_raw, geodis=3, max_evnum_next=50)
+    #-------------------------------
+    if sp_rate<1.0:
+      edge3u_vidx, valid_3uev_num, xyz, norm, sp_idx_3u = \
+        EdgeVPath.down_sample_edgevidx(sp_rate, edge3u_vidx, valid_3uev_num, xyz, norm)
+
     edge4u_vidx, valid_4uev_num = EdgeVPath.expand_path(edge3u_vidx, valid_3uev_num,
-                edge1u_vidx, valid_1uev_num, xyz, norm, geodis=4, max_evnum_next=77)
+                edge1u_vidx_raw, valid_1uev_num_raw, xyz, norm, xyz_raw, geodis=4, max_evnum_next=60)
+    import pdb; pdb.set_trace()  # XXX BREAKPOINT
     print('expand path test ok')
 
   @staticmethod
@@ -1850,12 +1903,15 @@ class EdgeVPath():
     xyz = xyz.numpy()
     edgev_idx = edgev_idx.numpy()
 
-    vn, evn = get_tensor_shape(edgev_idx)
-    np.random.seed(0)
-    sample_idx = np.random.choice(vn, 500, False)
-    edgev_idx = np.take(edgev_idx, sample_idx, axis=0)
+    is_downsp = False
 
-    ply_fn = '/tmp/plys/edgev_{}.ply'.format(geodis)
+    if is_downsp:
+      vn, evn = TfUtil.get_tensor_shape(edgev_idx)
+      np.random.seed(0)
+      sample_idx = np.random.choice(vn, 500, False)
+      edgev_idx = np.take(edgev_idx, sample_idx, axis=0)
+
+    ply_fn = '/home/z/Desktop/plys/edgev_{}.ply'.format(geodis)
     ply_util.gen_mesh_ply(ply_fn, xyz, edgev_idx)
 
 
