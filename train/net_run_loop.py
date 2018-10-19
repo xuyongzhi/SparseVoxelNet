@@ -396,7 +396,7 @@ def net_main_check(
   if True:
     def input_fn_train(num_epochs):
       return input_function(
-          is_training=True, data_dir=flags_obj.data_dir,
+          is_training=False, data_dir=flags_obj.data_dir,
           batch_size=distribution_utils.per_device_batch_size(
               flags_obj.batch_size, flags_core.get_num_gpus(flags_obj)),
           num_epochs=num_epochs,
@@ -406,13 +406,16 @@ def net_main_check(
     dataset = input_fn_train(1)
     ds_iterator = dataset.make_one_shot_iterator()
     features, labels = ds_iterator.get_next()
-    model_cls.main_test_pool(features)
+    import pdb; pdb.set_trace()  # XXX BREAKPOINT
+    #model_cls.main_test_pool(features)
 
     vidx_per_face = get_ele(features_, 'vidx_per_face', dset_shape_idx)
     fidx_per_vertex = get_ele(features_, 'fidx_per_vertex', dset_shape_idx)
 
     vpf_min = np.min(vidx_per_face)
     fpv_min = np.min(fidx_per_vertex)
+    import pdb; pdb.set_trace()  # XXX BREAKPOINT
+    pass
 
 def net_main(
     flags_obj, model_function, input_function, net_data_configs, shape=None):

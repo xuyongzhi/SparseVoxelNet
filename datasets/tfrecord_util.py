@@ -270,6 +270,7 @@ def read_tfrecord(dataset_name, tf_path, loss_lw_gama=-1):
       for bi in range(batch_size):
         ply_fn = os.path.join(ply_dir, '%s_raw/b%d_raw_color.ply'%(base_fn, bi))
         ply_util.gen_mesh_ply(ply_fn, xyz[bi], vidx_per_face[bi,0:valid_num_face[bi,0],:], vertex_color=color[bi])
+    import pdb; pdb.set_trace()  # XXX BREAKPOINT
     pass
 
 
@@ -638,7 +639,7 @@ class MeshSampling():
     edgev_sort_method = 'geodesic_angle'
     if edgev_sort_method == 'geodesic_angle':
       edgev_per_vertex, valid_ev_num_pv = EdgeVPath.sort_edgev_by_angle(edges_per_vertex, xyz, norm, cycle_idx=True, max_evnum_next=MeshSampling._edgev_num, geodis=1)
-      EdgeVPath.main_test_expand_path(edgev_per_vertex, valid_ev_num_pv, xyz, norm)
+      #EdgeVPath.main_test_expand_path(edgev_per_vertex, valid_ev_num_pv, xyz, norm)
     elif edgev_sort_method == 'path':
       edgev_per_vertex, valid_ev_num_pv, close_flag = MeshSampling.sort_edge_vertices(edges_per_vertex)
 

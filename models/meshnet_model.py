@@ -6,8 +6,8 @@ from __future__ import print_function
 
 import tensorflow as tf
 from datasets.all_datasets_meta.datasets_meta import DatasetsMeta
-from models.conv_util import ResConvOps, gather_second_d, mask_reduce_mean, \
-                get_tensor_shape
+from models.conv_util import ResConvOps, gather_second_d
+from utils.tf_util import TfUtil
 
 DEBUG = False
 
@@ -138,7 +138,7 @@ class Model(ResConvOps):
     global_f = self.blocks_layers(global_f, blocks_params, self.block_fn,
                                   self.is_training, 'Global',
                                   with_initial_layer=False)
-    nv = get_tensor_shape(vertices)[1]
+    nv = TfUtil.get_tensor_shape(vertices)[1]
     global_f = tf.tile(global_f, [1, nv, 1, 1])
     vertices = tf.concat([vertices, global_f], -1)
     self.log_tensor_p(vertices, '', 'cat global')
@@ -159,7 +159,7 @@ class Model(ResConvOps):
     vlogits = tf.squeeze(vlogits, 2)
     flogits = gather_second_d(vlogits, vidx_per_face)
     flogits = tf.reduce_mean(flogits, 2)
-    fn = get_tensor_shape(vidx_per_face)[1]
+    fn = TfUtil.get_tensor_shape(vidx_per_face)[1]
     valid_face_mask = tf.tile(tf.reshape(tf.range(fn), [1,fn]), [self.batch_size,1])
     flabel_weight = tf.cast(tf.less(valid_face_mask, valid_num_face), tf.float32)
     return flogits, flabel_weight
@@ -234,7 +234,7 @@ class Model(ResConvOps):
         xyz = ele = self.normalize_xyz(ele)
       vertices.append(ele)
     inputs['vertices'] = vertices = tf.concat(vertices, -1)
-    vshape = get_tensor_shape(vertices)
+    vshape = TfUtil.get_tensor_shape(vertices)
     #self.batch_size = vshape[0]
     self.num_vertex0 = vshape[1]
     self.log_tensor_p(vertices, 'vertices', 'raw_input')
@@ -293,10 +293,10 @@ class FanCnn():
       vertices = tf.reduce_max(vertices, 2)
 
     # (2) Downsampling vertices
-    vn = get_tensor_shape(vertices)[1]
+    vn = TfUtil.get_tensor_shape(vertices)[1]
     new_vn = int(pool_rate * vn)
     vertex_sp_indices = []
-    batch_size = get_tensor_shape(vertices)[0]
+    batch_size = TfUtil.get_tensor_shape(vertices)[0]
     for bi in range(batch_size):
       vertex_sp_indices.append( tf.expand_dims(tf.random_shuffle(tf.range(vn))[0:new_vn], 0))
     vertex_sp_indices = tf.concat(vertex_sp_indices, 0)
@@ -402,7 +402,7 @@ class TriangleCnn():
     if 'max' in self.block_paras.f2v_pool:
       vertices.append( tf.reduce_max(vertices_flat, 2) )
     if 'mean' in self.block_paras.f2v_pool:
-      vertices.append( mask_reduce_mean(vertices_flat, 1-fidx_pv_empty_mask, 2) )
+      vertices.append( TfUtil.mask_reduce_mean(vertices_flat, 1-fidx_pv_empty_mask, 2) )
     vertices = tf.concat(vertices, axis=-1) # (nv, 2cf)
     return vertices
 

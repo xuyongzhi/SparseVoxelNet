@@ -36,7 +36,8 @@ from models import meshnet_model
 from datasets.tfrecord_util import parse_record, get_dset_shape_idxs
 from datasets.all_datasets_meta.datasets_meta import DatasetsMeta
 
-TMPDEBUG = True
+TMPDEBUG = False
+SMALL_FNUM = True
 FILE_RATE = 0.01 if TMPDEBUG else 1.0
 DATA_DIR = os.path.join(ROOT_DIR, 'data')
 
@@ -58,16 +59,16 @@ _NUM_CLASSES = DsetMetas.num_classes
 def get_filenames_1(is_training, data_dir):
   """Return filenames for dataset."""
   data_dir = os.path.join(data_dir, 'data')
-  #if is_training:
-  #  fn_glob = os.path.join(data_dir, '*_region*.tfrecord')
-  #else:
-  #  fn_glob = os.path.join(data_dir, '*_region*.tfrecord')
-  #  #fn_glob = os.path.join(data_dir, '2t7WUuJeko7_region0*.tfrecord')
-  fn_glob = os.path.join(data_dir, '*.tfrecord')
+  if is_training:
+    scene = '17DRP5sb8fy'
+  else:
+    scene = '2t7WUuJeko7'
+    scene = '17DRP5sb8fy'
+  fn_glob = os.path.join(data_dir, '{}_region*.tfrecord'.format(scene))
   all_fnls = glob.glob(fn_glob)
   all_fnls.sort()
-  if TMPDEBUG:
-    all_fnls = all_fnls[0:4]
+  #if TMPDEBUG:
+  #  all_fnls = all_fnls[0:4]
   assert len(all_fnls) > 0, fn_glob
   print('\ngot {} training files for training={}\n'.format(len(all_fnls), is_training))
   return all_fnls
@@ -79,7 +80,8 @@ def get_filenames_0(is_training, data_dir):
 
 def get_filenames(is_training, data_dir):
   """Return filenames for dataset."""
-  #return get_filenames_0(is_training, data_dir)
+  if SMALL_FNUM:
+    return get_filenames_1(is_training, data_dir)
 
   if TMPDEBUG:
     is_training = True
@@ -104,6 +106,7 @@ def update_examples_num(is_training, data_dir):
     print('\n\nexamples_per_epoch:{}\n\n'.format(_NUM_EXAMPLES[tot]))
 
 def get_global_block_num(fnls):
+  # 25 ms per example normally
   t0 = time.time()
   c = 0
   fnum = len(fnls)
@@ -204,6 +207,7 @@ def input_fn(is_training, data_dir, batch_size, num_epochs=1, num_gpus=None,
     A dataset that can be used for iteration.
   """
   filenames = get_filenames(is_training, data_dir)
+  assert len(filenames)>0
   dset_shape_idx = get_dset_shape_idxs(data_dir)
   dataset = tf.data.Dataset.from_tensor_slices(filenames)
 
@@ -446,7 +450,7 @@ def define_network_flags():
   flags.DEFINE_float('bnd_decay', default=0.1, help="")
   flags.DEFINE_integer('lrd_epochs', default=20, help="learning_rate decay epoches")
   flags.DEFINE_string('feed_data','xyz-nxnynz','xyz-nxnynz-color')
-  flags.DEFINE_string('normxyz','raw','raw, mean0, min0')
+  flags.DEFINE_string('normxyz','min0','raw, mean0, min0')
   flags.DEFINE_string('normedge','raw','raw, l0, all')
   flags.DEFINE_bool('residual', short_name='rs', default=False,
       help=flags_core.help_wrap('Is use reidual architecture'))
@@ -454,7 +458,8 @@ def define_network_flags():
   flags.DEFINE_string('drop_imo','000','dropout rate for input, middle and out')
   flags.DEFINE_bool(name='pred_ply', default=False, help ="")
 
-  #update_examples_num(True, data_dir)
+  if SMALL_FNUM:
+    update_examples_num(True, data_dir)
   flags.DEFINE_integer('examples_per_epoch', default=_NUM_EXAMPLES['train'], help="")
 
 def run_network(flags_obj):
@@ -471,7 +476,7 @@ def run_network(flags_obj):
   net_run_loop.net_main(flags_obj, network_model_fn, input_function, net_data_configs)
 
   # debug mode
-  #net_data_configs['net_configs']['bn_decay_fn'] = None
+  net_data_configs['net_configs']['bn_decay_fn'] = None
   #net_run_loop.net_main_check(flags_obj, MeshnetModel, input_function, net_data_configs)
 
 
