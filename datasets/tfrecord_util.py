@@ -1868,7 +1868,7 @@ class EdgeVPath():
     xyz_raw = xyz
     edge1u_vidx_raw = edge1u_vidx
     valid_1uev_num_raw = valid_1uev_num
-    sp_rate = 0.0001
+    sp_rate = 0.01
 
     #-------------------------------
     if sp_rate<1.0:
@@ -1878,8 +1878,8 @@ class EdgeVPath():
     edge2u_vidx, valid_2uev_num = EdgeVPath.expand_path(edge1u_vidx, valid_1uev_num,
           edge1u_vidx_raw, valid_1uev_num_raw, xyz, norm, xyz_raw, geodis=2, max_evnum_next=28)
 
-    return
     #-------------------------------
+    sp_rate = 1.01
     if sp_rate<1.0:
       edge2u_vidx, valid_2uev_num, xyz, norm, sp_idx_2u = \
         EdgeVPath.down_sample_edgevidx(sp_rate, edge2u_vidx, valid_2uev_num, xyz, norm)
@@ -1893,7 +1893,6 @@ class EdgeVPath():
 
     edge4u_vidx, valid_4uev_num = EdgeVPath.expand_path(edge3u_vidx, valid_3uev_num,
                 edge1u_vidx_raw, valid_1uev_num_raw, xyz, norm, xyz_raw, geodis=4, max_evnum_next=60)
-    import pdb; pdb.set_trace()  # XXX BREAKPOINT
     print('expand path test ok')
 
   @staticmethod
@@ -1912,7 +1911,8 @@ class EdgeVPath():
       edgev_idx = np.take(edgev_idx, sample_idx, axis=0)
 
     ply_fn = '/home/z/Desktop/plys/edgev_{}.ply'.format(geodis)
-    ply_util.gen_mesh_ply(ply_fn, xyz, edgev_idx)
+    edges = ply_util.closed_path_to_edges(edgev_idx, valid_ev_num)
+    ply_util.gen_mesh_ply(ply_fn, xyz, edges)
 
 
 if __name__ == '__main__':

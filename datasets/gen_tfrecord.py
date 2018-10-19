@@ -594,7 +594,7 @@ def main_matterport():
   #scene_name = '2t7WUuJeko7'
   #scene_name = '*'
   #scene_name = 'VFuaQ6m2Qom'
-  region_name = 'region0'
+  region_name = 'region4'
   raw_glob = os.path.join(dset_path, '{}/*/region_segmentations/{}.ply'.format(
                                 scene_name, region_name))
   ply_dir = os.path.join(tfrecord_path, 'plys/{}/{}'.format(scene_name, region_name))

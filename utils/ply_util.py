@@ -3,6 +3,10 @@
 import os, sys
 import numpy as np
 from plyfile import PlyData, PlyElement
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+ROOT_DIR = os.path.dirname(BASE_DIR)
+sys.path.append(ROOT_DIR)
 from datasets.all_datasets_meta.datasets_meta import DatasetsMeta
 
 def gen_box_and_pl( ply_fn, box_vertexes, pl_xyz=None, extra='' ):
@@ -273,7 +277,7 @@ def draw_blocks_by_bot_cen_top(ply_fn, bot_cen_top, random_crop=0):
 
 
 import  color_dic
-def gen_mesh_ply(ply_fn, vertices0, vidx_per_face, face_label=None,
+def gen_mesh_ply(ply_fn, vertices0, vertex_idx, face_label=None,
                  vertex_label=None, vertex_color=None,
                  extra='label_color_default'):
     '''
@@ -281,18 +285,18 @@ def gen_mesh_ply(ply_fn, vertices0, vidx_per_face, face_label=None,
     assert (int(face_label is None) + int(vertex_label is None) + int(vertex_color is None)) >=2, \
       "choose one color method from three: {}, {}, {}".format(face_label, vertex_label, vertex_color)
     assert vertices0.shape[-1] ==  3
-    vnpf = vidx_per_face.shape[-1]
-    assert np.min(vidx_per_face)>=0, "negative vidx_per_face"
+    vnpf = vertex_idx.shape[-1]
+    assert np.min(vertex_idx)>=0, "negative vertex_idx"
 
     vertices0 = np.reshape( vertices0, (-1,3) )
-    vidx_per_face = np.reshape(vidx_per_face, (-1,vnpf))
+    vertex_idx = np.reshape(vertex_idx, (-1,vnpf))
     if vertex_label is not None:
       vertex_label = np.reshape(vertex_label, (-1))
     if vertex_color is not None:
       vertex_color = np.reshape(vertex_color, (-1, 3))
 
     num_vertex = vertices0.shape[0]
-    assert np.max(vidx_per_face) < num_vertex
+    assert np.max(vertex_idx) < num_vertex
 
     is_vertex_color = (vertex_label is not None) or (vertex_color is not None)
     if not is_vertex_color:
@@ -312,9 +316,23 @@ def gen_mesh_ply(ply_fn, vertices0, vidx_per_face, face_label=None,
                       vertex_color[i,0], vertex_color[i,1], vertex_color[i,2])
 
     el_vertex = PlyElement.describe(vertex,'vertex')
+    if vnpf >2:
+      el_face = get_face_ele(vertex_idx, face_label)
+    else:
+      el_face = get_edge_ele(vertex_idx, face_label)
 
-    # define the order of the 8 vertexs for a box
+
+    dirname = os.path.dirname(ply_fn)
+    if not os.path.exists(dirname):
+      os.makedirs(dirname)
+    PlyData([el_vertex, el_face],text=True).write(ply_fn)
+    print('write %s ok'%(ply_fn))
+
+def get_face_ele(vidx_per_face, face_label):
+    # face
     num_face = vidx_per_face.shape[0]
+    vnpf = vidx_per_face.shape[1]
+    assert vnpf > 2
     is_face_color = face_label is not None
     if is_face_color:
       if face_label is not None:
@@ -323,7 +341,7 @@ def gen_mesh_ply(ply_fn, vertices0, vidx_per_face, face_label=None,
           face_color = np.take(color_dic.rgb_order, face_label, 0)
 
       face = np.zeros( shape=(num_face) ).astype(
-                    dtype=[('vertex_indices', 'i4', (3,)),
+                    dtype=[('vertex_indices', 'i4', (vnpf,)),
                            ('red', 'u1'), ('green', 'u1'),('blue', 'u1')])
     else:
       face = np.zeros( shape=(num_face) ).astype(
@@ -333,18 +351,72 @@ def gen_mesh_ply(ply_fn, vertices0, vidx_per_face, face_label=None,
       if is_face_color:
         face[i] = ( vidx_per_face[i], face_color[i,0], face_color[i,1], face_color[i,2] )
       else:
-        face[i] = ( vidx_per_face[i], )
-    el_face = PlyElement.describe(face,'face')
+        face[i] = (vidx_per_face[i],)
 
-    dirname = os.path.dirname(ply_fn)
-    if not os.path.exists(dirname):
-      os.makedirs(dirname)
-    PlyData([el_vertex, el_face],text=True).write(ply_fn)
-    print('write %s ok'%(ply_fn))
+    el_face = PlyElement.describe(face, 'face')
+    return el_face
 
+def get_edge_ele(vidx_per_edge, edge_label):
+    # edge
+    num_edge = vidx_per_edge.shape[0]
+    vnpf = vidx_per_edge.shape[1]
+    assert vnpf == 2
+    is_edge_color = edge_label is not None
+    if is_edge_color:
+      if edge_label is not None:
+        if extra=='label_color_default':
+          edge_label = np.squeeze(edge_label)
+          edge_color = np.take(color_dic.rgb_order, edge_label, 0)
+
+      edge = np.zeros( shape=(num_edge) ).astype(
+                    dtype=[('vertex1', 'i4'), ('vertex2', 'i4'),
+                           ('red', 'u1'), ('green', 'u1'),('blue', 'u1')])
+    else:
+      edge = np.zeros( shape=(num_edge) ).astype(
+                    dtype=[('vertex1', 'i4'), ('vertex2', 'i4')])
+
+    for i in range(num_edge):
+      if is_edge_color:
+        edge[i] = ( vidx_per_edge[i][0], vidx_per_edge[i][1], edge_color[i,0], edge_color[i,1], edge_color[i,2] )
+      else:
+        edge[i] = ( vidx_per_edge[i][0], vidx_per_edge[i][1])
+
+    el_edge = PlyElement.describe(edge, 'edge')
+    return el_edge
+
+
+def closed_path_to_edges(closed_vidx, valid_vn):
+  vn0 = closed_vidx.shape[-1]
+  closed_vidx = np.reshape(closed_vidx, [-1, vn0])
+  valid_vn = np.reshape(valid_vn, [-1])
+  en0 = closed_vidx.shape[0]
+
+  edges = []
+  for i in range(en0):
+    vn_i = max(valid_vn[i], vn0)
+    for j in range(vn_i):
+      if j==vn_i-1:
+        next_j = 0
+        continue
+      else:
+        next_j = j+1
+      if closed_vidx[i,j] == closed_vidx[i,next_j]:
+        continue
+      edges.append([[closed_vidx[i,j], closed_vidx[i,next_j]]])
+  edges = np.concatenate(edges, 0)
+  return edges
+
+def test_closed_path_ply():
+  ply_fn = '/home/z/Desktop/plys/close.ply'
+  xyz = np.array([[0,0,0], [1,0,0], [2,0,0], [2,1,0], [2,2,0], [0,2,0]])
+  closed_vidx = np.array([range(6)+[0]])
+  valid_num = np.array([7])
+  edges = closed_path_to_edges(closed_vidx, valid_num)
+  gen_mesh_ply(ply_fn, xyz, edges)
 
 if __name__ == '__main__':
-    test_box()
+    #test_box()
+    test_closed_path_ply()
 
     #sg_bidxmap_i0 = np.arange( sg_bidxmap_i1.shape[0] ).reshape([-1,1,1,1])
     #sg_bidxmap_i0 = np.tile( sg_bidxmap_i0, [0,sg_bidxmap_i1.shape[1], sg_bidxmap_i1.shape[2],1] )
