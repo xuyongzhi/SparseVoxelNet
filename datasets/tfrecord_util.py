@@ -653,10 +653,8 @@ class MeshSampling():
     # sort edge vertices by path
     edgev_sort_method = 'geodesic_angle'
     if edgev_sort_method == 'geodesic_angle':
-      edgev_per_vertex, valid_ev_num_pv = EdgeVPath.sort_edgev_by_angle(edges_per_vertex, xyz, norm, cycle_idx=True, max_evnum=MeshSampling._edgev_num)
-      #edge2u_vidx, ev2u_valid_num = EdgeVPath.expand_path(edgev_per_vertex, valid_ev_num_pv, xyz, norm, scope='2u')
-      #edge3u_vidx, ev3u_valid_num = EdgeVPath.expand_path(edge2u_vidx, ev2u_valid_num, xyz, norm, scope='3u')
-      #edge4u_vidx, ev4u_valid_num = EdgeVPath.expand_path(edge3u_vidx, ev3u_valid_num, xyz, norm, scope='4u')
+      edgev_per_vertex, valid_ev_num_pv = EdgeVPath.sort_edgev_by_angle(edges_per_vertex, xyz, norm, cycle_idx=True, max_evnum_next=MeshSampling._edgev_num)
+      EdgeVPath.main_test_expand_path(edgev_per_vertex, valid_ev_num_pv, xyz, norm)
     elif edgev_sort_method == 'path':
       edgev_per_vertex, valid_ev_num_pv, close_flag = MeshSampling.sort_edge_vertices(edges_per_vertex)
 
@@ -1528,43 +1526,45 @@ class MeshSampling():
 
 class EdgeVPath():
   @staticmethod
-  def sort_edgev_by_angle(edgev_idx_in, xyz, norm, cycle_idx=False, max_evnum=None, base_edge1u_vidx=None):
+  def sort_edgev_by_angle(edge_aug_vidx, xyz, norm, cycle_idx=False, max_evnum_next=None, edge_vidx_base=None):
     '''
-    edgev_idx0: [batch_size, vertex_num, k1, k2]
+    edge_aug_vidx: [batch_size, vertex_num, k1, k2]
     xyz: [batch_size, vertex_num, 3]
     cycle_idx=True to enable fill up empty idx by cycle valid idx
     clean_innder: clean the edgev not with largest geodesic distance.
                   Has to be True when expdand edgev.
-    max_evnum: fix edgev size and speed up
+    max_evnum_next: fix edgev size and speed up
     '''
 
     with tf.variable_scope('sort_edgev_by_angle'):
-      edgev_idx0 = edgev_idx_in
       with_batch_dim = True
-      if len(get_tensor_shape(edgev_idx0)) == 3:
+      if len(get_tensor_shape(edge_aug_vidx)) == 3:
         with_batch_dim = False
         # not include batch size dim
-        edgev_idx0 = tf.expand_dims(edgev_idx0, 0)
+        edge_aug_vidx = tf.expand_dims(edge_aug_vidx, 0)
         xyz = tf.expand_dims(xyz, 0)
         norm = tf.expand_dims(norm, 0)
+        if edge_vidx_base is not None:
+          edge_vidx_base = tf.expand(edge_vidx_base, 0)
 
-      eshape0 = get_tensor_shape(edgev_idx0)
+      eshape0 = get_tensor_shape(edge_aug_vidx)
       assert len(eshape0) == 4
       batch_size, vn, evn1, evn2 = eshape0
 
-      edgev_idx1, valid_ev_num = EdgeVPath.clean_duplicate_edgev(edgev_idx0)
-      if base_edge1u_vidx is not None:
-        # only used for expand_path
-        edgev_idx1, valid_ev_num = EdgeVPath.clean_edge1u_from_2u(edgev_idx1, base_edge1u_vidx, valid_ev_num)
+      edge_vidx_next, valid_ev_num_next = EdgeVPath.clean_duplicate_edgev(edge_aug_vidx)
+      if edge_vidx_base is not None:
+        assert tsize(edge_vidx_base) == 3
+        # only used for expand path
+        edge_vidx_next, valid_ev_num_next = EdgeVPath.clean_edgebase_in_next(edge_vidx_next, edge_vidx_base, valid_ev_num_next)
 
-      if max_evnum is not None:
+      if max_evnum_next is not None:
         # Fix the edge vertex num here has advantage to save some time for later
         # process. But keep in mind, if some long path are cut. It's not a good
         # path any more. Because the edgev are not sorted yet.
-        edgev_idx1 = edgev_idx1[:,:,0:max_evnum]
+        edge_vidx_next = edge_vidx_next[:,:,0:max_evnum_next]
 
-      org_max_valid_evn = get_tensor_shape(edgev_idx1)[-1]
-      cos_angle = EdgeVPath.geodesic_angle(edgev_idx1, xyz, norm, valid_ev_num)
+      org_max_valid_evn = get_tensor_shape(edge_vidx_next)[-1]
+      cos_angle = EdgeVPath.geodesic_angle(edge_vidx_next, xyz, norm, valid_ev_num_next)
 
       # cycle idx
       if cycle_idx:
@@ -1572,63 +1572,77 @@ class EdgeVPath():
         # cos_angle: [-3,1]. -5 to make cycled all smaller. Empty is smaller than -20
         cos_angle1 = cos_angle[:,:,0:cycle_num] - 5
         cos_angle = tf.concat([cos_angle, cos_angle1], -1)
-        edgev_idx1 = tf.concat([edgev_idx1, edgev_idx1[:,:,0:cycle_num]],-1)
+        edge_vidx_next = tf.concat([edge_vidx_next, edge_vidx_next[:,:,0:cycle_num]],-1)
       sort_idx = tf.contrib.framework.argsort(cos_angle, axis=-1, direction='DESCENDING')
       if cycle_idx:
         sort_idx = sort_idx[:,:,0:org_max_valid_evn]
 
-      edgev_idx_sorted = TfUtil.gather_third_d(edgev_idx1, sort_idx)
+      edge_vidx_next_sorted = TfUtil.gather_third_d(edge_vidx_next, sort_idx)
 
       # if still -1, replace with the first
-      edgev_idx_sorted = EdgeVPath.replace_neg_by_first_or_last(edgev_idx_sorted, 'last_valid', valid_ev_num)
+      edge_vidx_next_sorted = EdgeVPath.replace_neg_by_first_or_last(edge_vidx_next_sorted, 'last_valid', valid_ev_num_next)
 
       if not with_batch_dim:
-        edgev_idx_sorted = tf.squeeze(edgev_idx_sorted, 0)
-        valid_ev_num = tf.squeeze(valid_ev_num, 0)
-      valid_ev_num = tf.expand_dims(valid_ev_num, -1)
+        edge_vidx_next_sorted = tf.squeeze(edge_vidx_next_sorted, 0)
+        valid_ev_num_next = tf.squeeze(valid_ev_num_next, 0)
+      valid_ev_num_next = tf.expand_dims(valid_ev_num_next, -1)
 
       # check
-      check = tf.assert_greater(tf.reduce_min(edgev_idx_sorted),-1)
+      check = tf.assert_greater(tf.reduce_min(edge_vidx_next_sorted),-1)
       with tf.control_dependencies([check]):
-        edgev_idx_sorted = tf.identity(edgev_idx_sorted)
+        edge_vidx_next_sorted = tf.identity(edge_vidx_next_sorted)
 
-    return edgev_idx_sorted, valid_ev_num
+    return edge_vidx_next_sorted, valid_ev_num_next
 
   @staticmethod
-  def set_inner_idx_neg(edge2u_vidx, edgev_idx, xyz):
+  def set_inner_idx_neg(edge_vidx_base_aug, edge_vidx_base, xyz):
     '''
     Assume all the outside vertices have angle > 90
     '''
-    assert tsize(edgev_idx) == 3
-    assert tsize(edge2u_vidx) == 4
+    assert tsize(edge_vidx_base) == 3
+    assert tsize(edge_vidx_base_aug) == 4
     with tf.variable_scope('set_inner_idx_neg'):
-      edgev = TfUtil.gather_second_d(xyz, edgev_idx)
-      edge = edgev - tf.expand_dims(xyz, 2)
-      edge = tf.expand_dims(edge, 3)
-      edge2u_v = TfUtil.gather_second_d(xyz, edge2u_vidx)
-      edge2u = edge2u_v - tf.expand_dims(edgev, 3)
+      edge2u_v = TfUtil.gather_second_d(xyz, edge_vidx_base)
+      edge2u = edge2u_v - tf.expand_dims(xyz, 2)
+      edge2u = tf.expand_dims(edge2u, 3)
+      edge2u_aug_v = TfUtil.gather_second_d(xyz, edge_vidx_base_aug)
+      edge2u_aug = edge2u_aug_v - tf.expand_dims(edge2u_v, 3)
 
       # the angle between edge and edge2u
-      cosa = tf.reduce_sum(edge * edge2u,-1)
+      cosa = tf.reduce_sum(edge2u * edge2u_aug,-1)
       outside_mask = tf.cast(tf.greater(cosa, 0), tf.int32)
 
-      edge2u_vidx_cleaned = (edge2u_vidx+1) * outside_mask - 1
-    return edge2u_vidx_cleaned
+      edge_vidx_base_aug_cleaned = (edge_vidx_base_aug+1) * outside_mask - 1
+
+      neg_mask = tf.less(edge_vidx_base_aug_cleaned, 0)
+      neg_num = tf.reduce_sum(tf.cast(neg_mask, tf.int32), -1)
+      max_neg_num = tf.reduce_max(neg_num)
+      min_neg_num = tf.reduce_min(neg_num)
+      is_cut_neg = True
+      # inner (neg) idx can be cut here to save later time or memory.
+      # It can also be left cut later. If the neg rate is nor large, maybe leave
+      # it later saves more time
+
+    return edge_vidx_base_aug_cleaned
 
   @staticmethod
-  def clean_edge1u_from_2u(edge2u_vidx, edge1u_vidx, valid_ev_num):
+  def cut_neg_by_scatter(edge_vidx):
+    neg_idx = tf.where(neg_mask)
+
+  @staticmethod
+  def clean_edgebase_in_next(edge_vidx_next, edge_vidx_base, valid_ev_num_next):
     '''
-    Sometimes edge1u_vidx can not be filtered by set_inner_idx_neg
+    Sometimes edge_vidx_base can not be filtered by set_inner_idx_neg
     '''
-    assert tsize(edge2u_vidx) == tsize(edge1u_vidx) == 3
-    mask0 = tf.expand_dims(edge2u_vidx, 3) - tf.expand_dims(edge1u_vidx, 2)
+    assert tsize(edge_vidx_next) == tsize(edge_vidx_base) == 3
+    mask0 = tf.expand_dims(edge_vidx_next, 3) - tf.expand_dims(edge_vidx_base, 2)
     mask0 = tf.equal(mask0, 0)
     mask1 = tf.cast(tf.reduce_any(mask0, -1), tf.int32)
     invalid_num = tf.reduce_sum(mask1, -1)
-    edge2u_vidx_cleaned = edge2u_vidx *(1- mask1) - mask1
-    edge2u_vidx_cleaned = tf.contrib.framework.sort(edge2u_vidx_cleaned, -1, direction='DESCENDING')
-    valid_ev_num = valid_ev_num - invalid_num
-    return edge2u_vidx_cleaned, valid_ev_num
+    edge_vidx_next_cleaned = edge_vidx_next *(1- mask1) - mask1
+    edge_vidx_next_cleaned = tf.contrib.framework.sort(edge_vidx_next_cleaned, -1, direction='DESCENDING')
+    valid_ev_num_next = valid_ev_num_next - invalid_num
+    return edge_vidx_next_cleaned, valid_ev_num_next
 
   @staticmethod
   def replace_neg_by_first_or_last(edgev0, place, valid_ev_num=None):
@@ -1654,14 +1668,14 @@ class EdgeVPath():
     return edgev1
 
   @staticmethod
-  def clean_duplicate_edgev(edgev_idx0):
-    eshape0 = get_tensor_shape(edgev_idx0)
+  def clean_duplicate_edgev(edge_aug_vidx):
+    eshape0 = get_tensor_shape(edge_aug_vidx)
     assert len(eshape0) == 4
     batch_size, vn, evn1, evn2 = eshape0
 
     with tf.variable_scope('clean_duplicate_edgev'):
       # remove duplicated
-      edgev_idx0 = tf.reshape(edgev_idx0, [batch_size, vn, -1])
+      edgev_idx0 = tf.reshape(edge_aug_vidx, [batch_size, vn, -1])
       edgev_idx0 = tf.contrib.framework.sort(edgev_idx0, -1, direction='DESCENDING')
       tmp = edgev_idx0[:, :, 0:-1]
       dif_with_pre = tf.not_equal(edgev_idx0[:,:,1:], tmp)
@@ -1672,7 +1686,7 @@ class EdgeVPath():
       edgev_idx0 = tf.contrib.framework.sort(edgev_idx0, -1, direction='DESCENDING')
       valid_ev_num = tf.reduce_sum(tf.cast(tf.greater(edgev_idx0, -1),tf.int32), -1)
       max_evn = tf.reduce_max(valid_ev_num)
-      edgev_idx1 = edgev_idx0[:,:,0:max_evn]
+      edge_vidx_next = edgev_idx0[:,:,0:max_evn]
 
       #mean_evn = tf.reduce_mean(valid_ev_num)
       #hist = tf.histogram_fixed_width(valid_ev_num, [1,max_evn+1], nbins=max_evn)
@@ -1680,7 +1694,7 @@ class EdgeVPath():
       #hist_rates = hist / tf.reduce_sum(hist)
       #hist_rates = tf.cast(hist_rates * 100, tf.int32)
       #bins = tf.range(1,max_evn+1)
-    return edgev_idx1, valid_ev_num
+    return edge_vidx_next, valid_ev_num
 
   @staticmethod
   def get_zero_vec(norm):
@@ -1775,36 +1789,64 @@ class EdgeVPath():
     return cos_angle
 
   @staticmethod
-  def expand_path(edgev_idx, valid_ev_num, xyz, norm, scope=''):
+  def expand_path(edge_vidx_base, valid_ev_num_base, edge_vidx_interval,
+                  valid_ev_num_interval, xyz, norm, geodis, max_evnum_next):
+    '''
+    expand path from edge_vidx_base by edge_vidx_interval
+    '''
+    #print('\nstart expand_path {}'.format(geodis))
+
     with_batch_dim = True
-    if len(get_tensor_shape(edgev_idx)) == 2:
+    if len(get_tensor_shape(edge_vidx_base)) == 2:
       with_batch_dim = False
-      edgev_idx = tf.expand_dims(edgev_idx, 0)
+      edge_vidx_base = tf.expand_dims(edge_vidx_base, 0)
+      valid_ev_num_base = tf.expand_dims(valid_ev_num_base, 0)
+      edge_vidx_interval = tf.expand_dims(edge_vidx_interval, 0)
+      valid_ev_num_interval = tf.expand_dims(valid_ev_num_interval, 0)
       xyz = tf.expand_dims(xyz, 0)
       norm = tf.expand_dims(norm, 0)
+    assert tsize(edge_vidx_base) == tsize(edge_vidx_interval) == \
+      tsize(valid_ev_num_base) == tsize(valid_ev_num_interval) == \
+      tsize(xyz) == tsize(norm) ==  3
 
-    max_evn = tf.reduce_max(valid_ev_num)
-    edgev_idx = edgev_idx[:,:,0:max_evn]
+    max_evn_base = tf.reduce_max(valid_ev_num_base)
+    edge_vidx_base = edge_vidx_base[:,:,0:max_evn_base]
 
-    with tf.variable_scope('expand_path'):
-      edge2u_vidx = TfUtil.gather_second_d(edgev_idx, edgev_idx)
-      edge2u_vidx = EdgeVPath.set_inner_idx_neg(edge2u_vidx, edgev_idx, xyz)
-      edge2u_vidx, ev2u_valid_num = EdgeVPath.sort_edgev_by_angle(edge2u_vidx,
-              xyz, norm, cycle_idx=True, max_evnum=30, base_edge1u_vidx=edgev_idx)
+    max_evn_interval = tf.reduce_max(valid_ev_num_interval)
+    edge_vidx_interval = edge_vidx_interval[:,:,0:max_evn_interval]
+
+    with tf.variable_scope('expand_path_%s'%(geodis)):
+      edge_vidx_base_aug = TfUtil.gather_second_d(edge_vidx_interval, edge_vidx_base)
+      edge_vidx_base_aug = EdgeVPath.set_inner_idx_neg(edge_vidx_base_aug, edge_vidx_base, xyz)
+      edge_vidx_next, valid_ev_num_next = EdgeVPath.sort_edgev_by_angle(edge_vidx_base_aug,
+              xyz, norm, cycle_idx=True, max_evnum_next=max_evnum_next, edge_vidx_base=edge_vidx_base)
 
     if not with_batch_dim:
-      edge2u_vidx = tf.squeeze(edge2u_vidx, 0)
-      ev2u_valid_num = tf.squeeze(ev2u_valid_num, 0)
+      edge_vidx_next = tf.squeeze(edge_vidx_next, 0)
+      valid_ev_num_next = tf.squeeze(valid_ev_num_next, 0)
       xyz = tf.squeeze(xyz, 0)
 
-      EdgeVPath.edgev_idx_ply(edge2u_vidx, xyz, ev2u_valid_num, scope)
-      if scope=='2u':
-        EdgeVPath.edgev_idx_ply(edgev_idx[0], xyz, valid_ev_num, '1u')
-    return edge2u_vidx, ev2u_valid_num
+      is_ply = False
+      if is_ply:
+        EdgeVPath.edge_vidx_ply(edge_vidx_next, xyz, valid_ev_num_next, geodis)
+        if geodis==2:
+          EdgeVPath.edge_vidx_ply(edge_vidx_base[0], xyz, valid_ev_num_base, 1)
+    return edge_vidx_next, valid_ev_num_next
 
   @staticmethod
-  def edgev_idx_ply(edgev_idx, xyz, valid_ev_num, scope=''):
+  def main_test_expand_path(edge1u_vidx, valid_1uev_num, xyz, norm):
+    edge2u_vidx, valid_2uev_num = EdgeVPath.expand_path(edge1u_vidx, valid_1uev_num,
+                edge1u_vidx, valid_1uev_num, xyz, norm, geodis=2, max_evnum_next=28)
+    edge3u_vidx, valid_3uev_num = EdgeVPath.expand_path(edge2u_vidx, valid_2uev_num,
+                edge1u_vidx, valid_1uev_num, xyz, norm, geodis=3, max_evnum_next=48)
+    edge4u_vidx, valid_4uev_num = EdgeVPath.expand_path(edge3u_vidx, valid_3uev_num,
+                edge1u_vidx, valid_1uev_num, xyz, norm, geodis=4, max_evnum_next=77)
+    print('expand path test ok')
+
+  @staticmethod
+  def edge_vidx_ply(edgev_idx, xyz, valid_ev_num, geodis):
     assert tsize(edgev_idx) == 2
+    print('start gen edgev_idx ply as geodis={}'.format(geodis))
     xyz = xyz.numpy()
     edgev_idx = edgev_idx.numpy()
 
@@ -1813,7 +1855,7 @@ class EdgeVPath():
     sample_idx = np.random.choice(vn, 500, False)
     edgev_idx = np.take(edgev_idx, sample_idx, axis=0)
 
-    ply_fn = '/tmp/plys/edgev_%s.ply'%(scope)
+    ply_fn = '/tmp/plys/edgev_{}.ply'.format(geodis)
     ply_util.gen_mesh_ply(ply_fn, xyz, edgev_idx)
 
 
