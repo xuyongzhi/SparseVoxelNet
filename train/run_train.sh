@@ -1,7 +1,7 @@
 #export CUDA_VISIBLE_DEVICES=0
 
-net_flag='10A_12_6'
-net_flag='10G_10_6'
+net_flag='12A_12_6'
+net_flag='12G_12_6'
 ng=2
 bs=2
 rs=--rs
