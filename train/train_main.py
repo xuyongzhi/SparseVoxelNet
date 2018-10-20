@@ -480,7 +480,6 @@ def run_network(flags_obj):
   #net_run_loop.net_main_check(flags_obj, MeshnetModel, input_function, net_data_configs)
 
 
-
 def main(_):
   with logger.benchmark_context(flags.FLAGS):
     run_network(flags.FLAGS)

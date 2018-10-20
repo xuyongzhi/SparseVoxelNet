@@ -149,8 +149,15 @@ class Raw_To_Tfrecord():
     self.ele_idxs = ele_idxs
 
     metas_fn = os.path.join(self.tfrecord_path, 'shape_idx.txt')
-    if self.is_multi_pro and os.path.exists(metas_fn):
+    if  os.path.exists(metas_fn):
+      from tfrecord_util import get_dset_shape_idxs
+      dset_shape_idx_old = get_dset_shape_idxs(self.tfrecord_path)
+      for item in self.eles_sorted:
+        assert np.all( [s for s in dls[item].shape] == dset_shape_idx_old['shape'][item]),'shape different'
+        for ele in self.eles_sorted[item]:
+          assert np.all(ele_idxs[item][ele] == dset_shape_idx_old['indices'][item][ele]),'indices different'
       return
+
     with open(metas_fn, 'w') as f:
       f.write('dataset_name:{}\n'.format(self.dataset_name))
       for item in self.eles_sorted:
@@ -380,7 +387,6 @@ class Raw_To_Tfrecord():
       'vertex_i': bytes_feature(vertex_i_bin),
       'vertex_uint8': bytes_feature(vertex_uint8_bin),
       'face_i':   bytes_feature(face_i_bin),
-      #'raw_num_vertex':int64_feature(raw_vertex_num),
       'valid_num_face':int64_feature(face_shape[0])
     }
 

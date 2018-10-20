@@ -87,8 +87,9 @@ def parse_record(tfrecord_serialized, is_training, dset_shape_idx, \
     #*************
     features = {"vertex_i": vertex_i, "vertex_f": vertex_f, \
                 "vertex_uint8": vertex_uint8, "face_i": face_i, "valid_num_face": valid_num_face}
-    #labels = tf.squeeze(get_ele(features, 'label_category', dset_shape_idx),1)
-    labels = face_i
+    labels = tf.squeeze(get_ele(features, 'label_category', dset_shape_idx),1)
+
+    #del features["vertex_i"]
 
     return features, labels
 
@@ -202,8 +203,9 @@ def read_tfrecord(dataset_name, tf_path, loss_lw_gama=-1):
 
   #data_path = os.path.join(tf_path, 'merged_data')
   data_path = os.path.join(tf_path, 'data')
-  scene = '*'
-  region = '*'
+  scene = '17DRP5sb8fy'
+  #scene = '2t7WUuJeko7'
+  region = 'region0'
   filenames = glob.glob(os.path.join(data_path,'%s_%s.tfrecord'%(scene, region)))
   assert len(filenames) > 0, data_path
   filenames.sort()
@@ -211,7 +213,7 @@ def read_tfrecord(dataset_name, tf_path, loss_lw_gama=-1):
   datasets_meta = DatasetsMeta(dataset_name)
   num_classes = datasets_meta.num_classes
 
-  gen_ply = True
+  gen_ply = False
   ply_dir = os.path.join(tf_path, 'plys')
 
   dataset = tf.data.TFRecordDataset(filenames,
@@ -239,6 +241,7 @@ def read_tfrecord(dataset_name, tf_path, loss_lw_gama=-1):
     print('\nreading %s'%(filenames[batch_k]))
     base_fn = os.path.splitext( os.path.basename(filenames[batch_k]))[0]
     features, labels = dset_iterater.get_next()
+    import pdb; pdb.set_trace()  # XXX BREAKPOINT
     batch_num += 1
     labels = labels.numpy()
     for key in features:
@@ -249,14 +252,18 @@ def read_tfrecord(dataset_name, tf_path, loss_lw_gama=-1):
     category_label = get_ele(features, 'label_category', dset_shape_idx)
     label_hist += np.histogram(category_label, range(num_classes+1))[0]
 
+
     xyz = get_ele(features, 'xyz', dset_shape_idx)
     color = get_ele(features, 'color', dset_shape_idx)
     valid_num_face = features['valid_num_face']
     vidx_per_face = get_ele(features, 'vidx_per_face', dset_shape_idx)
     edgev_per_vertex = get_ele(features, 'edgev_per_vertex', dset_shape_idx)
-    color = get_ele(features, 'color', dset_shape_idx)
     valid_ev_num_pv = get_ele(features, 'valid_ev_num_pv', dset_shape_idx)
 
+    min_vidx = np.min(edgev_per_vertex)
+    assert min_vidx >= 0
+    check_nan(features, dset_shape_idx)
+    import pdb; pdb.set_trace()  # XXX BREAKPOINT
     #***************************************************************************
     if gen_ply:
       for bi in range(batch_size):
@@ -270,8 +277,6 @@ def read_tfrecord(dataset_name, tf_path, loss_lw_gama=-1):
       for bi in range(batch_size):
         ply_fn = os.path.join(ply_dir, '%s_raw/b%d_raw_color.ply'%(base_fn, bi))
         ply_util.gen_mesh_ply(ply_fn, xyz[bi], vidx_per_face[bi,0:valid_num_face[bi,0],:], vertex_color=color[bi])
-    import pdb; pdb.set_trace()  # XXX BREAKPOINT
-    pass
 
 
   dataset_summary = {}
@@ -281,6 +286,16 @@ def read_tfrecord(dataset_name, tf_path, loss_lw_gama=-1):
   get_label_num_weights(dataset_summary, loss_lw_gama)
   return dataset_summary
 
+def check_nan(features, dset_shape_idx):
+  for key in ['xyz', 'color', 'vidx_per_face', 'edgev_per_vertex',\
+              'valid_ev_num_pv']:
+    data = get_ele(features, key, dset_shape_idx)
+    any_nan = np.any(np.isnan(data))
+    if any_nan:
+      print('found nan')
+      import pdb; pdb.set_trace()  # XXX BREAKPOINT
+      pass
+  print('no nan found')
 
 def write_dataset_summary(dataset_summary, data_dir):
   import pickle, shutil
@@ -1569,6 +1584,11 @@ class EdgeVPath():
       # if still -1, replace with the first
       edge_vidx_next_sorted = EdgeVPath.replace_neg_by_first_or_last(edge_vidx_next_sorted, 'last_valid', valid_ev_num_next)
 
+      # fix shape
+      if max_evnum_next is not None:
+        evn_ap = max_evnum_next - get_tensor_shape(edge_vidx_next_sorted)[-1]
+        edge_vidx_next_sorted = tf.concat([edge_vidx_next_sorted, tf.tile(edge_vidx_next_sorted[:,:,0:1], [1,1,evn_ap])], -1)
+
       if not with_batch_dim:
         edge_vidx_next_sorted = tf.squeeze(edge_vidx_next_sorted, 0)
         valid_ev_num_next = tf.squeeze(valid_ev_num_next, 0)
@@ -1578,6 +1598,7 @@ class EdgeVPath():
       check = tf.assert_greater(tf.reduce_min(edge_vidx_next_sorted),-1)
       with tf.control_dependencies([check]):
         edge_vidx_next_sorted = tf.identity(edge_vidx_next_sorted)
+
 
     return edge_vidx_next_sorted, valid_ev_num_next
 
@@ -1919,7 +1940,7 @@ class EdgeVPath():
 if __name__ == '__main__':
   dataset_name = 'MATTERPORT'
   dset_path = '/DS/Matterport3D/Matterport3D_WHOLE_extracted/v1/scans'
-  tfrecord_path = '/DS/Matterport3D/MATTERPORT_TF/mesh_tfrecord'
+  tfrecord_path = '/DS/Matterport3D/MATTERPORT_TF/mesh_tfrecord_555'
   tfrecord_path = '/home/z/Research/SparseVoxelNet/data/MATTERPORT_TF/mesh_tfrecord'
   read_tfrecord(dataset_name, tfrecord_path)
 

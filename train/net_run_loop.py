@@ -312,6 +312,10 @@ def net_model_fn( features, labels, mode, model_class,
   tf.summary.scalar('l2_loss', l2_loss)
   loss = cross_entropy + l2_loss
 
+  check_loss1 = tf.assert_equal( tf.is_nan(loss), False, message="\nGot nan loss\n")
+  with tf.control_dependencies([check_loss1]):
+    loss = tf.identity(loss)
+
   if mode == tf.estimator.ModeKeys.TRAIN:
     global_step = tf.train.get_or_create_global_step()
 
@@ -406,14 +410,14 @@ def net_main_check(
     dataset = input_fn_train(1)
     ds_iterator = dataset.make_one_shot_iterator()
     features, labels = ds_iterator.get_next()
-    import pdb; pdb.set_trace()  # XXX BREAKPOINT
     #model_cls.main_test_pool(features)
 
-    vidx_per_face = get_ele(features_, 'vidx_per_face', dset_shape_idx)
-    fidx_per_vertex = get_ele(features_, 'fidx_per_vertex', dset_shape_idx)
+    items = ['xyz', 'color', 'vidx_per_face', 'edgev_per_vertex','valid_ev_num_pv']
+    datas = {}
+    for item in items:
+      datas[item] = get_ele(features, item, dset_shape_idx)
 
-    vpf_min = np.min(vidx_per_face)
-    fpv_min = np.min(fidx_per_vertex)
+    evidx_min = np.min(datas['edgev_per_vertex'])
     import pdb; pdb.set_trace()  # XXX BREAKPOINT
     pass
 

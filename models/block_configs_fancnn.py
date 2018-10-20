@@ -33,6 +33,12 @@ def block_configs(net_flag0='7B'):
     if net_flag == '7A':
       filters['global']     = [ [],]
 
+  elif net_flag == '2G':
+    block_sizes['vertex'] = [ [1, 1],  ]
+    filters['vertex']     = [ [32, 32],]
+    kernels['vertex']     = [ [fan_kernel for _ in range(2)],  ]
+    filters['global']     = [ [16],[32],]
+
   elif net_flag == '53A' or  net_flag=='53G':
     block_sizes['vertex'] = [ [1,1,1,1,1], [1,1] ]
     filters['vertex']     = [ [32, 32, 64, 64, 128], [128, 128]]

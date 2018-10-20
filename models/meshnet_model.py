@@ -251,6 +251,14 @@ class Model(ResConvOps):
       inputs['edgev_per_vertex'] = self.get_ele(features, 'edgev_per_vertex')[:,:,0:edgevnum]
       inputs['valid_ev_num_pv'] = self.get_ele(features, 'valid_ev_num_pv')
 
+    is_check_data = True
+    # check data
+    if is_check_data:
+      check_ev = tf.assert_greater( tf.reduce_min(inputs['edgev_per_vertex']), -1,
+                                   message='found neg edgev_per_vertex')
+      with tf.control_dependencies([check_ev]):
+        inputs['edgev_per_vertex'] = tf.identity(inputs['edgev_per_vertex'])
+
     return inputs, xyz
 
   def simplicity_classifier(self, vertices):
