@@ -373,11 +373,21 @@ def net_model_fn( features, labels, mode, model_class,
     train_op = None
 
   accuracy = tf.metrics.accuracy(labels, predictions['classes'], label_weight)
-  metrics = {'accuracy': accuracy,}
+  num_classes = net_data_configs['dset_metas'].num_classes
+  mean_iou = tf.metrics.mean_iou(labels, predictions['classes'], num_classes, label_weight)
 
   # Create a tensor named train_accuracy for logging purposes
   tf.identity(accuracy[1], name='train_accuracy')
   tf.summary.scalar('accuracy', accuracy[1])
+  tf.summary.scalar('mean_iou', mean_iou[0])
+
+  #train_mean_iou, iou_perclass = compute_mean_iou(mean_iou[1], num_classes)
+  #tf.identity(train_mean_iou, name='train_mean_iou')
+  #mean_iou = (iou_perclass, tf.identity(mean_iou[1]))
+  mean_iou = (mean_iou[0], tf.identity(mean_iou[1]))
+
+
+  metrics = {'accuracy': accuracy, 'mean_iou':mean_iou}
 
   return tf.estimator.EstimatorSpec(
           mode=mode,
@@ -386,6 +396,37 @@ def net_model_fn( features, labels, mode, model_class,
           train_op=train_op,
           eval_metric_ops=metrics)
 
+def compute_mean_iou(total_cm, num_classes, name='mean_iou'):
+  """Compute the mean intersection-over-union via the confusion matrix."""
+  sum_over_row = tf.to_float(tf.reduce_sum(total_cm, 0))
+  sum_over_col = tf.to_float(tf.reduce_sum(total_cm, 1))
+  cm_diag = tf.to_float(tf.diag_part(total_cm))
+  denominator = sum_over_row + sum_over_col - cm_diag
+
+  # The mean is only computed over classes that appear in the
+  # label or prediction tensor. If the denominator is 0, we need to
+  # ignore the class.
+  num_valid_entries = tf.reduce_sum(tf.cast(
+      tf.not_equal(denominator, 0), dtype=tf.float32))
+
+  # If the value of the denominator is 0, set it to 1 to avoid
+  # zero division.
+  denominator = tf.where(
+      tf.greater(denominator, 0),
+      denominator,
+      tf.ones_like(denominator))
+  iou = tf.div(cm_diag, denominator)
+
+  for i in range(num_classes):
+    tf.identity(iou[i], name='train_iou_class{}'.format(i))
+    #tf.summary.scalar('train_iou_class{}'.format(i), iou[i])
+
+  # If the number of valid entries is 0 (no classes) we return 0.
+  result = tf.where(
+      tf.greater(num_valid_entries, 0),
+      tf.reduce_sum(iou, name=name) / num_valid_entries,
+      0)
+  return result, iou
 
 def net_main_check(
     flags_obj, model_class, input_function, net_data_configs, shape=None):
@@ -588,8 +629,8 @@ def net_main(
         cur_is_best = 'best'
       global_step = cur_global_step(flags_obj.model_dir)
       epoch = int( global_step / flags_obj.examples_per_epoch * flags_obj.num_gpus)
-      metric_logf.write('{} train t:{:.1f}  eval t:{:.1f} eval acc: {} {}\n'.format(epoch,
-                        train_t, eval_t, eval_results['accuracy'], cur_is_best))
+      metric_logf.write('{} train t:{:.1f}  eval t:{:.1f} \teval acc:{:.3f} \tmean_iou:{:.3f} {}\n'.format(epoch,
+                        train_t, eval_t, eval_results['accuracy'], eval_results['mean_iou'], cur_is_best))
       metric_logf.flush()
 
   if flags_obj.export_dir is not None:

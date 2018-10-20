@@ -205,7 +205,7 @@ def read_tfrecord(dataset_name, tf_path, loss_lw_gama=-1):
   data_path = os.path.join(tf_path, 'data')
   scene = '17DRP5sb8fy'
   #scene = '2t7WUuJeko7'
-  region = 'region0'
+  region = 'region*'
   filenames = glob.glob(os.path.join(data_path,'%s_%s.tfrecord'%(scene, region)))
   assert len(filenames) > 0, data_path
   filenames.sort()
@@ -241,7 +241,6 @@ def read_tfrecord(dataset_name, tf_path, loss_lw_gama=-1):
     print('\nreading %s'%(filenames[batch_k]))
     base_fn = os.path.splitext( os.path.basename(filenames[batch_k]))[0]
     features, labels = dset_iterater.get_next()
-    import pdb; pdb.set_trace()  # XXX BREAKPOINT
     batch_num += 1
     labels = labels.numpy()
     for key in features:
