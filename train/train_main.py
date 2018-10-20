@@ -44,9 +44,11 @@ DATA_DIR = os.path.join(ROOT_DIR, 'data')
 _NUM_EXAMPLES_ALL = {}
 _NUM_EXAMPLES_ALL['MATTERPORT'] = {
         'train': int(2924 * FILE_RATE), 'validation':-1}
+_NUM_EXAMPLES_ALL['MATTERPORT'] = {
+        'train': int(676), 'validation':-1}
 
-_NUM_TRAIN_FILES = 50 * 1
-_SHUFFLE_BUFFER = 500 * 1
+_NUM_TRAIN_FILES = 100 * 1
+_SHUFFLE_BUFFER = 100 * 1
 
 DATASET_NAME = 'MATTERPORT'
 _NUM_EXAMPLES = _NUM_EXAMPLES_ALL[DATASET_NAME]
@@ -64,6 +66,7 @@ def get_filenames_1(is_training, data_dir):
   else:
     scene = '2t7WUuJeko7'
     scene = '17DRP5sb8fy'
+  scene = "*"
   fn_glob = os.path.join(data_dir, '{}_region*.tfrecord'.format(scene))
   all_fnls = glob.glob(fn_glob)
   all_fnls.sort()
@@ -458,8 +461,8 @@ def define_network_flags():
   flags.DEFINE_string('drop_imo','000','dropout rate for input, middle and out')
   flags.DEFINE_bool(name='pred_ply', default=False, help ="")
 
-  if SMALL_FNUM:
-    update_examples_num(True, data_dir)
+  #if SMALL_FNUM:
+  #  update_examples_num(True, data_dir)
   flags.DEFINE_integer('examples_per_epoch', default=_NUM_EXAMPLES['train'], help="")
 
 def run_network(flags_obj):

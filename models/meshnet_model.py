@@ -425,6 +425,10 @@ class BlockParas():
       kernels = block_configs['kernels']
     else:
       kernels = None
+    if 'strides' in block_configs:
+      strides = block_configs['strides']
+    else:
+      strides = None
     self.edgevnum = block_configs['edgevnum']
     self.scale_num = len(filters['vertex'])
     if hasattr(self, 'e2fl_pool'):
@@ -438,30 +442,35 @@ class BlockParas():
     all_paras = {}
     for item in filters:
       # Always 1 if not exist
-      block_size_1 = item not in block_sizes
-      kernel_1 = item not in kernels
-      if block_size_1:
+      block_size_is_1 = item not in block_sizes
+      kernel_is_1 = item not in kernels
+      stride_is_1 = item not in strides
+      if block_size_is_1:
         block_sizes[item] = []
-      if kernel_1:
+      if kernel_is_1:
         kernels[item] = []
+      if stride_is_1:
+        strides[item] = []
 
-      if block_size_1 or kernel_1:
+      if block_size_is_1 or kernel_is_1:
         scale_num  = len(filters[item])
         for s in range(scale_num):
-          if block_size_1:
-            block_sizes[item].append([1 for _ in range(len(filters[item][s]))])
-          if kernel_1:
-            kernels[item].append([1 for _ in range(len(filters[item][s]))])
+          if block_size_is_1:
+            block_sizes[item].append([1] * len(filters[item][s]))
+          if kernel_is_1:
+            kernels[item].append([1]*len(filters[item][s]))
+          if stride_is_1:
+            strides[item].append([1] * len(filters[item][s]))
 
       all_paras[item] = BlockParas.complete_scales_paras(block_sizes[item],
-                                                filters[item], kernels[item])
+                                    filters[item], kernels[item], strides[item])
     self.all_paras = all_paras
 
   def get_block_paras(self, element, scale):
     return self.all_paras[element][scale]
 
   @staticmethod
-  def complete_scales_paras(block_size, filters, kernels):
+  def complete_scales_paras(block_size, filters, kernels, strides):
     scale_num = len(block_size)
     scales_blocks_paras = []
     for s in range(scale_num):
@@ -469,12 +478,12 @@ class BlockParas():
         kernels_s = kernels[s]
       else:
         kernels_s = None
-      blocks_paras = BlockParas.complete_paras_1scale(block_size[s], filters[s], kernels_s)
+      blocks_paras = BlockParas.complete_paras_1scale(block_size[s], filters[s], kernels_s, strides[s])
       scales_blocks_paras.append(blocks_paras)
     return scales_blocks_paras
 
   @staticmethod
-  def complete_paras_1scale(block_size, filters, kernels):
+  def complete_paras_1scale(block_size, filters, kernels, strides):
     if len(block_size) == 0:
       return None
     assert not isinstance(block_size[0], list)
@@ -485,7 +494,8 @@ class BlockParas():
     blocks_paras = {}
     blocks_paras['block_sizes'] = block_size
     blocks_paras['filters'] = filters
-    blocks_paras['kernels'], blocks_paras['strides'], blocks_paras['pad_stride1'] = \
+    blocks_paras['strides'] = strides
+    blocks_paras['kernels'],  blocks_paras['pad_stride1'] = \
                                 BlockParas.get_1_kernel_block_paras(block_num, kernels)
     blocks_paras = BlockParas.split_block_paras(blocks_paras)
 
@@ -514,8 +524,7 @@ class BlockParas():
       kernels = [kernels_[i] for i in range(block_num)]
     else:
       kernels = [1 for i in range(block_num)]
-    strides = [1 for i in range(block_num)]
     paddings = ['v' for i in range(block_num)]
-    return kernels, strides, paddings
+    return kernels,  paddings
 
 

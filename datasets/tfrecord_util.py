@@ -1200,7 +1200,7 @@ class MeshSampling():
 
   @staticmethod
   def get_twounit_edgev(edgev_per_vertex0, xyz0, raw_vidx_2_sp_vidx, vertex_sp_indices,
-                        max_fail_2unit_ev_rate=1e-4, scale=None):
+                        max_fail_2unit_ev_rate, scale=None):
     #  the edgev of edgev: geodesic distance = 2 unit
     edgev_edgev_idx0 = tf.gather(edgev_per_vertex0,  edgev_per_vertex0)
     edgev_edgev = tf.gather(edgev_edgev_idx0, vertex_sp_indices)
@@ -1250,6 +1250,8 @@ class MeshSampling():
     fail_2unit_ev_mask = tf.less(twounit_edgev_new, 0)
     any_2unit_failed = tf.reduce_any(fail_2unit_ev_mask)
 
+    if max_fail_2unit_ev_rate is None:
+      max_fail_2unit_ev_rate = 5e-4
     def rm_invalid_2uedgev():
       # all the edgev for a vertex are lost
       fail_2unit_e_mask = tf.reduce_all(fail_2unit_ev_mask, 1)
@@ -1358,7 +1360,7 @@ class MeshSampling():
 
   @staticmethod
   def rich_edges(vertex_sp_indices, edgev_per_vertex, xyz, raw_vidx_2_sp_vidx,
-                 valid_ev_num_pv,  mesh_summary={}, max_fail_2unit_ev_rate=1e-4, scale=None):
+                 valid_ev_num_pv,  mesh_summary={}, max_fail_2unit_ev_rate=None, scale=None):
     assert len(get_tensor_shape(vertex_sp_indices)) == 1
     assert len(get_tensor_shape(edgev_per_vertex)) == len(get_tensor_shape(xyz)) == 2
     #rich_edge_method = 'remove'

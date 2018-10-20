@@ -373,12 +373,12 @@ class ResConvOps(object):
       pass
       raise NotImplementedError
 
-    inputs, padding = self.padding2d3d(inputs, kernels, strides, pad_stride1)
+    #inputs, padding = self.padding2d3d(inputs, kernels, strides, pad_stride1)
 
     assert self.data_format == 'channels_last'
     outputs = conv_fn(
         inputs=inputs, filters=filters, kernel_size=kernels, strides=strides,
-        padding=padding, use_bias=self.use_bias,
+        padding=self._padding[pad_stride1], use_bias=self.use_bias,
         kernel_initializer=KERNEL_INI,
         data_format=self.data_format)
     return outputs
@@ -448,9 +448,9 @@ class ResConvOps(object):
     When strides>1, fixed padding is used to keep reduce rate equal to strides.
     '''
     padding = self._padding[pad_stride1]
-    if strides > 1:
-      assert padding == 'valid'
-      inputs = self.fixed_padding_2d3d(inputs, kernels)
+    #if strides > 1:
+    #  assert padding == 'valid'
+    #  inputs = self.fixed_padding_2d3d(inputs, kernels)
     #if padding == 'same':
     #  self.check_kernel_waste(inputs, kernels, True)
     return inputs, padding
@@ -535,7 +535,7 @@ class ResConvOps(object):
     if edgev_per_vertex is not None:
       evn0 = get_tensor_shape(edgev)[2]
       with tf.variable_scope('evc0'):
-        edgev = self.conv1d2d3d(edgev, filters, [1, kernels], strides, pad_stride1)
+        edgev = self.conv1d2d3d(edgev, filters, [1, kernels], [1,strides], pad_stride1)
         self.log_tensor_c(edgev, kernels, strides, pad_stride1,
                         tf.get_variable_scope().name)
       vertices += edgev

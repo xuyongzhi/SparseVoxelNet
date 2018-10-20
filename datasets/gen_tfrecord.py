@@ -57,7 +57,7 @@ class Raw_To_Tfrecord():
     if not os.path.exists(self.data_path):
       os.makedirs(self.data_path)
     self.num_point = num_point
-    self.min_sample_rate = 0.65 # sample_rate = self.num_point/org_num
+    self.min_sample_rate = 0.5 # sample_rate = self.num_point/org_num
     self.num_face = int(num_point * 5)
     self.block_size = block_size
     self.block_stride_rate =  0.8
@@ -584,10 +584,11 @@ def main_matterport():
   t0 = time.time()
   dataset_name = 'MATTERPORT'
 
-  num_point = {'MODELNET40':None, 'MATTERPORT':150000}
-  block_sizes = {'MODELNET40':None, 'MATTERPORT':np.array([5.0, 5.0, 5.0]) }
+  num_points = {'MODELNET40':None, 'MATTERPORT':100000}
+  num_point = num_points[dataset_name]
+  block_sizes = {'MODELNET40':None, 'MATTERPORT':np.array([3.0, 3.0, 5.0]) }
   block_size = block_sizes[dataset_name]
-  flag = ''.join([str(int(d)) for d in block_size])
+  flag = ''.join([str(int(d)) for d in block_size]) + '_' + str(int(num_point/1000))+'K'
 
   dset_path = '/DS/Matterport3D/Matterport3D_WHOLE_extracted/v1/scans'
   tfrecord_path = '/DS/Matterport3D/MATTERPORT_TF/mesh_tfrecord_%s'%(flag)
@@ -595,20 +596,23 @@ def main_matterport():
   #dset_path = '/home/z/DS/Matterport3D/Matterport3D_WHOLE_extracted/v1/scans'
   #tfrecord_path = os.path.join(ROOT_DIR, 'data/MATTERPORT_TF')
 
-  scene_names_all = os.listdir(dset_path)
-  scene_name = '17DRP5sb8fy'
-  scene_name = '2t7WUuJeko7'
-  #scene_name = '*'
-  #scene_name = 'VFuaQ6m2Qom'
   region_name = 'region*'
-  raw_glob = os.path.join(dset_path, '{}/*/region_segmentations/{}.ply'.format(
-                                scene_name, region_name))
+  scene_names_all = os.listdir(dset_path) # 91
+  scene_names_all.sort()
+  #scene_name = ['17DRP5sb8fy']
+  #scene_name = ['2t7WUuJeko7']
+  scene_names = scene_names_all[0:10]
+  raw_fns = []
+  for scene_name in scene_names:
+    raw_glob = os.path.join(dset_path, '{}/*/region_segmentations/{}.ply'.format(
+                                  scene_name, region_name))
+    raw_fns += glob.glob(raw_glob)
+
   ply_dir = os.path.join(tfrecord_path, 'plys/{}/{}'.format(scene_name, region_name))
 
-  raw_fns = glob.glob(raw_glob)
   raw_fns = clean_bad_files(dataset_name, raw_fns, dset_path)
   raw_fns.sort()
-  main_write_multi(dataset_name, raw_fns, tfrecord_path, num_point[dataset_name],\
+  main_write_multi(dataset_name, raw_fns, tfrecord_path, num_point,\
               block_size, ply_dir,
               multiprocessing=0) # 4 to process data, 0 to check
 

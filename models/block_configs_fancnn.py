@@ -1,6 +1,10 @@
 import numpy as np
 
 def block_configs(net_flag0='7B'):
+  '''
+  7G_9_5_2
+  edgevnum=9,  kernel=5,  stride=2
+  '''
 
   #*****************************************************************************
   block_configs = {}
@@ -8,6 +12,7 @@ def block_configs(net_flag0='7B'):
   filters = {}
   kernels = {}
   flayers = {}
+  strides = {}
 
   tmp = net_flag0.split('_')
   net_flag = tmp[0]
@@ -19,6 +24,10 @@ def block_configs(net_flag0='7B'):
     fan_kernel = int(tmp[2])
   else:
     fan_kernel = 6
+  if len(tmp)>3:
+    fan_stride = int(tmp[3])
+  else:
+    fan_stride = 1
 
   block_configs['edgevnum'] = edgevnum
   block_configs['dense_filters'] = [256, 128]
@@ -27,7 +36,8 @@ def block_configs(net_flag0='7B'):
   if net_flag == '7A' or  net_flag=='7G':
     block_sizes['vertex'] = [ [1, 1, 1, 1, 1, 1, 1],  ]
     filters['vertex']     = [ [32, 32, 64, 64, 128, 128, 128],]
-    kernels['vertex']     = [ [fan_kernel for _ in range(7)],  ]
+    kernels['vertex']     = [ [fan_kernel]*7,  ]
+    strides['vertex']     = [ [fan_stride]*7 ]
     if net_flag == '7G':
       filters['global']     = [ [64],[128],]
     if net_flag == '7A':
@@ -59,6 +69,7 @@ def block_configs(net_flag0='7B'):
   block_configs['block_sizes'] = block_sizes
   block_configs['filters'] = filters
   block_configs['kernels'] = kernels
+  block_configs['strides'] = strides
   #*****************************************************************************
 
   dense_flag = '_%d'%( len(block_configs['dense_filters']))

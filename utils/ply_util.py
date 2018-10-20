@@ -317,9 +317,9 @@ def gen_mesh_ply(ply_fn, vertices0, vertex_idx, face_label=None,
 
     el_vertex = PlyElement.describe(vertex,'vertex')
     if vnpf >2:
-      el_face = get_face_ele(vertex_idx, face_label)
+      el_face = get_face_ele(vertex_idx, face_label, extra)
     else:
-      el_face = get_edge_ele(vertex_idx, face_label)
+      el_face = get_edge_ele(vertex_idx, face_label, extra)
 
 
     dirname = os.path.dirname(ply_fn)
@@ -328,7 +328,7 @@ def gen_mesh_ply(ply_fn, vertices0, vertex_idx, face_label=None,
     PlyData([el_vertex, el_face],text=True).write(ply_fn)
     print('write %s ok'%(ply_fn))
 
-def get_face_ele(vidx_per_face, face_label):
+def get_face_ele(vidx_per_face, face_label, extra):
     # face
     num_face = vidx_per_face.shape[0]
     vnpf = vidx_per_face.shape[1]
@@ -356,7 +356,7 @@ def get_face_ele(vidx_per_face, face_label):
     el_face = PlyElement.describe(face, 'face')
     return el_face
 
-def get_edge_ele(vidx_per_edge, edge_label):
+def get_edge_ele(vidx_per_edge, edge_label, extra):
     # edge
     num_edge = vidx_per_edge.shape[0]
     vnpf = vidx_per_edge.shape[1]
