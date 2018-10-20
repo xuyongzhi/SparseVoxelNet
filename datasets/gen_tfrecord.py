@@ -597,7 +597,7 @@ def main_matterport():
 
   scene_names_all = os.listdir(dset_path)
   scene_name = '17DRP5sb8fy'
-  #scene_name = '2t7WUuJeko7'
+  scene_name = '2t7WUuJeko7'
   #scene_name = '*'
   #scene_name = 'VFuaQ6m2Qom'
   region_name = 'region*'
