@@ -37,6 +37,7 @@ from official.utils.logs import hooks_helper
 from official.utils.logs import logger
 from official.utils.misc import distribution_utils
 from official.utils.misc import model_helpers
+import numpy as np
 # pylint: enable=g-bad-import-order
 from models.meshnet_model import DEFAULT_DTYPE
 
@@ -614,7 +615,8 @@ def net_main(
 
       if flags_obj.pred_ply:
         pred_generator = classifier.predict(input_fn=input_fn_eval)
-        gen_pred_ply(eval_results, pred_generator, flags_obj.model_dir)
+        num_classes = net_data_configs['dset_metas'].num_classes
+        gen_pred_ply(eval_results, pred_generator, flags_obj.model_dir, num_classes)
 
       benchmark_logger.log_evaluation_result(eval_results)
 
@@ -700,9 +702,24 @@ def define_net_flags():
                                 'the latest checkpoint.'))
 
 
-def gen_pred_ply(eval_results, pred_generator, model_dir):
+def compute_iou(pred, label, num_classes):
+  assert pred.shape == label.shape
+  assert pred.ndim == 1
+
+  I = np.zeros(num_classes)
+  U = np.zeros(num_classes)
+  for c in range(num_classes):
+    pred_c = pred == c
+    label_c = label == c
+    I[c] = float(np.sum(np.logical_and(label_c, pred_c)))
+    U[c] = float(np.sum(np.logical_or(label_c, pred_c)))
+
+  iou_classes = I / U
+  mean_iou = np.mean(iou_classes)
+  return mean_iou, iou_classes
+
+def gen_pred_ply(eval_results, pred_generator, model_dir, num_classes):
   from utils.ply_util import gen_mesh_ply
-  import numpy as np
 
   k = 0
   for pred in pred_generator:
@@ -715,20 +732,23 @@ def gen_pred_ply(eval_results, pred_generator, model_dir):
     xyz = pred['xyz']
     vidx_per_face = pred['vidx_per_face'][0:valid_num_face, :]
 
+
     # eval
     correct_mask = classes == labels
     cort_idx = np.where(correct_mask)[0]
     cor_num = cort_idx.shape[0]
     err_idx = np.where(np.logical_not(correct_mask))[0]
     acc = 1.0 * cor_num / valid_num_face
-    print('acc:{}'.format(acc))
+
+    mean_iou, iou_classes = compute_iou(classes, labels, num_classes)
+    print('acc:{} mean_iou:{}'.format(acc, mean_iou))
 
     crt_vidx_per_face = np.take(vidx_per_face, cort_idx, 0)
     crt_classes = np.take(classes, cort_idx)
     err_vidx_per_face = np.take(vidx_per_face, err_idx, 0)
     err_classes = np.take(classes, err_idx)
 
-    pred_res_dir = '/%s/plys/b%d_Acc_%d'%(model_dir, k, int(100*acc))
+    pred_res_dir = '/%s/plys/b%d_Acc_%d_IOU_%d'%(model_dir, k, int(100*acc), int(100*mean_iou))
 
     ply_fn = os.path.join(pred_res_dir, 'crt.ply')
     gen_mesh_ply(ply_fn, xyz, crt_vidx_per_face, face_label=crt_classes)

@@ -3,9 +3,9 @@ export CUDA_VISIBLE_DEVICES=1
 
 #ply=--eval_only
 ply=--pred_ply
-model_dir='RC7G_9_5_bc9_9_85_2-xyz-n-min0-Bs2-Lr1_7_20-wd4'
+model_dir='RC10G_12_6_bc12_12_69_2-xyz-n-min0-Bs2-Lr0_7_20-wd0'
 
-net_flag='7G_9_5'
+net_flag='10G_12_6'
 ng=1
 bs=1
 rs=--rs

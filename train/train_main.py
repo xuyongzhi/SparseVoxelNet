@@ -71,7 +71,7 @@ def get_filenames_1(is_training, data_dir):
   all_fnls = glob.glob(fn_glob)
   all_fnls.sort()
   #if TMPDEBUG:
-  #  all_fnls = all_fnls[0:4]
+  all_fnls = all_fnls[0:676]
   assert len(all_fnls) > 0, fn_glob
   print('\ngot {} training files for training={}\n'.format(len(all_fnls), is_training))
   return all_fnls
@@ -436,7 +436,7 @@ def define_network_flags():
   net_run_loop.define_net_flags()
   flags.adopt_module_key_flags(net_run_loop)
   data_dir = os.path.join(DATA_DIR,'MATTERPORT_TF/mesh_tfrecord')
-  flags_core.set_defaults(train_epochs=150,
+  flags_core.set_defaults(train_epochs=150*3,
                           data_dir=data_dir,
                           batch_size=2,
                           num_gpus=2,
