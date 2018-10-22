@@ -633,7 +633,6 @@ def net_main(
         cur_is_best = 'best'
       global_step = cur_global_step(flags_obj.model_dir)
       epoch = int( global_step / flags_obj.examples_per_epoch * flags_obj.num_gpus)
-      import pdb; pdb.set_trace()  # XXX BREAKPOINT
       metric_logf.write('{} train t:{:.1f}  eval t:{:.1f} \teval acc:{:.3f} \tmean_iou:{:.3f} {}\n'.format(epoch,
                         train_t, eval_t, eval_results['accuracy'], eval_results['mean_iou'], cur_is_best))
       metric_logf.flush()

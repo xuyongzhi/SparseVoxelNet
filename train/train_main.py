@@ -45,8 +45,8 @@ _NUM_EXAMPLES_ALL = {}
 _NUM_EXAMPLES_ALL['MATTERPORT'] = {
         'train': int(2924 * FILE_RATE), 'validation':-1}
 
-_NUM_TRAIN_FILES = 100 * 1
-_SHUFFLE_BUFFER = 100 * 1
+_NUM_TRAIN_FILES = 20 * 1
+_SHUFFLE_BUFFER = 200 * 1
 
 DATASET_NAME = 'MATTERPORT'
 _NUM_EXAMPLES = _NUM_EXAMPLES_ALL[DATASET_NAME]
@@ -438,7 +438,7 @@ def define_network_flags():
   net_run_loop.define_net_flags()
   flags.adopt_module_key_flags(net_run_loop)
   data_dir = os.path.join(DATA_DIR,'MATTERPORT_TF/mesh_tfrecord')
-  flags_core.set_defaults(train_epochs=150*3,
+  flags_core.set_defaults(train_epochs=150*2,
                           data_dir=data_dir,
                           batch_size=2,
                           num_gpus=2,
