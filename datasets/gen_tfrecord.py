@@ -25,6 +25,7 @@ Face_ieles = ['vidx_per_face', 'label_category']
 
 MAX_FLOAT_DRIFT = 1e-6
 DEBUG = False
+TMP = True
 
 
 def random_choice(org_vector, sample_N, random_sampl_pro=None,
@@ -57,7 +58,7 @@ class Raw_To_Tfrecord():
     if not os.path.exists(self.data_path):
       os.makedirs(self.data_path)
     self.num_point = num_point
-    self.min_sample_rate = 0.5 # sample_rate = self.num_point/org_num
+    self.min_sample_rate = 0.6 # sample_rate = self.num_point/org_num
     self.num_face = int(num_point * 5)
     self.block_size = block_size
     self.block_stride_rate =  0.8
@@ -108,6 +109,8 @@ class Raw_To_Tfrecord():
       if self.dataset_name == "MATTERPORT":
         block_num, valid_block_num, num_points_splited, xyz_scope_str,mesh_summary \
           = self.transfer_onefile_matterport(rawfn)
+        if TMP and block_num is None:
+          continue
 
       sp_rates = [1.0*self.num_point/orgn for orgn in  num_points_splited]
       if min(sp_rates) < min_sp_rate:
@@ -316,6 +319,8 @@ class Raw_To_Tfrecord():
                           for e in splited_vidx]
     sp_rates = [1.0*self.num_point/k for k in num_points_splited]
     min_sp_rate = min(sp_rates)
+    if TMP and min_sp_rate < self.min_sample_rate:
+      return [None]*5
     assert min_sp_rate > self.min_sample_rate, 'got small sample rate:{} < {}'.format(
                                               min_sp_rate, self.min_sample_rate)
 
@@ -481,7 +486,7 @@ def main_merge_tfrecord(dataset_name, tfrecord_path):
 
   grouped_train_fnls, train_groupe_names = split_fn_ls(train_fn_ls, 100)
   train_groupe_names = ['train_'+e for e in train_groupe_names]
-  grouped_test_fnls, test_groupe_names = split_fn_ls(test_fn_ls, 6)
+  grouped_test_fnls, test_groupe_names = split_fn_ls(test_fn_ls, 10)
   test_groupe_names = ['test_'+e for e in test_groupe_names]
 
   grouped_fnls = grouped_train_fnls + grouped_test_fnls
@@ -601,7 +606,7 @@ def main_matterport():
   scene_names_all.sort()
   #scene_name = ['17DRP5sb8fy']
   #scene_name = ['2t7WUuJeko7']
-  scene_names = scene_names_all[0:10]
+  scene_names = scene_names_all
   raw_fns = []
   for scene_name in scene_names:
     raw_glob = os.path.join(dset_path, '{}/*/region_segmentations/{}.ply'.format(
@@ -612,11 +617,11 @@ def main_matterport():
 
   raw_fns = clean_bad_files(dataset_name, raw_fns, dset_path)
   raw_fns.sort()
-  main_write_multi(dataset_name, raw_fns, tfrecord_path, num_point,\
-              block_size, ply_dir,
-              multiprocessing=0) # 4 to process data, 0 to check
+  #main_write_multi(dataset_name, raw_fns, tfrecord_path, num_point,\
+  #            block_size, ply_dir,
+  #            multiprocessing=0) # 4 to process data, 0 to check
 
-  #main_merge_tfrecord(dataset_name, tfrecord_path)
+  main_merge_tfrecord(dataset_name, tfrecord_path)
 
   #main_gen_ply(dataset_name, tfrecord_path)
   print('total time: {} sec'.format(time.time() - t0))

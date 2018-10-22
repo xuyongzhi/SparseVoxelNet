@@ -2,6 +2,7 @@
 
 net_flag='10A_12_6'
 net_flag='10G_12_6'
+net_flag='10G_10_5'
 ng=2
 bs=2
 rs=--rs

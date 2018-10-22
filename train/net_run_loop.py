@@ -38,6 +38,7 @@ from official.utils.logs import logger
 from official.utils.misc import distribution_utils
 from official.utils.misc import model_helpers
 import numpy as np
+from utils.tf_util import TfUtil
 # pylint: enable=g-bad-import-order
 from models.meshnet_model import DEFAULT_DTYPE
 
@@ -376,6 +377,7 @@ def net_model_fn( features, labels, mode, model_class,
   accuracy = tf.metrics.accuracy(labels, predictions['classes'], label_weight)
   num_classes = net_data_configs['dset_metas'].num_classes
   mean_iou = tf.metrics.mean_iou(labels, predictions['classes'], num_classes, label_weight)
+  mean_iou = (mean_iou[0], tf.identity(mean_iou[1]))
 
   # Create a tensor named train_accuracy for logging purposes
   tf.identity(accuracy[1], name='train_accuracy')
@@ -385,8 +387,7 @@ def net_model_fn( features, labels, mode, model_class,
   #train_mean_iou, iou_perclass = compute_mean_iou(mean_iou[1], num_classes)
   #tf.identity(train_mean_iou, name='train_mean_iou')
   #mean_iou = (iou_perclass, tf.identity(mean_iou[1]))
-  mean_iou = (mean_iou[0], tf.identity(mean_iou[1]))
-
+  #mean_iou_, classes_iou = compute_iou_tf(predictions['classes'], labels, num_classes)
 
   metrics = {'accuracy': accuracy, 'mean_iou':mean_iou}
 
@@ -592,6 +593,7 @@ def net_main(
     tf.logging.info('Starting cycle: %d/%d', cycle_index, int(n_loops))
 
     t0 = time.time()
+    train_t = 0
     if num_train_epochs:
       classifier.train(input_fn=lambda: input_fn_train(num_train_epochs),
                        hooks=train_hooks, max_steps=flags_obj.max_train_steps)
@@ -631,6 +633,7 @@ def net_main(
         cur_is_best = 'best'
       global_step = cur_global_step(flags_obj.model_dir)
       epoch = int( global_step / flags_obj.examples_per_epoch * flags_obj.num_gpus)
+      import pdb; pdb.set_trace()  # XXX BREAKPOINT
       metric_logf.write('{} train t:{:.1f}  eval t:{:.1f} \teval acc:{:.3f} \tmean_iou:{:.3f} {}\n'.format(epoch,
                         train_t, eval_t, eval_results['accuracy'], eval_results['mean_iou'], cur_is_best))
       metric_logf.flush()
@@ -702,9 +705,32 @@ def define_net_flags():
                                 'the latest checkpoint.'))
 
 
-def compute_iou(pred, label, num_classes):
+
+def compute_iou_tf(pred, label, num_classes):
+  assert TfUtil.tsize(pred) == TfUtil.tsize(label)
+
+  I = []
+  U = []
+  for c in range(num_classes):
+    pred_c = tf.equal(pred, c)
+    label_c = tf.equal(label, c)
+    tmp = tf.cast(tf.logical_and(label_c, pred_c),tf.float32)
+    I.append(tf.reduce_sum(tmp))
+    tmp = tf.cast(tf.logical_or(label_c, pred_c),tf.float32)
+    U.append(tf.reduce_sum(tmp))
+
+  I = tf.stack(I, 0)
+  U = tf.stack(U, 0)
+
+  iou_classes = I / (U+1e-5)
+
+  non_zero_num = tf.reduce_sum(tf.cast(tf.greater(iou_classes,0), tf.float32))
+  mean_iou = tf.reduce_sum(iou_classes) / non_zero_num
+  return mean_iou, iou_classes
+
+
+def compute_iou_np(pred, label, num_classes, weighted=False):
   assert pred.shape == label.shape
-  assert pred.ndim == 1
 
   I = np.zeros(num_classes)
   U = np.zeros(num_classes)
@@ -714,8 +740,16 @@ def compute_iou(pred, label, num_classes):
     I[c] = float(np.sum(np.logical_and(label_c, pred_c)))
     U[c] = float(np.sum(np.logical_or(label_c, pred_c)))
 
-  iou_classes = I / U
-  mean_iou = np.mean(iou_classes)
+  iou_classes = I / (U+1e-5)
+
+  if weighted:
+    weights,_bins = np.histogram(label, range(num_classes+1))
+    weights = weights*1.0/label.shape[0]
+    mean_iou_weighted = np.sum(iou_classes * weights)
+    mean_iou = mean_iou_weighted
+  else:
+    non_zero_num = np.sum(iou_classes!=0) *1.0
+    mean_iou = np.sum(iou_classes) / non_zero_num
   return mean_iou, iou_classes
 
 def gen_pred_ply(eval_results, pred_generator, model_dir, num_classes):
@@ -740,7 +774,7 @@ def gen_pred_ply(eval_results, pred_generator, model_dir, num_classes):
     err_idx = np.where(np.logical_not(correct_mask))[0]
     acc = 1.0 * cor_num / valid_num_face
 
-    mean_iou, iou_classes = compute_iou(classes, labels, num_classes)
+    mean_iou, iou_classes = compute_iou_np(classes, labels, num_classes)
     print('acc:{} mean_iou:{}'.format(acc, mean_iou))
 
     crt_vidx_per_face = np.take(vidx_per_face, cort_idx, 0)
@@ -763,6 +797,5 @@ def gen_pred_ply(eval_results, pred_generator, model_dir, num_classes):
     ply_fn = os.path.join(pred_res_dir, 'gt.ply')
     gen_mesh_ply(ply_fn, xyz, vidx_per_face, face_label=labels)
 
-    import pdb; pdb.set_trace()  # XXX BREAKPOINT
     pass
 

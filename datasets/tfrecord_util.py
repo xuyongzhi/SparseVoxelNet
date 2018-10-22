@@ -1251,7 +1251,7 @@ class MeshSampling():
     any_2unit_failed = tf.reduce_any(fail_2unit_ev_mask)
 
     if max_fail_2unit_ev_rate is None:
-      max_fail_2unit_ev_rate = 5e-4
+      max_fail_2unit_ev_rate = 3e-3  # should be 1e-4
     def rm_invalid_2uedgev():
       # all the edgev for a vertex are lost
       fail_2unit_e_mask = tf.reduce_all(fail_2unit_ev_mask, 1)

@@ -37,15 +37,13 @@ from datasets.tfrecord_util import parse_record, get_dset_shape_idxs
 from datasets.all_datasets_meta.datasets_meta import DatasetsMeta
 
 TMPDEBUG = False
-SMALL_FNUM = True
-FILE_RATE = 0.01 if TMPDEBUG else 1.0
+SMALL_FNUM = False
+FILE_RATE = 0.01 if SMALL_FNUM else 1.0
 DATA_DIR = os.path.join(ROOT_DIR, 'data')
 
 _NUM_EXAMPLES_ALL = {}
 _NUM_EXAMPLES_ALL['MATTERPORT'] = {
         'train': int(2924 * FILE_RATE), 'validation':-1}
-_NUM_EXAMPLES_ALL['MATTERPORT'] = {
-        'train': int(676), 'validation':-1}
 
 _NUM_TRAIN_FILES = 100 * 1
 _SHUFFLE_BUFFER = 100 * 1
@@ -63,11 +61,15 @@ def get_filenames_1(is_training, data_dir):
   data_dir = os.path.join(data_dir, 'data')
   if is_training:
     scene = '17DRP5sb8fy'
+    scene = "*"
   else:
-    scene = '2t7WUuJeko7'
+    #scene = '2t7WUuJeko7'
     scene = '17DRP5sb8fy'
-  scene = "*"
-  fn_glob = os.path.join(data_dir, '{}_region*.tfrecord'.format(scene))
+    scene = "*"
+  region = "*"
+
+
+  fn_glob = os.path.join(data_dir, '{}_region{}.tfrecord'.format(scene, region))
   all_fnls = glob.glob(fn_glob)
   all_fnls.sort()
   #if TMPDEBUG:
