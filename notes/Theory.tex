@@ -134,9 +134,11 @@ $$ j_u = \frac{P_{max}+padding-w}{s} $$
 $$ steps = [0.1,0.3,0.9,2.7] + [-6.3]$$
 $$ strides = [0.1,0.2,0.6,1.8] + [-3.6] $$
 $$ voxel\ size=[, 3, 4, 4, 3] $$
-principles:\par
+principles (k is voxel size):
+
+\noindent
 (1)Alignment between differert scales:
-$$ steps[i] = steps[i-1]+strides[i-1]*(k-1)\  (k=voxel\ size) $$
+$$ steps[i] = steps[i-1]+strides[i-1]*(k-1)\   $$
 (2)Alignment between voxels on one scale:
 $$ strides[i] \% steps[i-1] == 0 $$
 Examples:\par
@@ -375,8 +377,7 @@ Since the features are calculated independently in each voxel, it should be fine
 
 \section{Sparse voxel 3DCNN }
 \begin{tikzpicture}[node distance=2cm]
-	\node (start) [startstop] {Sparse voxel 3D CNN};
-	\node (in) [io, below of=start] {$(b,n_1,c_1)$};
+	\node (in) [io] {$(b,n_1,c_1)$};
 	\node (group) [process, below of=in] {$(b,[g_1]_{n_2},c_1)$};
 	\draw [arrow] (in) -- node [anchor=west] {grouping: $g_1$ is inconsistant} (group);
 	\node (extend) [process, below of=group] {$(b,n_2,g_{1m},c_1)$};
@@ -386,7 +387,7 @@ Since the features are calculated independently in each voxel, it should be fine
 	\node (3dconv) [process, below of=transform, align=center] {$(b,n_2,d_{2a},h_{2a},w_{2a},c_{2a})$\\ $(b,n_2,d_{2b},h_{2b},w_{2b},c_{2b})$ \\$(b,n_2,1,1,1,c_2)$};
 	\draw [arrow] (transform) -- node [anchor=west] {3D CONV MLP} (3dconv);
 	\node (out) [io, below of=3dconv] {$(b,n_2,c_2)$};
-	\draw [arrow] (3dconv) -- node [anchor=west] {$n_2$ is the numbel of aim block. Get the feature of each aim block.} (out);
+	\draw [arrow] (3dconv) -- node [anchor=west] {$n_2$ is the numbel of aim block. } (out);
 \end{tikzpicture}
 \par \par
 Two main obstacles for performing 3D convolution on point cloud are: (1) there are too many vacant points, (2) the position of points are not aligned.

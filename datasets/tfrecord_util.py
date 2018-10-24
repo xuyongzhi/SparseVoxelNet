@@ -407,17 +407,17 @@ class MeshSampling():
     IsGenply_Cleaned = False
     IsGenply_SameMask = False
     IsGenply_Splited = False
-    IsGenply_SplitedSampled = False
+    IsGenply_SplitedSampled = True
 
     if IsGenply_Raw:
-      MeshSampling.gen_mesh_ply_basic(raw_datas, 'Raw', 'raw', ply_dir)
+      GenPlys.gen_mesh_ply_basic(raw_datas, 'Raw', 'raw', ply_dir)
     t_start = tf.timestamp()
     #***************************************************************************
     # rm some labels
     with tf.variable_scope('rm_some_labels'):
       raw_datas, splited_vidx = MeshSampling.rm_some_labels(raw_datas, dset_metas, splited_vidx)
     if IsGenply_Cleaned:
-      MeshSampling.gen_mesh_ply_basic(raw_datas, 'Cleaned', 'Cleaned', ply_dir)
+      GenPlys.gen_mesh_ply_basic(raw_datas, 'Cleaned', 'Cleaned', ply_dir)
     # check not all void vertices
     valid_num_vertex = tf.shape(raw_datas['xyz'])[0]
     check_enough_nonvoid = tf.assert_greater(valid_num_vertex, 1000,
@@ -471,7 +471,7 @@ class MeshSampling():
 
     if IsGenply_Splited:
       for bi in range(block_num):
-        MeshSampling.gen_mesh_ply_basic(splited_datas[bi], 'Splited' ,'Block_{}'.format(bi), ply_dir)
+        GenPlys.gen_mesh_ply_basic(splited_datas[bi], 'Splited' ,'Block_{}'.format(bi), ply_dir)
     #***************************************************************************
     # sampling
     for bi in range(block_num):
@@ -483,7 +483,7 @@ class MeshSampling():
 
     if IsGenply_SplitedSampled:
       for bi in range(block_num):
-        MeshSampling.gen_mesh_ply_basic(splited_sampled_datas[bi], 'SplitedSampled',
+        GenPlys.gen_mesh_ply_basic(splited_sampled_datas[bi], 'SplitedSampled',
                         'Block{}_sampled_{}'.format(bi, _num_vertex_sp), ply_dir, gen_edgev=True)
 
     if is_show_shapes:
@@ -982,29 +982,35 @@ class MeshSampling():
     raw_datas['same_normal_mask']  = tf.cast(raw_datas['same_normal_mask'], tf.int8)
     return raw_datas
 
+
   @staticmethod
   def down_sampling_mesh(_num_vertex_sp, raw_datas, mesh_summary):
+    return VertexDecimation.down_sampling_mesh(_num_vertex_sp, raw_datas, mesh_summary)
+    return MeshSampling.down_sampling_mesh0(_num_vertex_sp, raw_datas, mesh_summary)
+
+  @staticmethod
+  def down_sampling_mesh0(_num_vertex_sp, raw_datas, mesh_summary):
     vertex_downsample_method = 'random'
     num_vertex0 = get_shape0(raw_datas['xyz'])
     if vertex_downsample_method == 'prefer_simple':
-      vertex_sp_indices = MeshSampling.down_sampling_vertex_presimple(
+      vertex_spidx = MeshSampling.down_sampling_vertex_presimple(
                                 raw_datas['same_normal_mask'], _num_vertex_sp)
     elif vertex_downsample_method == 'random':
-      vertex_sp_indices = MeshSampling.down_sampling_vertex_random(
+      vertex_spidx = MeshSampling.down_sampling_vertex_random(
                                 num_vertex0, _num_vertex_sp)
 
     face_sp_indices, vidx_per_face_new, edgev_per_vertex_new, valid_ev_num_pv_new =\
         MeshSampling.update_face_edgev(
-        vertex_sp_indices, num_vertex0, raw_datas['vidx_per_face'],
+        vertex_spidx, num_vertex0, raw_datas['vidx_per_face'],
         raw_datas['edgev_per_vertex'], raw_datas['valid_ev_num_pv'], xyz=raw_datas['xyz'],
         mesh_summary=mesh_summary)
-    raw_datas = MeshSampling.gather_datas(raw_datas, vertex_sp_indices,
+    raw_datas = MeshSampling.gather_datas(raw_datas, vertex_spidx,
                                     face_sp_indices, vidx_per_face_new,
                                     edgev_per_vertex_new, valid_ev_num_pv_new)
     return raw_datas
 
   @staticmethod
-  def gather_datas(datas, vertex_sp_indices, face_sp_indices, vidx_per_face_new,
+  def gather_datas(datas, vertex_spidx, face_sp_indices, vidx_per_face_new,
                    edgev_per_vertex_new=None, valid_ev_num_pv_new=None):
     num_vertex0 = get_shape0(datas['xyz'])
     new_datas = {}
@@ -1019,7 +1025,7 @@ class MeshSampling():
         is_vertex = tf.identity(is_vertex)
 
       sp_indices = tf.cond(is_vertex,
-                           lambda: vertex_sp_indices,
+                           lambda: vertex_spidx,
                            lambda: face_sp_indices )
       new_datas[item] = tf.gather(datas[item], sp_indices)
 
@@ -1037,14 +1043,14 @@ class MeshSampling():
     duplicate_num = _num_vertex_sp - num_vertex0
     #duplicate_indices = tf.tile( simple_indices[0:1], [duplicate_num] )
     duplicate_indices = tf.ones([duplicate_num], tf.int32) * (num_vertex0 -1)
-    vertex_sp_indices = tf.concat([tf.range(num_vertex0), duplicate_indices], 0)
-    return vertex_sp_indices
+    vertex_spidx = tf.concat([tf.range(num_vertex0), duplicate_indices], 0)
+    return vertex_spidx
 
   @staticmethod
   def down_sampling_vertex_random(num_vertex0, _num_vertex_sp):
-    vertex_sp_indices = tf.random_shuffle(tf.range(num_vertex0))[0:_num_vertex_sp]
-    vertex_sp_indices = tf.contrib.framework.sort(vertex_sp_indices)
-    return vertex_sp_indices
+    vertex_spidx = tf.random_shuffle(tf.range(num_vertex0))[0:_num_vertex_sp]
+    vertex_spidx = tf.contrib.framework.sort(vertex_spidx)
+    return vertex_spidx
 
 
   @staticmethod
@@ -1096,35 +1102,35 @@ class MeshSampling():
       sp_num_from_simple = _num_vertex_sp - complex_num
       tmp = tf.random_shuffle(tf.range(simple_num))[0:sp_num_from_simple]
       simple_sp_indices = tf.gather(simple_indices, tmp)
-      vertex_sp_indices = tf.concat([complex_indices, simple_sp_indices], 0)
-      return vertex_sp_indices
+      vertex_spidx = tf.concat([complex_indices, simple_sp_indices], 0)
+      return vertex_spidx
 
     def rm_all_simple_partof_complex():
       sp_num_from_complex = _num_vertex_sp
       tmp = tf.random_shuffle(tf.range(complex_num))[0:sp_num_from_complex]
-      vertex_sp_indices = tf.gather(complex_indices, tmp)
-      return vertex_sp_indices
+      vertex_spidx = tf.gather(complex_indices, tmp)
+      return vertex_spidx
 
-    vertex_sp_indices = tf.cond(simple_is_enough_to_rm,
+    vertex_spidx = tf.cond(simple_is_enough_to_rm,
                                   rm_part_of_simple_only,
                                   rm_all_simple_partof_complex )
 
-    vertex_sp_indices = tf.contrib.framework.sort(vertex_sp_indices)
+    vertex_spidx = tf.contrib.framework.sort(vertex_spidx)
 
-    check_s = tf.assert_equal(tf.shape(vertex_sp_indices)[0], _num_vertex_sp)
+    check_s = tf.assert_equal(tf.shape(vertex_spidx)[0], _num_vertex_sp)
     with tf.control_dependencies([check_s]):
-      vertex_sp_indices = tf.identity(vertex_sp_indices)
-    vertex_sp_indices.set_shape([_num_vertex_sp])
+      vertex_spidx = tf.identity(vertex_spidx)
+    vertex_spidx.set_shape([_num_vertex_sp])
 
     if MeshSampling._check_optial:
       # check no duplicate
-      tmp0, tmp1, tmp_count = tf.unique_with_counts(vertex_sp_indices)
+      tmp0, tmp1, tmp_count = tf.unique_with_counts(vertex_spidx)
       max_count = tf.reduce_max(tmp_count)
       check_no_duplicate = tf.assert_equal(max_count,1)
       with tf.control_dependencies([check_no_duplicate]):
-        vertex_sp_indices = tf.identity(vertex_sp_indices)
+        vertex_spidx = tf.identity(vertex_spidx)
 
-    return vertex_sp_indices
+    return vertex_spidx
 
   @staticmethod
   def move_neg_left(edgev_per_vertex0):
@@ -1199,16 +1205,16 @@ class MeshSampling():
 
 
   @staticmethod
-  def get_twounit_edgev(edgev_per_vertex0, xyz0, raw_vidx_2_sp_vidx, vertex_sp_indices,
+  def get_twounit_edgev(edgev_per_vertex0, xyz0, raw_vidx_2_sp_vidx, vertex_spidx,
                         max_fail_2unit_ev_rate, scale=None):
     #  the edgev of edgev: geodesic distance = 2 unit
     edgev_edgev_idx0 = tf.gather(edgev_per_vertex0,  edgev_per_vertex0)
-    edgev_edgev = tf.gather(edgev_edgev_idx0, vertex_sp_indices)
+    edgev_edgev = tf.gather(edgev_edgev_idx0, vertex_spidx)
 
-    edgev_per_vertex = tf.gather(edgev_per_vertex0, vertex_sp_indices)
+    edgev_per_vertex = tf.gather(edgev_per_vertex0, vertex_spidx)
     edgev_xyz = tf.gather(xyz0, edgev_per_vertex)
     edgev_edgev_xyz = tf.gather(xyz0, edgev_edgev)
-    xyz = tf.expand_dims(tf.gather(xyz0, vertex_sp_indices), 1)
+    xyz = tf.expand_dims(tf.gather(xyz0, vertex_spidx), 1)
     # get the vector from base vertex to edgev
     V0 = edgev_xyz - xyz
     V0 = tf.expand_dims(V0, 2)
@@ -1296,11 +1302,11 @@ class MeshSampling():
     return edgev_per_vertex_new
 
   @staticmethod
-  def update_valid_ev_num_pv(edgev_per_vertex_new1, valid_ev_num_pv, vertex_sp_indices):
+  def update_valid_ev_num_pv(edgev_per_vertex_new1, valid_ev_num_pv, vertex_spidx):
       rmed_edgev_mask0 = tf.less(edgev_per_vertex_new1, 0)
       eshape = get_tensor_shape(edgev_per_vertex_new1)
       tmp = tf.tile(tf.reshape(tf.range(eshape[1]), [1,-1]), [eshape[0],1])
-      valid_ev_num_pv_new = tf.gather(valid_ev_num_pv, tf.squeeze(vertex_sp_indices,1))
+      valid_ev_num_pv_new = tf.gather(valid_ev_num_pv, tf.squeeze(vertex_spidx,1))
       valid_mask = tf.less(tmp, valid_ev_num_pv_new)
       rmed_edgev_mask = tf.logical_and(rmed_edgev_mask0, valid_mask)
       rmed_edgev_num = tf.reduce_sum(tf.cast(rmed_edgev_mask, tf.int32), 1)
@@ -1341,51 +1347,51 @@ class MeshSampling():
     return vidx_per_face_new
 
   @staticmethod
-  def update_face_edgev(vertex_sp_indices, num_vertex0, vidx_per_face, edgev_per_vertex,
+  def update_face_edgev(vertex_spidx, num_vertex0, vidx_per_face, edgev_per_vertex,
                         valid_ev_num_pv, xyz, mesh_summary):
     face_sp_indices, vidx_per_face_new, raw_vidx_2_sp_vidx = MeshSampling.down_sampling_face(\
-                                  vertex_sp_indices, num_vertex0, vidx_per_face, False)
-    edgev_per_vertex_new3, valid_ev_num_pv_new, raw_edgev_spvidx = MeshSampling.rich_edges(vertex_sp_indices,\
+                                  vertex_spidx, num_vertex0, vidx_per_face, False)
+    edgev_per_vertex_new3, valid_ev_num_pv_new, raw_edgev_spvidx = MeshSampling.rich_edges(vertex_spidx,\
               edgev_per_vertex, xyz, raw_vidx_2_sp_vidx, valid_ev_num_pv, mesh_summary)
     return face_sp_indices, vidx_per_face_new, edgev_per_vertex_new3, valid_ev_num_pv_new
 
   @staticmethod
-  def get_raw_vidx_2_sp_vidx(vertex_sp_indices, num_vertex0):
-    assert len(get_tensor_shape(vertex_sp_indices)) == 1
-    _num_vertex_sp = get_tensor_shape(vertex_sp_indices)[0]
-    vertex_sp_indices = tf.expand_dims(tf.cast(vertex_sp_indices, tf.int32),1)
+  def get_raw_vidx_2_sp_vidx(vertex_spidx, num_vertex0):
+    assert len(get_tensor_shape(vertex_spidx)) == 1
+    _num_vertex_sp = get_tensor_shape(vertex_spidx)[0]
+    vertex_spidx = tf.expand_dims(tf.cast(vertex_spidx, tf.int32),1)
     # scatter new vertex index
-    raw_vidx_2_sp_vidx = tf.scatter_nd(vertex_sp_indices, tf.range(_num_vertex_sp)+1, [num_vertex0])-1
+    raw_vidx_2_sp_vidx = tf.scatter_nd(vertex_spidx, tf.range(_num_vertex_sp)+1, [num_vertex0])-1
     return raw_vidx_2_sp_vidx
 
   @staticmethod
-  def rich_edges(vertex_sp_indices, edgev_per_vertex, xyz, raw_vidx_2_sp_vidx,
+  def rich_edges(vertex_spidx, edgev_per_vertex, xyz, raw_vidx_2_sp_vidx,
                  valid_ev_num_pv,  mesh_summary={}, max_fail_2unit_ev_rate=None, scale=None):
-    assert len(get_tensor_shape(vertex_sp_indices)) == 1
+    assert len(get_tensor_shape(vertex_spidx)) == 1
     assert len(get_tensor_shape(edgev_per_vertex)) == len(get_tensor_shape(xyz)) == 2
     #rich_edge_method = 'remove'
     rich_edge_method = 'twounit_edgev'
 
     raw_edgev_spvidx = tf.gather(raw_vidx_2_sp_vidx, edgev_per_vertex)
-    edgev_per_vertex_new1 = tf.gather(raw_edgev_spvidx, vertex_sp_indices)
+    edgev_per_vertex_new1 = tf.gather(raw_edgev_spvidx, vertex_spidx)
 
-    #raw_edgev_spvidx = tf.gather(edgev_per_vertex, vertex_sp_indices)
+    #raw_edgev_spvidx = tf.gather(edgev_per_vertex, vertex_spidx)
     #edgev_per_vertex_new1 = tf.gather(raw_vidx_2_sp_vidx, raw_edgev_spvidx)
 
     if rich_edge_method == 'twounit_edgev':
       twounit_edgev, mesh_summary['fail_2uedge_rate'] = MeshSampling.get_twounit_edgev(
-                    edgev_per_vertex, xyz, raw_vidx_2_sp_vidx, vertex_sp_indices, max_fail_2unit_ev_rate, scale)
+                    edgev_per_vertex, xyz, raw_vidx_2_sp_vidx, vertex_spidx, max_fail_2unit_ev_rate, scale)
       edgev_per_vertex_new2 = MeshSampling.replace_neg_by_2unit_edgev(edgev_per_vertex_new1, twounit_edgev)
       if valid_ev_num_pv is None:
         valid_ev_num_pv_new = None
       else:
-        valid_ev_num_pv_new = tf.gather( valid_ev_num_pv, vertex_sp_indices )
+        valid_ev_num_pv_new = tf.gather( valid_ev_num_pv, vertex_spidx )
 
     elif rich_edge_method == 'remove':
       if valid_ev_num_pv is None:
         valid_ev_num_pv_new = None
       else:
-        valid_ev_num_pv_new = MeshSampling.update_valid_ev_num_pv(edgev_per_vertex_new1, valid_ev_num_pv, vertex_sp_indices)
+        valid_ev_num_pv_new = MeshSampling.update_valid_ev_num_pv(edgev_per_vertex_new1, valid_ev_num_pv, vertex_spidx)
       edgev_per_vertex_new2 = MeshSampling.replace_neg_by_lr(edgev_per_vertex_new1)
 
     # there may still be some negative, but very few. Just handle as lonely
@@ -1443,35 +1449,12 @@ class MeshSampling():
     return backprop_vidx, bp_fail_mask
 
   @staticmethod
-  def down_sampling_face(vertex_sp_indices, num_vertex0, vidx_per_face, is_rm_some_label):
-    assert  TfUtil.tsize(vertex_sp_indices) == 1
-    raw_vidx_2_sp_vidx = MeshSampling.get_raw_vidx_2_sp_vidx(vertex_sp_indices, num_vertex0)
+  def down_sampling_face(vertex_spidx, num_vertex0, vidx_per_face, is_rm_some_label):
+    assert  TfUtil.tsize(vertex_spidx) == 1
+    raw_vidx_2_sp_vidx = MeshSampling.get_raw_vidx_2_sp_vidx(vertex_spidx, num_vertex0)
     rm_cond = 'any' if is_rm_some_label else 'all'
     face_sp_indices, vidx_per_face_new = MeshSampling.rm_lost_face(vidx_per_face, raw_vidx_2_sp_vidx, rm_cond=rm_cond)
     return face_sp_indices, vidx_per_face_new, raw_vidx_2_sp_vidx
-
-  @staticmethod
-  def gen_mesh_ply_basic(datas, dir_name='', base_name='', ply_dir=None, gen_edgev=False):
-    if ply_dir == None:
-      ply_dir = '/tmp'
-    path =  '{}/{}'.format(ply_dir, dir_name)
-    for item in datas:
-      if isinstance(datas[item], tf.Tensor):
-        datas[item] = datas[item].numpy()
-
-
-    if gen_edgev:
-      ply_fn = '{}/edgev_{}.ply'.format(path, base_name)
-      down_sample_rate = 1e-1
-      edgev_per_vertex = datas['edgev_per_vertex']
-      edgev_vidx_per_face = MeshSampling.edgev_to_face(edgev_per_vertex, datas['valid_ev_num_pv'])
-
-      ply_util.gen_mesh_ply(ply_fn, datas['xyz'], edgev_vidx_per_face,
-                          vertex_color=datas['color'])
-
-    ply_fn = '{}/{}.ply'.format(path, base_name)
-    ply_util.gen_mesh_ply(ply_fn, datas['xyz'], datas['vidx_per_face'],
-                          face_label=datas['label_category'])
 
 
   @staticmethod
@@ -1938,11 +1921,176 @@ class EdgeVPath():
     ply_util.gen_mesh_ply(ply_fn, xyz, edges)
 
 
+class VertexDecimation():
+  _sp_w_norm = 0.2
+  @staticmethod
+  def down_sampling_mesh(_num_vertex_sp, raw_datas, mesh_summary):
+    with_batch_dim = True
+    if TfUtil.tsize(raw_datas['xyz']) == 2:
+      with_batch_dim = False
+      for item in raw_datas:
+        raw_datas[item] = tf.expand_dims(raw_datas[item], 0)
+
+    vertex_downsample_method = 'prefer_smooth'
+    num_vertex0 = TfUtil.get_tensor_shape(raw_datas['xyz'])[1]
+    if vertex_downsample_method == 'prefer_smooth':
+      smooth_factor = VertexDecimation.get_smooth_perv_raw(raw_datas['xyz'],
+          raw_datas['nxnynz'], raw_datas['edgev_per_vertex'], raw_datas['valid_ev_num_pv'])
+      vertex_spidx, vertex_rm_idx, sp_smooth_loss = VertexDecimation.smooth_sampling(smooth_factor, _num_vertex_sp)
+      #GenPlys.gen_mesh_ply_basic(raw_datas, 'vertex_decimation', 'nw_%d'%(10*VertexDecimation._sp_w_norm),
+      #                           vertex_spidx=vertex_spidx, vertex_rm_idx=vertex_rm_idx)
+
+    elif vertex_downsample_method == 'random':
+      vertex_spidx = MeshSampling.down_sampling_vertex_random(
+                                num_vertex0, _num_vertex_sp)
+
+    VertexDecimation.update_face(vertex_spidx, vertex_rm_idx, raw_datas['vidx_per_face'], num_vertex0)
+    import pdb; pdb.set_trace()  # XXX BREAKPOINT
+
+    face_sp_indices, vidx_per_face_new, edgev_per_vertex_new, valid_ev_num_pv_new =\
+        VertexDecimation.update_face_edgev(
+        vertex_spidx, num_vertex0, raw_datas['vidx_per_face'],
+        raw_datas['edgev_per_vertex'], raw_datas['valid_ev_num_pv'], xyz=raw_datas['xyz'],
+        mesh_summary=mesh_summary)
+    raw_datas = MeshSampling.gather_datas(raw_datas, vertex_spidx,
+                                    face_sp_indices, vidx_per_face_new,
+                                    edgev_per_vertex_new, valid_ev_num_pv_new)
+
+
+  @staticmethod
+  def get_smooth_perv_raw(xyz, norm, edgev_per_vertex, valid_ev_num_pv):
+    xyz_smooth = VertexDecimation.get_smooth_perv(xyz, edgev_per_vertex, valid_ev_num_pv)
+    norm_smooth = VertexDecimation.get_smooth_perv(norm, edgev_per_vertex, valid_ev_num_pv)
+    norm_w = VertexDecimation._sp_w_norm
+    smooth_factor = norm_smooth * norm_w + xyz_smooth * (1-norm_w)
+    return smooth_factor
+
+  @staticmethod
+  def smooth_sampling(smooth_factor, _num_vertex_sp):
+    sort_idx = tf.contrib.framework.argsort(smooth_factor, axis=-1, direction='DESCENDING')
+    sp_idx = sort_idx[:,0:_num_vertex_sp]
+    rm_idx = sort_idx[:,_num_vertex_sp:]
+
+    rm_smoothf = TfUtil.gather_second_d(smooth_factor, rm_idx)
+    sp_smooth_loss = tf.reduce_mean(rm_smoothf,-1)
+    return sp_idx, rm_idx, sp_smooth_loss
+
+  @staticmethod
+  def get_smooth_perv(features, edgev_per_vertex, valid_ev_num_pv):
+    '''
+    Smaller mean smoother
+    '''
+    assert TfUtil.tsize(features) == TfUtil.tsize(edgev_per_vertex) == 3
+    max_evn = tf.reduce_max(valid_ev_num_pv)
+    mean_evn = tf.cast( tf.reduce_mean(valid_ev_num_pv), tf.float32)
+    evn = tf.minimum(max_evn, tf.cast(mean_evn*1.6, tf.int32))
+    edgev_per_vertex = edgev_per_vertex[:,:,0:evn]
+
+    features_aug = TfUtil.gather_second_d(features, edgev_per_vertex)
+    mean_f = tf.reduce_mean(features_aug, -2)
+    mean_err = tf.norm( mean_f - features, axis=-1)
+    tmp = tf.reduce_mean(mean_err, axis=-1, keepdims=True)
+    smooth = mean_err / tmp
+
+    return smooth
+
+
+  @staticmethod
+  def get_raw_vidx_2_sp_vidx(vertex_spidx, num_vertex0):
+    assert len(get_tensor_shape(vertex_spidx)) == 2
+    batch_size, _num_vertex_sp = TfUtil.get_tensor_shape(vertex_spidx)
+    batch_idx = tf.tile(tf.reshape(tf.range(batch_size), [-1,1,1]), [1,_num_vertex_sp,1])
+    vertex_spidx = tf.expand_dims(tf.cast(vertex_spidx, tf.int32),-1)
+    vertex_spidx = tf.concat([batch_idx, vertex_spidx], -1)
+
+    new_vidx = tf.tile(tf.reshape(tf.range(_num_vertex_sp),[1,-1]), [batch_size,1])
+    raw_vidx_2_sp_vidx = tf.scatter_nd(vertex_spidx, new_vidx+1, [batch_size, num_vertex0])-1
+    return raw_vidx_2_sp_vidx
+
+  @staticmethod
+  def update_edgev(vertex_spidx, vertex_rm_idx, edgev_per_vertex, num_vertex0):
+
+  @staticmethod
+  def update_face(vertex_spidx, vertex_rm_idx, vidx_per_face, num_vertex0):
+    raw_vidx_2_sp_vidx = VertexDecimation.get_raw_vidx_2_sp_vidx(vertex_spidx, num_vertex0)
+
+    edgev_rmv = TfUtil.gather_second_d()
+    import pdb; pdb.set_trace()  # XXX BREAKPOINT
+    pass
+
+
+  @staticmethod
+  def update_face_edgev(vertex_spidx, num_vertex0, vidx_per_face, edgev_per_vertex,
+                        valid_ev_num_pv, xyz, mesh_summary):
+    edgev_per_vertex_new3, valid_ev_num_pv_new, raw_edgev_spvidx = MeshSampling.rich_edges(vertex_spidx,\
+              edgev_per_vertex, xyz, raw_vidx_2_sp_vidx, valid_ev_num_pv, mesh_summary)
+    import pdb; pdb.set_trace()  # XXX BREAKPOINT
+    face_sp_indices, vidx_per_face_new, raw_vidx_2_sp_vidx = MeshSampling.down_sampling_face(\
+                                  vertex_spidx, num_vertex0, vidx_per_face, False)
+    return face_sp_indices, vidx_per_face_new, edgev_per_vertex_new3, valid_ev_num_pv_new
+
+    return raw_datas
+
+  @staticmethod
+  def contract_vertex_pairs(vertex_spidx, edgev_per_vertex, xyz, raw_vidx_2_sp_vidx,
+                 valid_ev_num_pv,  mesh_summary={}, max_fail_2unit_ev_rate=None, scale=None):
+    assert len(get_tensor_shape(vertex_spidx)) == 1
+    assert len(get_tensor_shape(edgev_per_vertex)) == len(get_tensor_shape(xyz)) == 2
+    pass
+
+class GenPlys():
+  @staticmethod
+  def gen_mesh_ply_basic(datas, dir_name='', base_name='', ply_dir=None, gen_edgev=False,
+                         vertex_spidx=None, vertex_rm_idx=None):
+    if ply_dir == None:
+      ply_dir = '/tmp/plys'
+    path =  '{}/{}'.format(ply_dir, dir_name)
+    if base_name=='':
+      base_name = '1'
+    for item in datas:
+      if isinstance(datas[item], tf.Tensor):
+        datas[item] = datas[item].numpy()
+      if datas[item].ndim == 3:
+        datas[item] = datas[item][0]
+
+    if vertex_spidx is not None:
+      if isinstance(vertex_spidx, tf.Tensor):
+        vertex_spidx = vertex_spidx.numpy()
+      if vertex_spidx.ndim == 2:
+        vertex_spidx = vertex_spidx[0]
+
+    # **************
+    if gen_edgev:
+      ply_fn = '{}/edgev_{}.ply'.format(path, base_name)
+      down_sample_rate = 1e-1
+      edgev_per_vertex = datas['edgev_per_vertex']
+      edgev_vidx_per_face = MeshSampling.edgev_to_face(edgev_per_vertex, datas['valid_ev_num_pv'])
+
+      ply_util.gen_mesh_ply(ply_fn, datas['xyz'], edgev_vidx_per_face,
+                          vertex_color=datas['color'])
+
+    # **************
+    num_vertex0 = datas['xyz'].shape[0]
+    if vertex_spidx is not None:
+      sp_xyz = np.take(datas['xyz'], vertex_spidx, axis=0)
+      rm_xyz = np.take(datas['xyz'], vertex_rm_idx, axis=0)
+      ply_fn = '{}/sp_{}.ply'.format(path, base_name)
+      ply_util.create_ply(sp_xyz, ply_fn)
+      ply_fn = '{}/rm_{}.ply'.format(path, base_name)
+      ply_util.create_ply(rm_xyz, ply_fn)
+
+
+    # **************
+    ply_fn = '{}/{}.ply'.format(path, base_name)
+    ply_util.gen_mesh_ply(ply_fn, datas['xyz'], datas['vidx_per_face'],
+                          face_label=datas['label_category'])
+
 if __name__ == '__main__':
   dataset_name = 'MATTERPORT'
   dset_path = '/DS/Matterport3D/Matterport3D_WHOLE_extracted/v1/scans'
   tfrecord_path = '/DS/Matterport3D/MATTERPORT_TF/mesh_tfrecord_555'
   tfrecord_path = '/home/z/Research/SparseVoxelNet/data/MATTERPORT_TF/mesh_tfrecord'
   read_tfrecord(dataset_name, tfrecord_path)
+
 
 

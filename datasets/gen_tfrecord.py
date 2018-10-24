@@ -58,7 +58,7 @@ class Raw_To_Tfrecord():
     if not os.path.exists(self.data_path):
       os.makedirs(self.data_path)
     self.num_point = num_point
-    self.min_sample_rate = 0.6 # sample_rate = self.num_point/org_num
+    self.min_sample_rate = 0.01 # sample_rate = self.num_point/org_num
     self.num_face = int(num_point * 5)
     self.block_size = block_size
     self.block_stride_rate =  0.8
@@ -324,8 +324,8 @@ class Raw_To_Tfrecord():
     assert min_sp_rate > self.min_sample_rate, 'got small sample rate:{} < {}'.format(
                                               min_sp_rate, self.min_sample_rate)
 
-    #main_split_sampling_rawmesh = MeshSampling.eager_split_sampling_rawmesh
-    main_split_sampling_rawmesh = MeshSampling.sess_split_sampling_rawmesh
+    main_split_sampling_rawmesh = MeshSampling.eager_split_sampling_rawmesh
+    #main_split_sampling_rawmesh = MeshSampling.sess_split_sampling_rawmesh
     splited_sampled_datas, raw_vertex_nums, mesh_summary = main_split_sampling_rawmesh(
         raw_datas, self.num_point, splited_vidx, self.dataset_meta, self.ply_dir)
 
@@ -589,9 +589,9 @@ def main_matterport():
   t0 = time.time()
   dataset_name = 'MATTERPORT'
 
-  num_points = {'MODELNET40':None, 'MATTERPORT':100000}
+  num_points = {'MODELNET40':None, 'MATTERPORT':10000}
   num_point = num_points[dataset_name]
-  block_sizes = {'MODELNET40':None, 'MATTERPORT':np.array([3.0, 3.0, 5.0]) }
+  block_sizes = {'MODELNET40':None, 'MATTERPORT':np.array([4.0, 4.0, 5.0]) }
   block_size = block_sizes[dataset_name]
   flag = ''.join([str(int(d)) for d in block_size]) + '_' + str(int(num_point/1000))+'K'
 
@@ -601,12 +601,12 @@ def main_matterport():
   #dset_path = '/home/z/DS/Matterport3D/Matterport3D_WHOLE_extracted/v1/scans'
   #tfrecord_path = os.path.join(ROOT_DIR, 'data/MATTERPORT_TF')
 
-  region_name = 'region*'
+  region_name = 'region0'
   scene_names_all = os.listdir(dset_path) # 91
   scene_names_all.sort()
-  #scene_name = ['17DRP5sb8fy']
-  #scene_name = ['2t7WUuJeko7']
-  scene_names = scene_names_all
+  scene_names = ['17DRP5sb8fy']
+  #scene_names = ['2t7WUuJeko7']
+  #scene_names = scene_names_all
   raw_fns = []
   for scene_name in scene_names:
     raw_glob = os.path.join(dset_path, '{}/*/region_segmentations/{}.ply'.format(
@@ -617,11 +617,11 @@ def main_matterport():
 
   raw_fns = clean_bad_files(dataset_name, raw_fns, dset_path)
   raw_fns.sort()
-  #main_write_multi(dataset_name, raw_fns, tfrecord_path, num_point,\
-  #            block_size, ply_dir,
-  #            multiprocessing=0) # 4 to process data, 0 to check
+  main_write_multi(dataset_name, raw_fns, tfrecord_path, num_point,\
+              block_size, ply_dir,
+              multiprocessing=0) # 4 to process data, 0 to check
 
-  main_merge_tfrecord(dataset_name, tfrecord_path)
+  #main_merge_tfrecord(dataset_name, tfrecord_path)
 
   #main_gen_ply(dataset_name, tfrecord_path)
   print('total time: {} sec'.format(time.time() - t0))
