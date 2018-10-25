@@ -38,7 +38,7 @@ def idx1d_to_3d_np(i1d):
 
 class OctreeTf():
   _fal = 0.01
-  _max_scale_num = 4
+  _max_scale_num = 3
   def __init__(self, scale, resolution, min_xyz=[0,0,0]):
     self._scale = scale
     self._min = min_xyz
@@ -94,17 +94,18 @@ class OctreeTf():
     if self._scale==0:
       self.voxel_sort_idxs = voxel_sort_idxs
       idx_scope_lsc = OctreeTf.get_idx_scope(end_idxs_lastscale)
-      flatidx_scopes = self.get_upper_scale_scope(idx_scope_lsc)
-      flat_vidx_lsc = OctreeTf.get_flat_idx(idx_scope_lsc[:,0:-2])
-      flatidx_scope_lsc = tf.concat([tf.expand_dims(flat_vidx_lsc,-1), idx_scope_lsc[:,-2:]], -1)
-      flatidx_scopes.append(flatidx_scope_lsc)
-      self.flatidx_scopes = flatidx_scopes
+      flatvidx_rawidxscopes = self.get_upper_scale_scope(idx_scope_lsc)
+      flat_idx_lsc = OctreeTf.get_flat_idx(idx_scope_lsc[:,0:-2])
+      flatidx_scope_lsc = tf.concat([tf.expand_dims(flat_idx_lsc,-1), idx_scope_lsc[:,-2:]], -1)
+      flatvidx_rawidxscopes.append(flatidx_scope_lsc)
+      self.flatvidx_rawidxscopes = flatvidx_rawidxscopes
+
       self.gen_voxel_ply(xyzs)
       self.record(voxel_sort_idxs, idx_scope_lsc, rawfn)
     return voxel_sort_idxs, end_idxs_lastscale
 
   def get_upper_scale_scope(self, idx_scope_lsc):
-    flatidx_scopes = [None]*(self._max_scale_num-1)
+    flatvidx_rawidxscopes = [None]*(self._max_scale_num-1)
     for i in range(1, self._max_scale_num):
       # start from upper scale to 0, save time by progressively reduce
       # idx_scope_lsc
@@ -117,13 +118,13 @@ class OctreeTf():
       new_end_idx_i = unique_idx_scope[:,-1:]
       new_start_idx_i = tf.concat([tf.zeros([1,1], tf.int32), new_end_idx_i[0:-1,:]], 0)
       new_idx_i = tf.concat([new_start_idx_i, new_end_idx_i], -1)
-      flatidx_scope_cur = tf.concat([tf.expand_dims(unique_fidx,-1), new_idx_i], -1)
-      flatidx_scopes[s] = flatidx_scope_cur
+      flatvidx_rawidxscopes_cur = tf.concat([tf.expand_dims(unique_fidx,-1), new_idx_i], -1)
+      flatvidx_rawidxscopes[s] = flatvidx_rawidxscopes_cur
 
       # save time for next iteration
       idx_scope_lsc = tf.concat([unique_idx_scope[:,0:-2], new_idx_i], -1)
 
-    return flatidx_scopes
+    return flatvidx_rawidxscopes
 
   def update_octree_idx_scope(self, idx_scope_lsc):
     # too complicate, give up for now
@@ -266,23 +267,52 @@ class OctreeTf():
       #eil = np.fromfile(fn, dtype=np.int32, sep="\t")
 
   @staticmethod
-  def get_flat_idx(vidx):
-    sn = TfUtil.get_tensor_shape(vidx)[1]
+  def get_flat_idx(vidxs):
+    sn = TfUtil.get_tensor_shape(vidxs)[1]
     i = 0
-    flat_vidx = vidx[:,i] * pow(8,sn-1)
+    flat_vidx = vidxs[:,i] * pow(8,sn-1)
     for i in range(1, sn):
-      flat_vidx += vidx[:,i] * pow(8, sn-i-1)
+      flat_vidx += vidxs[:,i] * pow(8, sn-i-1)
     return flat_vidx
 
-  def get_voxel_idx_scopes(self, vidxs):
-    self._nodes[1]._nodes[1]._value
-    import pdb; pdb.set_trace()  # XXX BREAKPOINT
-    pass
+  @staticmethod
+  def search(base, aim):
+    '''
+    both base and aim are sorted
+    '''
+    n = TfUtil.get_tensor_shape(base)[0]
+    m = TfUtil.get_tensor_shape(aim)[0]
+
+    def body(i, j, idx):
+      match = tf.equal(base[i,0], aim[j])
+
+      def found(i,j,idx):
+        idx = tf.concat([idx, tf.reshape(i,[1,1])], 0)
+        return i+1, j+1, idx
+      i,j,idx = tf.cond(match, lambda: found(i,j,idx), lambda: (i+1,j,idx) )
+      return i,j, idx
+
+    i = tf.constant(0)
+    j = tf.constant(0)
+    idx = tf.zeros([0,1], tf.int32)
+    cond = lambda i,j,idx: tf.logical_and( tf.less(i, n), tf.less(j,m))
+    i,j,idx = tf.while_loop(cond, body, [i,j,idx])
+    return tf.squeeze(idx,1)
+
+  def search_idx_scope(self, vidxs):
+    scale = TfUtil.get_tensor_shape(vidxs)[1] - 1
+    flat_vidx = OctreeTf.get_flat_idx(vidxs)
+    flatvidx_rawidxscope =  self.flatvidx_rawidxscopes[scale]
+    aim_idx = OctreeTf.search(flatvidx_rawidxscope, flat_vidx)
+    check_all_searched =  tf.assert_equal(TfUtil.tshape0(aim_idx), TfUtil.tshape0(vidxs),
+                                          message="search failed")
+    with tf.control_dependencies([check_all_searched]):
+      return aim_idx
 
   def gen_voxel_ply(self, xyzs0):
     xyzs = tf.gather(xyzs0, self.voxel_sort_idxs, 0)
     vidxs = tf.constant( [[1,1], [2,4]], tf.int32)
-    self.get_voxel_idx_scopes(vidxs)
+    aim_idx = self.search_idx_scope(vidxs)
     import pdb; pdb.set_trace()  # XXX BREAKPOINT
     pass
 
