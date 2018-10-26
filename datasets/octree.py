@@ -341,33 +341,49 @@ class OctreeTf():
     i,j,idx = tf.while_loop(cond, body, [i,j,idx])
     return tf.squeeze(idx,1)
 
-  def search_idx_scope(self, vidxs):
-    scale = TfUtil.get_tensor_shape(vidxs)[1] - 1
-    flat_vidx = OctreeTf.get_flat_idx(vidxs)
-    flatvidx_rawidxscope =  self.flatvidx[scale]
+  def search_idx_scope(self, flat_vidx, aim_scale):
+    flatvidx_rawidxscope =  self.flatvidx[aim_scale]
     aim_idx = OctreeTf.search(flatvidx_rawidxscope, flat_vidx)
-    check_all_searched =  tf.assert_equal(TfUtil.tshape0(aim_idx), TfUtil.tshape0(vidxs),
+    check_all_searched =  tf.assert_equal(TfUtil.tshape0(aim_idx), TfUtil.tshape0(flat_vidx),
                                           message="search failed")
     with tf.control_dependencies([check_all_searched]):
       return aim_idx
 
-  def get_vidxs_by_xyz(self, xyzs):
-    pass
-
-  def gen_voxel_ply(self, xyzs0):
-    xyzs = tf.gather(xyzs0, self.sorted_idxs_base, 0)
-    vidx_1ds = OctreeTf.get_vidx1d_all_scales(xyzs, self._min, self._resolution, self._max_scale_num)
+  def search_neighbours(self, xyzs_sp, aim_scale):
+    assert aim_scale < self._max_scale_num
+    vidx_1ds = OctreeTf.get_vidx1d_all_scales(xyzs_sp, self._min, self._resolution, aim_scale+1)
     flatvidx = OctreeTf.get_flat_idx(vidx_1ds)
+    unique_flatvidx, idx_inv = tf.unique(flatvidx)
 
-    xyzs0 = xyzs[0:100,:]
-    min0 = tf.reduce_min(xyzs0, 0)
-    max0 = tf.reduce_max(xyzs0, 0)
+    uni_aim_idx = self.search_idx_scope(unique_flatvidx, aim_scale)
+    aim_idx = tf.gather(uni_aim_idx, idx_inv, 0)
+
+    rawidx_scopes =  tf.gather(self.rawidx_scopes[aim_scale], aim_idx, 0)
+    return rawidx_scopes
+
+  def gen_voxel_ply(self, xyzs):
+    from utils import ply_util
+    xyzs = tf.gather(xyzs, self.sorted_idxs_base, 0)
+
+    vn0 = TfUtil.tshape0(xyzs)
+    sp_idx = tf.random_shuffle(tf.range(vn0))[0:10]
+    sp_idx = tf.contrib.framework.sort(sp_idx)
+    xyzs_sp = tf.gather(xyzs, sp_idx, 0)
+
+    idx_scopes = self.search_neighbours(xyzs_sp, 1)
+
+
+    for i in range(10):
+      ply_dir = '/tmp/octree_plys'
+      fn = os.path.join(ply_dir, 'base_%d.ply'%(i))
+      ply_util.create_ply(xyzs_sp[i:i+1,:], fn)
+
+      fn = os.path.join(ply_dir, 'neighbors_%d.ply'%(i))
+      xyzs_neig_i = xyzs[idx_scopes[i,0]:idx_scopes[i,1], :]
+      ply_util.create_ply(xyzs_neig_i, fn)
+
     import pdb; pdb.set_trace()  # XXX BREAKPOINT
 
-    vidxs = tf.constant( [[1,1], [2,4], [5,1]], tf.int32)
-    vidxs = tf.constant( [[1,0,1], [2,4,3], [3,2,2], [5,1,0]], tf.int32)
-    aim_idx = self.search_idx_scope(vidxs)
-    import pdb; pdb.set_trace()  # XXX BREAKPOINT
     pass
 
 
