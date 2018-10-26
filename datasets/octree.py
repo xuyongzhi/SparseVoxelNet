@@ -41,7 +41,7 @@ def idx1d_to_3d_np(i1d):
 class OctreeTf():
   _check_optial = True
   _fal = 0.01
-  _scale_num = 6
+  _scale_num = 3
   def __init__(self, resolution=None, scale=None, min_xyz=None):
     self._scale = scale
     self._min = min_xyz
@@ -72,11 +72,19 @@ class OctreeTf():
       self.vidx = [d[:,0:-2] for d in vidx_rawscopes]
       self.idxscope_pervs = [d[:,-2:] for d in vidx_rawscopes]
       self.show_summary()
+      self.merge_neighbour()
       #self.check_sort(xyzs)
       if record:
         self.recording(rawfn)
       #self.test_search_inv(xyzs)
     return sorted_idxs_base, end_idxs_lastscale
+
+  def merge_neighbour(self):
+    for s in range(self._scale_num-1, self._scale_num):
+      vidx_s = self.vidx[s]
+      vidx_3d = idx1d_to_3d(vidx_s[:,-1])
+      import pdb; pdb.set_trace()  # XXX BREAKPOINT
+      pass
 
   def show_summary(self):
     # vns:      [4, 18, 125, 630, 2592, 11050]
@@ -541,7 +549,7 @@ def main_read_octree_eager():
   octree_tf.load_eager(rawfn)
   t0 = time.time()
   aim_scale = 5
-  idx_scopes = octree_tf.test_search_inv(xyzs, 10, aim_scale)
+  idx_scopes = octree_tf.test_search_inv(xyzs, 200*1000, aim_scale)
   t = time.time() - t0
   print('read ok, t={}'.format(t))
 
@@ -562,8 +570,8 @@ def main_read_octree_graph():
     raw_xyzs_normed = norm_xyzs(raw_xyzs_pl)
     feed_dict[raw_xyzs_pl] = raw_xyzs
 
-    aim_scale = 4
-    idx_scopes = octree_tf.test_search_inv(raw_xyzs_normed, 100*1000, aim_scale)
+    aim_scale = 5
+    idx_scopes = octree_tf.test_search_inv(raw_xyzs_normed, 200*1000, aim_scale)
 
     with tf.Session() as sess:
       t0 = time.time()
@@ -575,8 +583,8 @@ def main_read_octree_graph():
 
 
 if __name__ == '__main__':
-  #main_gen_octree()
+  main_gen_octree()
   #main_read_octree_eager()
-  main_read_octree_graph()
+  #main_read_octree_graph()
   pass
 
