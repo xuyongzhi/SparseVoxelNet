@@ -3,6 +3,7 @@
 import os, glob,sys
 import numpy as np
 import tensorflow as tf
+import time
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT_DIR = os.path.dirname(BASE_DIR)
@@ -10,6 +11,7 @@ sys.path.append(BASE_DIR)
 sys.path.append(ROOT_DIR)
 
 from utils.tf_util import TfUtil
+from MATTERPORT_util.MATTERPORT_util import parse_ply_file, parse_ply_vertex_semantic
 
 def align_float(x, unit=0.01):
   return tf.rint(x/unit)*unit
@@ -39,7 +41,7 @@ def idx1d_to_3d_np(i1d):
 class OctreeTf():
   _check_optial = True
   _fal = 0.01
-  _scale_num = 3
+  _scale_num = 6
   def __init__(self, resolution=None, scale=None, min_xyz=None):
     self._scale = scale
     self._min = min_xyz
@@ -69,11 +71,24 @@ class OctreeTf():
       self.flatvidx = [d[:,0:-2] for d in  flatvidx_rawidxscopes]
       self.vidx = [d[:,0:-2] for d in vidx_rawscopes]
       self.idxscope_pervs = [d[:,-2:] for d in vidx_rawscopes]
+      self.show_summary()
       #self.check_sort(xyzs)
       if record:
         self.recording(rawfn)
-      #self.gen_voxel_ply(xyzs)
+      #self.test_search_inv(xyzs)
     return sorted_idxs_base, end_idxs_lastscale
+
+  def show_summary(self):
+    # vns:      [4, 18, 125, 630, 2592, 11050]
+    # pn_pervs: [50431, 11207, 1613, 320, 77, 18]
+    vns = [TfUtil.tshape0(v) for v in self.flatvidx]
+    pn_pervs = []
+    for s in range(self._scale_num):
+      idxs = self.idxscope_pervs[s]
+      np = idxs[:,1] - idxs[:,0]
+      pn_pervs.append( tf.reduce_mean(np).numpy() )
+    print(vns)
+    print(pn_pervs)
 
   def check_sort(self, xyzs):
     xyzs = tf.gather(xyzs, self.sorted_idxs_base)
@@ -389,42 +404,36 @@ class OctreeTf():
       scale_num = len(self.flatvidx)
       assert scale_num == self._scale_num
 
-  def gen_voxel_ply(self, xyzs):
+  def test_search_inv(self, xyzs, test_n, ply=False):
     from utils import ply_util
-    only_check_sort = False
     xyzs = tf.gather(xyzs, self.sorted_idxs_base, 0)
 
     vn0 = TfUtil.tshape0(xyzs)
-    sp_idx = tf.random_shuffle(tf.range(vn0))[0:10]
+    sp_idx = tf.random_shuffle(tf.range(vn0))[0:test_n]
     sp_idx = tf.contrib.framework.sort(sp_idx)
     xyzs_sp = tf.gather(xyzs, sp_idx, 0)
 
-    idx_scopes = self.search_neighbours(xyzs_sp, 1)
+    idx_scopes = self.search_neighbours(xyzs_sp, self._scale_num-1)
+    if not ply:
+      return idx_scopes
 
-    for i in range(10):
+    for i in range(5):
       ply_dir = '/tmp/octree_plys'
       fn = os.path.join(ply_dir, 'base_%d.ply'%(i))
       xyz_i = xyzs_sp[i:i+1,:]
-      if not only_check_sort:
-        ply_util.create_ply(xyz_i, fn)
+      ply_util.create_ply(xyz_i, fn)
 
       fn = os.path.join(ply_dir, 'neighbors_%d.ply'%(i))
-      try:
-        xyzs_neig_i = xyzs[idx_scopes[i,0]:idx_scopes[i,1], :]
-      except:
-        import pdb; pdb.set_trace()  # XXX BREAKPOINT
-        pass
+      xyzs_neig_i = xyzs[idx_scopes[i,0]:idx_scopes[i,1], :]
       min_i = tf.reduce_min(xyzs_neig_i, 0)
       max_i = tf.reduce_max(xyzs_neig_i, 0)
+      scope_i = max_i - min_i
       c0 = tf.reduce_all(tf.greater_equal(xyz_i - min_i,0))
       c1 = tf.reduce_all(tf.greater_equal(max_i - xyz_i,0))
       check = tf.assert_equal(tf.logical_and(c0, c1), True)
 
-      if not only_check_sort:
-        ply_util.create_ply(xyzs_neig_i, fn)
-
-    pass
-
+      ply_util.create_ply(xyzs_neig_i, fn)
+    return idx_scopes
 
 def norm_xyzs(xyzs):
   float_align = fal = 0.01
@@ -438,24 +447,53 @@ def norm_xyzs(xyzs):
   xyzs = xyzs - min_xyz
   return xyzs
 
-def main():
-  tf.enable_eager_execution()
-  from MATTERPORT_util.MATTERPORT_util import parse_ply_file, parse_ply_vertex_semantic
-  rawfn = '/DS/Matterport3D/Matterport3D_WHOLE_extracted/v1/scans/17DRP5sb8fy/17DRP5sb8fy/region_segmentations/region0.ply'
+def gen_octree(rawfn, resolution):
   raw_datas = parse_ply_file(rawfn)
   xyzs = norm_xyzs(raw_datas['xyz'])
 
   resolution = tf.constant([3.2,3.2,3.2])
-  scale_num = 3
 
-  #octree_tf = OctreeTf(resolution, 0)
-  #octree_tf.add_point_cloud(xyzs, record=True, rawfn=rawfn)
+  octree_tf = OctreeTf(resolution, 0)
+  octree_tf.add_point_cloud(xyzs, record=True, rawfn=rawfn)
 
-  octree_tf_1 = OctreeTf(resolution, 0)
-  octree_tf_1.load(rawfn)
-  octree_tf_1.gen_voxel_ply(xyzs)
+def main_gen_octree():
+  tf.enable_eager_execution()
+  scene_name = '17DRP5sb8fy'
+  region_name = 'region0'
+  fn_glob = '/DS/Matterport3D/Matterport3D_WHOLE_extracted/v1/scans/{}/{}/region_segmentations/{}.ply'.\
+                              format(scene_name, scene_name, region_name)
+  rawfns = glob.glob(fn_glob)
+
+  resolution = tf.constant([3.2,3.2,3.2])
+  for rawfn in rawfns:
+    print('start gen octree {}'.format(rawfn))
+    t0 = time.time()
+    gen_octree(rawfn, resolution)
+    t = time.time() - t0
+    print('use {} sec'.format(t))
+
   import pdb; pdb.set_trace()  # XXX BREAKPOINT
   pass
 
+
+def main_read_octree_eager():
+  tf.enable_eager_execution()
+  resolution = tf.constant([3.2,3.2,3.2])
+  scene_name = '17DRP5sb8fy'
+  region_name = 'region0'
+  rawfn = '/DS/Matterport3D/Matterport3D_WHOLE_extracted/v1/scans/{}/{}/region_segmentations/{}.ply'.\
+                              format(scene_name, scene_name, region_name)
+  raw_datas = parse_ply_file(rawfn)
+  xyzs = norm_xyzs(raw_datas['xyz'])
+
+  octree_tf = OctreeTf(resolution, 0)
+  octree_tf.load(rawfn)
+  t0 = time.time()
+  idx_scopes = octree_tf.test_search_inv(xyzs, 10)
+  t = time.time() - t0
+  print('read ok, t={}'.format(t))
+
+
 if __name__ == '__main__':
-  main()
+  #main_gen_octree()
+  main_read_octree_eager()
