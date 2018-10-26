@@ -131,25 +131,30 @@ class OctreeTf():
 
   @staticmethod
   def get_vidx1d_all_scales(xyzs, _min, _res, _scale_num):
-    xyzmin = tf.reduce_min(xyzs)
-    with tf.control_dependencies([tf.greater_equal(xyzmin,0)]):
-      xyzs = tf.identity(xyzs)
+    with tf.variable_scope('get_vidx1d_all_scales_Scale%d'%(_scale_num)):
+      xyzmin = tf.reduce_min(xyzs)
+      with tf.control_dependencies([tf.greater_equal(xyzmin,0)]):
+        xyzs = tf.identity(xyzs)
 
-    def body(vidx_1ds, i, min_i):
-      res_i = _res/(tf.cast(tf.pow(2, i), tf.float32))
-      vidx_3d = OctreeTf.get_vidx3d(xyzs, min_i, res_i)
-      vidx_1d = idx3d_to_1d(vidx_3d)
-      min_i = min_i + tf.expand_dims(res_i,0) * tf.cast(vidx_3d,tf.float32)
-      i+=1
-      vidx_1ds = tf.concat([vidx_1ds, tf.reshape(vidx_1d,[-1,1])], 1)
-      return vidx_1ds, i, min_i
+      def body(vidx_1ds, i, min_i):
+        res_i = _res/(tf.cast(tf.pow(2, i), tf.float32))
+        vidx_3d = OctreeTf.get_vidx3d(xyzs, min_i, res_i)
+        vidx_1d = idx3d_to_1d(vidx_3d)
+        min_i = min_i + tf.expand_dims(res_i,0) * tf.cast(vidx_3d,tf.float32)
+        i+=1
+        vidx_1ds = tf.concat([vidx_1ds, tf.reshape(vidx_1d,[-1,1])], 1)
+        return vidx_1ds, i, min_i
 
-    i = tf.constant(0)
-    min_i = _min
-    vidx_1ds = tf.zeros([TfUtil.tshape0(xyzs), 0], tf.int32)
-    cond = lambda vidx_1ds,i,min_i: tf.less(i, _scale_num)
-    vidx_1ds, i, min_i = tf.while_loop(cond, body, [vidx_1ds, i, min_i])
-    return vidx_1ds
+      i = tf.constant(0)
+      min_i = tf.expand_dims(_min,0)
+      vertex_num1 = TfUtil.tshape0(xyzs)
+      vidx_1ds = tf.zeros([vertex_num1, 0], tf.int32)
+      cond = lambda vidx_1ds,i,min_i: tf.less(i, _scale_num)
+      vidx_1ds, i, min_i = tf.while_loop(cond, body, [vidx_1ds, i, min_i],\
+                            shape_invariants=[tf.TensorShape([vertex_num1,None]),\
+                            tf.TensorShape([]), tf.TensorShape([None,3])])
+      vidx_1ds.set_shape([vertex_num1, _scale_num])
+      return vidx_1ds
 
   def get_upper_scale_scope(self, vidx_rawscope_lsc):
     flatvidx_rawidxscopes = [None]*(self._scale_num-1)
@@ -348,32 +353,35 @@ class OctreeTf():
     j = tf.constant(0)
     idx = tf.zeros([0,1], tf.int32)
     cond = lambda i,j,idx: tf.logical_and( tf.less(i, n), tf.less(j,m))
-    i,j,idx = tf.while_loop(cond, body, [i,j,idx])
+    i,j,idx = tf.while_loop(cond, body, [i,j,idx],
+        shape_invariants=[tf.TensorShape([]), tf.TensorShape([]), tf.TensorShape([None,1])])
     return tf.squeeze(idx,1)
 
   def search_idx_scope(self, flat_vidx, aim_scale):
-    flatvidx_rawidxscope =  self.flatvidx[aim_scale]
-    aim_idx = OctreeTf.search(flatvidx_rawidxscope, flat_vidx)
-    check_all_searched =  tf.assert_equal(TfUtil.tshape0(aim_idx), TfUtil.tshape0(flat_vidx),
-                                          message="search failed")
-    with tf.control_dependencies([check_all_searched]):
-      return aim_idx
+    with tf.variable_scope('search_idx_scope_Aimscale_%d'%(aim_scale)):
+      flatvidx_rawidxscope =  self.flatvidx[aim_scale]
+      aim_idx = OctreeTf.search(flatvidx_rawidxscope, flat_vidx)
+      check_all_searched =  tf.assert_equal(TfUtil.tshape0(aim_idx), TfUtil.tshape0(flat_vidx),
+                                            message="search failed")
+      with tf.control_dependencies([check_all_searched]):
+        return aim_idx
 
   def search_neighbours(self, xyzs_sp, aim_scale):
     assert aim_scale < self._scale_num
-    vidx_1ds = OctreeTf.get_vidx1d_all_scales(xyzs_sp, self._min, self._resolution, aim_scale+1)
-    flatvidx = OctreeTf.get_flat_idx(vidx_1ds)
-    unique_flatvidx, idx_inv = tf.unique(flatvidx)
+    with tf.variable_scope('search_neighbours_Scale%d'%(aim_scale)):
+      vidx_1ds = OctreeTf.get_vidx1d_all_scales(xyzs_sp, self._min, self._resolution, aim_scale+1)
+      flatvidx = OctreeTf.get_flat_idx(vidx_1ds)
+      unique_flatvidx, idx_inv = tf.unique(flatvidx)
 
-    uni_aim_idx = self.search_idx_scope(unique_flatvidx, aim_scale)
-    aim_idx = tf.gather(uni_aim_idx, idx_inv, 0)
+      uni_aim_idx = self.search_idx_scope(unique_flatvidx, aim_scale)
+      aim_idx = tf.gather(uni_aim_idx, idx_inv, 0)
 
-    idxscope_pervs =  tf.gather(self.idxscope_pervs[aim_scale], aim_idx, axis=0)
-    return idxscope_pervs
+      idxscope_pervs =  tf.gather(self.idxscope_pervs[aim_scale], aim_idx, axis=0)
+      return idxscope_pervs
 
   def recording(self, rawfn):
     sorted_idxs_base = self.sorted_idxs_base.numpy()
-    resolution = self._resolution.numpy()
+    resolution = self._resolution
     scale_num = len(self.flatvidx)
     flatvidx = self.flatvidx
     idxscope_pervs = self.idxscope_pervs
@@ -392,7 +400,41 @@ class OctreeTf():
 
     #self.load(rawfn)
 
-  def load(self, rawfn):
+  def read_log(self, rawfn):
+    octree_fn = self.rawfn_to_octreefn(rawfn)
+    import pickle
+    with open(octree_fn, 'r') as f:
+      sorted_idxs_base = pickle.load(f)
+      flatvidx = pickle.load(f)
+      idxscope_pervs = pickle.load(f)
+      _resolution = pickle.load(f)
+      _min = tf.constant([0,0,0], tf.float32)
+      scale_num = len(flatvidx)
+      assert scale_num == self._scale_num
+    return sorted_idxs_base, flatvidx, idxscope_pervs, _resolution
+
+  def load_record(self, rawfn):
+    sorted_idxs_base, flatvidx, idxscope_pervs, _resolution = self.read_log(rawfn)
+    vertex_num0 = sorted_idxs_base.shape[0]
+    scale_num = len(flatvidx)
+    assert scale_num == self._scale_num
+    assert np.all(self._resolution == _resolution)
+    voxel_nums = [d.shape[0] for d in flatvidx]
+
+    self.sorted_idxs_base = tf.placeholder(tf.int32, [vertex_num0], 'sorted_idxs_base')
+    self.flatvidx = []
+    self.idxscope_pervs = []
+    for s in range(scale_num):
+      self.flatvidx.append( tf.placeholder(tf.int32, [voxel_nums[s],1], 'flatvidx_%d'%(s)) )
+      self.idxscope_pervs.append( tf.placeholder(tf.int32, [voxel_nums[s], 2], 'idxscope_pervs_%d'%(s)) )
+
+    feed_dict = {self.sorted_idxs_base: sorted_idxs_base}
+    for s in range(scale_num):
+      feed_dict[self.flatvidx[s]] = flatvidx[s]
+      feed_dict[self.idxscope_pervs[s]] = idxscope_pervs[s]
+    return feed_dict
+
+  def load_eager(self, rawfn):
     octree_fn = self.rawfn_to_octreefn(rawfn)
     import pickle
     with open(octree_fn, 'r') as f:
@@ -404,8 +446,10 @@ class OctreeTf():
       scale_num = len(self.flatvidx)
       assert scale_num == self._scale_num
 
-  def test_search_inv(self, xyzs, test_n, ply=False):
+  def test_search_inv(self, xyzs, test_n, aim_scale, ply=False):
     from utils import ply_util
+    assert aim_scale < self._scale_num
+    xyzs = check_xyz_normed(xyzs)
     xyzs = tf.gather(xyzs, self.sorted_idxs_base, 0)
 
     vn0 = TfUtil.tshape0(xyzs)
@@ -413,7 +457,7 @@ class OctreeTf():
     sp_idx = tf.contrib.framework.sort(sp_idx)
     xyzs_sp = tf.gather(xyzs, sp_idx, 0)
 
-    idx_scopes = self.search_neighbours(xyzs_sp, self._scale_num-1)
+    idx_scopes = self.search_neighbours(xyzs_sp, aim_scale)
     if not ply:
       return idx_scopes
 
@@ -447,11 +491,18 @@ def norm_xyzs(xyzs):
   xyzs = xyzs - min_xyz
   return xyzs
 
+def check_xyz_normed(xyzs):
+  xyz_min = tf.reduce_min(xyzs)
+  check = tf.assert_greater_equal(xyz_min, 0.0, message='xyz should be normed at first')
+  with tf.control_dependencies([check]):
+    xyzs = tf.identity(xyzs)
+  return xyzs
+
 def gen_octree(rawfn, resolution):
   raw_datas = parse_ply_file(rawfn)
   xyzs = norm_xyzs(raw_datas['xyz'])
 
-  resolution = tf.constant([3.2,3.2,3.2])
+  resolution = np.array([3.2,3.2,3.2])
 
   octree_tf = OctreeTf(resolution, 0)
   octree_tf.add_point_cloud(xyzs, record=True, rawfn=rawfn)
@@ -464,7 +515,7 @@ def main_gen_octree():
                               format(scene_name, scene_name, region_name)
   rawfns = glob.glob(fn_glob)
 
-  resolution = tf.constant([3.2,3.2,3.2])
+  resolution = np.array([3.2,3.2,3.2])
   for rawfn in rawfns:
     print('start gen octree {}'.format(rawfn))
     t0 = time.time()
@@ -478,7 +529,7 @@ def main_gen_octree():
 
 def main_read_octree_eager():
   tf.enable_eager_execution()
-  resolution = tf.constant([3.2,3.2,3.2])
+  resolution = np.array([3.2,3.2,3.2])
   scene_name = '17DRP5sb8fy'
   region_name = 'region0'
   rawfn = '/DS/Matterport3D/Matterport3D_WHOLE_extracted/v1/scans/{}/{}/region_segmentations/{}.ply'.\
@@ -487,13 +538,45 @@ def main_read_octree_eager():
   xyzs = norm_xyzs(raw_datas['xyz'])
 
   octree_tf = OctreeTf(resolution, 0)
-  octree_tf.load(rawfn)
+  octree_tf.load_eager(rawfn)
   t0 = time.time()
-  idx_scopes = octree_tf.test_search_inv(xyzs, 10)
+  aim_scale = 5
+  idx_scopes = octree_tf.test_search_inv(xyzs, 10, aim_scale)
   t = time.time() - t0
   print('read ok, t={}'.format(t))
+
+def main_read_octree_graph():
+  resolution = np.array([3.2,3.2,3.2])
+  scene_name = '17DRP5sb8fy'
+  region_name = 'region0'
+  rawfn = '/DS/Matterport3D/Matterport3D_WHOLE_extracted/v1/scans/{}/{}/region_segmentations/{}.ply'.\
+                              format(scene_name, scene_name, region_name)
+  raw_datas = parse_ply_file(rawfn)
+  raw_xyzs = raw_datas['xyz']
+  vertex_num0 = raw_xyzs.shape[0]
+
+  with tf.Graph().as_default():
+    octree_tf = OctreeTf(resolution, 0)
+    feed_dict = octree_tf.load_record(rawfn)
+    raw_xyzs_pl = tf.placeholder(tf.float32, [vertex_num0,3])
+    raw_xyzs_normed = norm_xyzs(raw_xyzs_pl)
+    feed_dict[raw_xyzs_pl] = raw_xyzs
+
+    aim_scale = 4
+    idx_scopes = octree_tf.test_search_inv(raw_xyzs_normed, 100*1000, aim_scale)
+
+    with tf.Session() as sess:
+      t0 = time.time()
+      idx_scopes_v = sess.run(idx_scopes, feed_dict=feed_dict)
+      t = time.time() - t0
+      print('read ok, t={}'.format(t))
+      import pdb; pdb.set_trace()  # XXX BREAKPOINT
+      pass
 
 
 if __name__ == '__main__':
   #main_gen_octree()
-  main_read_octree_eager()
+  #main_read_octree_eager()
+  main_read_octree_graph()
+  pass
+
