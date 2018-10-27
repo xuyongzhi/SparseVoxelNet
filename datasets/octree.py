@@ -72,7 +72,7 @@ class OctreeTf():
       self.vidx = [d[:,0:-2] for d in vidx_rawscopes]
       self.idxscope_pervs = [d[:,-2:] for d in vidx_rawscopes]
       self.show_summary()
-      self.merge_neighbour()
+      #self.merge_neighbour()
       #self.check_sort(xyzs)
       if record:
         self.recording(rawfn)
