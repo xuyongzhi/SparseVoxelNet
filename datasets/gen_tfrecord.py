@@ -9,7 +9,7 @@ sys.path.append(ROOT_DIR)
 
 from datasets.all_datasets_meta.datasets_meta import DatasetsMeta
 import math, time
-from tfrecord_util import MeshSampling
+from graph_util import MeshSampling
 
 
 Vertex_feles = ['xyz','nxnynz']
@@ -301,7 +301,7 @@ class Raw_To_Tfrecord():
       dls['labels'] = np.array([object_label])
 
   def transfer_onefile_matterport(self, rawfn):
-    from MATTERPORT_util import parse_ply_file, parse_ply_vertex_semantic
+    from MATTERPORT_util.MATTERPORT_util import parse_ply_file, parse_ply_vertex_semantic
 
     print('starting {} th file: {}'.format(self.fi, rawfn))
     base_name = os.path.splitext(os.path.basename(rawfn))[0]
@@ -589,7 +589,7 @@ def main_matterport():
   t0 = time.time()
   dataset_name = 'MATTERPORT'
 
-  num_points = {'MODELNET40':None, 'MATTERPORT':10000}
+  num_points = {'MODELNET40':None, 'MATTERPORT':200000}
   num_point = num_points[dataset_name]
   block_sizes = {'MODELNET40':None, 'MATTERPORT':np.array([4.0, 4.0, 5.0]) }
   block_size = block_sizes[dataset_name]
