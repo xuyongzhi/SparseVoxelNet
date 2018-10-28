@@ -779,13 +779,13 @@ if __name__ == '__main__':
   num_point = {'MODELNET40':None, 'MATTERPORT':60000}
   block_size = {'MODELNET40':None, 'MATTERPORT':np.array([6.4,6.4,6.4]) }
 
-  rawh5_glob = os.path.join(dset_path, 'rawh5/*/*.rh5')
-  #rawh5_glob = os.path.join(dset_path, 'rawh5/D7N2EKCX4Sj/*.rh5')
+  #rawh5_glob = os.path.join(dset_path, 'rawh5/*/*.rh5')
+  rawh5_glob = os.path.join(dset_path, 'rawh5/D7N2EKCX4Sj/*.rh5')
   tfrecord_path = os.path.join(dset_path, 'raw_tfrecord')
 
-  #main_write(dataset_name, rawh5_glob, tfrecord_path, num_point[dataset_name], block_size[dataset_name])
+  main_write(dataset_name, rawh5_glob, tfrecord_path, num_point[dataset_name], block_size[dataset_name])
 
-  main_merge_tfrecord(dataset_name, tfrecord_path)
+  #main_merge_tfrecord(dataset_name, tfrecord_path)
 
   #main_gen_ply(dataset_name, tfrecord_path)
 

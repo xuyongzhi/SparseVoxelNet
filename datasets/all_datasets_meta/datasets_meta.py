@@ -12,7 +12,7 @@ DATASETS = ['MATTERPORT', 'SCANNET', 'ETH', 'MODELNET40']
 for ds in DATASETS:
     sys.path.append('%s/%s_util'%(ROOT_DIR,ds))
 
-from MATTERPORT_util import MATTERPORT_Meta
+from MATTERPORT_util.MATTERPORT_util import MATTERPORT_Meta
 from SCANNET_util import SCANNET_Meta
 from ETH_util import ETH_Meta
 from MODELNET_util import MODELNET40_Meta

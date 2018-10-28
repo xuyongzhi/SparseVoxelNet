@@ -17,7 +17,7 @@ MODELNET40_Meta['unlabelled_categories'] = []
 MODELNET40_Meta['easy_categories'] = []
 
 sys.path.append( os.path.join(BASE_DIR,'../MATTERPORT_util') )
-from MATTERPORT_util import MATTERPORT_Meta
+from MATTERPORT_util.MATTERPORT_util import MATTERPORT_Meta
 
 MODELNET40_Meta['label2color'] = MATTERPORT_Meta['label2color'].copy()
 del MODELNET40_Meta['label2color'][40]
