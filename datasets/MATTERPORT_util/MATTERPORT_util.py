@@ -171,22 +171,23 @@ def parse_ply_file(ply_fn):
 
     return datas
 
-    face_eles = ['vertex_indices','material_id','segment_id','category_id']
-    datas_face = {}
-    for e in face_eles:
-        datas_face[e] = np.expand_dims(data_face[e],axis=-1)
-    face_semantic = np.concatenate([datas_face['material_id'], datas_face['segment_id'], datas_face['category_id']],axis=1)
-
-    return vertex_xyz, vertex_nxnynz, vertex_rgb, vertex_idx_per_face, face_semantic
-
 def parse_ply_vertex_semantic(ply_fn):
-    vertex_xyz, vertex_nxnynz, vertex_rgb, vertex_idx_per_face, face_semantic = parse_ply_file(ply_fn)
+    datas = parse_ply_file(ply_fn)
 
-    num_vertex = vertex_xyz.shape[0]
-    vertex_semantic,vertex_indices_multi_semantic,face_indices_multi_semantic =\
-      get_vertex_label_from_face(vertex_idx_per_face,face_semantic,num_vertex)
+    num_vertex = datas['xyz'].shape[0]
+    face_eles = ['label_category', 'label_instance', 'label_material']
+    datas_face = []
+    for e in face_eles:
+        datas_face.append(datas[e])
+    face_semantic = np.concatenate(datas_face,axis=1)
 
-    IsDeleteNonPosId = False
+    vertex_semantic, vertex_indices_multi_semantic, face_indices_multi_semantic =\
+      get_vertex_label_from_face(datas['vidx_per_face'], face_semantic, num_vertex)
+    datas['v_label_category'] = vertex_semantic[:,0:1]
+    datas['v_label_instance'] = vertex_semantic[:,1:2]
+    datas['v_label_material'] = vertex_semantic[:,2:3]
+
+    IsDeleteNonPosId = True
     if IsDeleteNonPosId:
       # get vertex and face  with category_id==-1 or ==0
       vertex_nonpos_indices = np.where(vertex_semantic[:, Category_Index]<1)[0]
@@ -199,14 +200,14 @@ def parse_ply_vertex_semantic(ply_fn):
       face_del_indices = face_indices_multi_semantic
 
     # Del VexMultiSem
-    vertex_xyz = np.delete(vertex_xyz, vertex_del_indices, axis=0)
-    vertex_nxnynz = np.delete(vertex_nxnynz, vertex_del_indices, axis=0)
-    vertex_rgb = np.delete(vertex_rgb, vertex_del_indices, axis=0)
-    vertex_semantic = np.delete(vertex_semantic, vertex_del_indices,axis=0)
-    vertex_idx_per_face = np.delete(vertex_idx_per_face, face_del_indices, axis=0)
-    face_semantic = np.delete(face_semantic, face_del_indices, axis=0)
+    for ele in ['xyz', 'nxnynz', 'color', 'v_label_category', 'v_label_instance', 'v_label_material']:
+      datas[ele] = np.delete(datas[ele], vertex_del_indices, axis=0)
+    for ele in ['vidx_per_face']:
+      datas[ele] = np.delete(datas[ele], face_del_indices, axis=0)
+    for ele in ['label_material', 'label_instance', 'label_raw_category', 'label_category']:
+      del datas[ele]
 
-    return vertex_xyz, vertex_nxnynz, vertex_rgb, vertex_semantic, vertex_idx_per_face, face_semantic
+    return datas
 
 def get_vertex_label_from_face(vertex_idx_per_face, face_semantic, num_vertex):
     '''

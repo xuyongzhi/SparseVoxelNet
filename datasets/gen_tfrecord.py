@@ -310,7 +310,8 @@ class Raw_To_Tfrecord():
 
     # ['label_material', 'label_category', 'vidx_per_face', 'color',
     # 'xyz', 'nxnynz', 'label_raw_category', 'label_instance']
-    raw_datas = parse_ply_file(rawfn)
+    #raw_datas = parse_ply_file(rawfn)
+    raw_datas = parse_ply_vertex_semantic(rawfn)
 
     splited_vidx, dy_block_size = self.split_vertex(raw_datas['xyz'])
     block_num = len(splited_vidx)
@@ -324,6 +325,7 @@ class Raw_To_Tfrecord():
     assert min_sp_rate > self.min_sample_rate, 'got small sample rate:{} < {}'.format(
                                               min_sp_rate, self.min_sample_rate)
 
+    import pdb; pdb.set_trace()  # XXX BREAKPOINT
     main_split_sampling_rawmesh = MeshSampling.eager_split_sampling_rawmesh
     #main_split_sampling_rawmesh = MeshSampling.sess_split_sampling_rawmesh
     splited_sampled_datas, raw_vertex_nums, mesh_summary = main_split_sampling_rawmesh(
@@ -589,9 +591,9 @@ def main_matterport():
   t0 = time.time()
   dataset_name = 'MATTERPORT'
 
-  num_points = {'MODELNET40':None, 'MATTERPORT':200000}
+  num_points = {'MODELNET40':None, 'MATTERPORT':8192}
   num_point = num_points[dataset_name]
-  block_sizes = {'MODELNET40':None, 'MATTERPORT':np.array([4.0, 4.0, 5.0]) }
+  block_sizes = {'MODELNET40':None, 'MATTERPORT':np.array([1.5, 1.5, 3.0]) }
   block_size = block_sizes[dataset_name]
   flag = ''.join([str(int(d)) for d in block_size]) + '_' + str(int(num_point/1000))+'K'
 

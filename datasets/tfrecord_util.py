@@ -1,7 +1,6 @@
 import h5py, os, glob,sys
 import numpy as np
 import tensorflow as tf
-#from datasets.block_data_prep_util import Raw_H5f
 import math
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
