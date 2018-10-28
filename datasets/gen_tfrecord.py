@@ -12,16 +12,23 @@ import math, time
 from graph_util import MeshSampling
 
 
-Vertex_feles = ['xyz','nxnynz']
-Vertex_ieles = ['fidx_per_vertex',  \
-                'edgev_per_vertex', 'valid_ev_num_pv', \
-                #'same_normal_mask', 'same_category_mask',
-                ]
-                #'edges_per_vertex','edges_pv_empty_mask',\
-Vertex_uint8_eles = ['color', 'fidx_pv_empty_mask']
-Face_ieles = ['vidx_per_face', 'label_category']
-              #'label_simplity']
-              #+ ['label_instance', 'label_material', 'label_raw_category'] \
+NET_FLAG = 'FaceLabel_GraphCnn'
+NET_FLAG = 'VertexLabel_PointCnn'
+#*******************************************************************************
+if NET_FLAG == 'FaceLabel_GraphCnn':
+  Vertex_feles = ['xyz','nxnynz']
+  Vertex_ieles = ['fidx_per_vertex', 'edgev_per_vertex', 'valid_ev_num_pv']
+  Vertex_uint8_eles = ['color', 'fidx_pv_empty_mask']
+  Face_ieles = ['vidx_per_face', 'label_category']
+  _parse_local_graph_pv = True
+#*******************************************************************************
+elif NET_FLAG == 'VertexLabel_PointCnn':
+  Vertex_feles = ['xyz','nxnynz']
+  Vertex_ieles = []
+  Vertex_uint8_eles = ['color', 'v_label_category']
+  Face_ieles = ['vidx_per_face']
+  Face_ieles = []
+  _parse_local_graph_pv = False
 
 MAX_FLOAT_DRIFT = 1e-6
 DEBUG = False
@@ -49,6 +56,16 @@ def random_choice(org_vector, sample_N, random_sampl_pro=None,
     return sampled_vector
 
 
+def ele_in_feature(features, ele, ds_idxs):
+  #ds_idxs = dset_shape_idx['indices']
+  for g in ds_idxs:
+    if ele in ds_idxs[g]:
+      ele_idx = ds_idxs[g][ele]
+      ele_data = tf.gather(features[g], ele_idx, axis=-1)
+      return ele_data
+  return None
+  #raise ValueError, ele+' not found'
+
 class Raw_To_Tfrecord():
   def __init__(self, dataset_name, tfrecord_path, num_point=None, block_size=None, ply_dir=None, is_multi_pro=False):
     self.dataset_name = dataset_name
@@ -59,7 +76,7 @@ class Raw_To_Tfrecord():
       os.makedirs(self.data_path)
     self.num_point = num_point
     self.min_sample_rate = 0.01 # sample_rate = self.num_point/org_num
-    self.num_face = int(num_point * 5)
+    self.num_face = int(num_point * 8)
     self.block_size = block_size
     self.block_stride_rate =  0.8
     self.min_pn_inblock = min(self.num_point * 0.1, 2000)
@@ -136,9 +153,11 @@ class Raw_To_Tfrecord():
     # elements *************************
     self.eles_sorted = {}
     self.eles_sorted['vertex_f'] = [e for e in Vertex_feles if e in all_eles]
-    self.eles_sorted['vertex_i'] = [e for e in Vertex_ieles if e in all_eles]
+    if len(Vertex_ieles) > 0:
+      self.eles_sorted['vertex_i'] = [e for e in Vertex_ieles if e in all_eles]
     self.eles_sorted['vertex_uint8'] = [e for e in Vertex_uint8_eles if e in all_eles]
-    self.eles_sorted['face_i'] = [e for e in Face_ieles if e in all_eles]
+    if len(Face_ieles) != 0:
+      self.eles_sorted['face_i'] = [e for e in Face_ieles if e in all_eles]
 
   def record_shape_idx(self, raw_datas, dls):
     ele_idxs = {}
@@ -300,6 +319,8 @@ class Raw_To_Tfrecord():
       object_label = dataset_meta.class2label[category]
       dls['labels'] = np.array([object_label])
 
+
+
   def transfer_onefile_matterport(self, rawfn):
     from MATTERPORT_util.MATTERPORT_util import parse_ply_file, parse_ply_vertex_semantic
 
@@ -310,8 +331,12 @@ class Raw_To_Tfrecord():
 
     # ['label_material', 'label_category', 'vidx_per_face', 'color',
     # 'xyz', 'nxnynz', 'label_raw_category', 'label_instance']
-    #raw_datas = parse_ply_file(rawfn)
-    raw_datas = parse_ply_vertex_semantic(rawfn)
+    if NET_FLAG == 'FaceLabel_GraphCnn':
+      raw_datas = parse_ply_file(rawfn)
+    elif NET_FLAG == 'VertexLabel_PointCnn':
+      raw_datas = parse_ply_vertex_semantic(rawfn)
+      if len(Face_ieles)==0:
+        del raw_datas['vidx_per_face']
 
     splited_vidx, dy_block_size = self.split_vertex(raw_datas['xyz'])
     block_num = len(splited_vidx)
@@ -325,11 +350,11 @@ class Raw_To_Tfrecord():
     assert min_sp_rate > self.min_sample_rate, 'got small sample rate:{} < {}'.format(
                                               min_sp_rate, self.min_sample_rate)
 
-    import pdb; pdb.set_trace()  # XXX BREAKPOINT
     main_split_sampling_rawmesh = MeshSampling.eager_split_sampling_rawmesh
     #main_split_sampling_rawmesh = MeshSampling.sess_split_sampling_rawmesh
     splited_sampled_datas, raw_vertex_nums, mesh_summary = main_split_sampling_rawmesh(
-        raw_datas, self.num_point, splited_vidx, self.dataset_meta, self.ply_dir)
+        raw_datas, self.num_point, splited_vidx, self.dataset_meta,
+        _parse_local_graph_pv, self.ply_dir)
 
 
     for bi in range(block_num):
@@ -343,6 +368,22 @@ class Raw_To_Tfrecord():
     strs = [np.array2string(d, precision=2) for d in [min_xyz, max_xyz, scope] ]
     xyz_scope_str = 'min: {}, max:{}, scope:{}\ndynamic block size:{}'.format(strs[0], strs[1], strs[2], dy_block_size)
     return block_num, valid_block_num, num_points_splited, xyz_scope_str, mesh_summary
+
+
+  @staticmethod
+  def check_types(dls):
+    if dls['vertex_uint8'].dtype != np.uint8:
+      assert np.min(dls['vertex_uint8']) >= 0
+      assert np.max(dls['vertex_uint8']) < 256
+      dls['vertex_uint8'] = dls['vertex_uint8'].astype(np.uint8)
+    if 'vertex_i' in dls:
+      assert dls['vertex_i'].dtype == np.int32
+    assert dls['vertex_uint8'].dtype == np.uint8
+    assert dls['vertex_f'].dtype == np.float32
+    if 'face_i' in dls:
+      assert dls['face_i'].dtype == np.int32
+
+    return dls
 
   def transfer_one_block(self, tfrecord_fn, block_sampled_datas, raw_vertex_num):
     from tfrecord_util import bytes_feature, int64_feature
@@ -361,41 +402,43 @@ class Raw_To_Tfrecord():
 
     #*************************************************************************
     # fix face_i shape
-    face_shape = dls['face_i'].shape
-    tile_num = self.num_face - face_shape[0]
-    assert tile_num>=0, "face num > buffer: {}>{}".format(face_shape[0], self.num_face)
-    tmp = np.tile( dls['face_i'][0:1,:], [tile_num, 1])
-    #tmp = np.ones([self.num_face - face_shape[0], face_shape[1]], np.int32) * (-777)
-    dls['face_i'] = np.concatenate([dls['face_i'], tmp], 0)
+    if 'face_i' in dls:
+      face_shape = dls['face_i'].shape
+      tile_num = self.num_face - face_shape[0]
+      assert tile_num>=0, "face num > buffer: {}>{}".format(face_shape[0], self.num_face)
+      tmp = np.tile( dls['face_i'][0:1,:], [tile_num, 1])
+      #tmp = np.ones([self.num_face - face_shape[0], face_shape[1]], np.int32) * (-777)
+      dls['face_i'] = np.concatenate([dls['face_i'], tmp], 0)
 
     #*************************************************************************
     # convert to expample
-    assert dls['vertex_i'].dtype == np.int32
-    assert dls['vertex_uint8'].dtype == np.uint8
-    assert dls['vertex_f'].dtype == np.float32
-    assert dls['face_i'].dtype == np.int32
+    dls = Raw_To_Tfrecord.check_types(dls)
     if not hasattr(self, 'ele_idxs'):
       self.record_shape_idx(block_sampled_datas, dls)
       print(self.ele_idxs)
 
-    max_category =  np.max(dls['face_i'][:, self.ele_idxs['face_i']['label_category']])
+    max_category =  np.max( self.get_label(dls) )
     assert max_category < self.dataset_meta.num_classes, "max_category {} > {}".format(\
                                           max_category, self.dataset_meta.num_classes)
 
     vertex_f_bin = dls['vertex_f'].tobytes()
     #vertex_i_shape_bin = np.array(dls['vertex_i'].shape, np.int32).tobytes()
-    vertex_i_bin = dls['vertex_i'].tobytes()
+    if 'vertex_i' in dls:
+      vertex_i_bin = dls['vertex_i'].tobytes()
     vertex_uint8_bin = dls['vertex_uint8'].tobytes()
-    face_i_bin = dls['face_i'].tobytes()
+    if 'face_i' in dls:
+      face_i_bin = dls['face_i'].tobytes()
 
 
     features_map = {
       'vertex_f': bytes_feature(vertex_f_bin),
-      'vertex_i': bytes_feature(vertex_i_bin),
       'vertex_uint8': bytes_feature(vertex_uint8_bin),
-      'face_i':   bytes_feature(face_i_bin),
-      'valid_num_face':int64_feature(face_shape[0])
     }
+    if 'vertex_i' in dls:
+      features_map['vertex_i'] = bytes_feature(vertex_i_bin)
+    if 'face_i' in dls:
+      features_map['face_i'] = bytes_feature(face_i_bin)
+      features_map['valid_num_face'] = int64_feature(face_shape[0])
 
     example = tf.train.Example(features=tf.train.Features(feature=features_map))
 
@@ -406,6 +449,12 @@ class Raw_To_Tfrecord():
     if self.fi %5 ==0:
       print('{}/{} write tfrecord OK: {}'.format(self.fi, self.fn, tfrecord_fn))
 
+
+  def get_label(self, dls):
+    data = ele_in_feature(dls, 'label_category', self.ele_idxs)
+    if data is None:
+      data = ele_in_feature(dls, 'v_label_category', self.ele_idxs)
+    return data
 
 def read_dataset_summary(data_dir):
   import pickle
@@ -595,7 +644,7 @@ def main_matterport():
   num_point = num_points[dataset_name]
   block_sizes = {'MODELNET40':None, 'MATTERPORT':np.array([1.5, 1.5, 3.0]) }
   block_size = block_sizes[dataset_name]
-  flag = ''.join([str(int(d)) for d in block_size]) + '_' + str(int(num_point/1000))+'K'
+  flag = '_'.join([str(int(10*d)) for d in block_size]) + '_' + str(int(num_point/1000))+'K'
 
   dset_path = '/DS/Matterport3D/Matterport3D_WHOLE_extracted/v1/scans'
   tfrecord_path = '/DS/Matterport3D/MATTERPORT_TF/mesh_tfrecord_%s'%(flag)

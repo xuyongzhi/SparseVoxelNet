@@ -175,7 +175,10 @@ def parse_ply_vertex_semantic(ply_fn):
     datas = parse_ply_file(ply_fn)
 
     num_vertex = datas['xyz'].shape[0]
-    face_eles = ['label_category', 'label_instance', 'label_material']
+    face_eles = [None]*3
+    face_eles[Material_Index] = 'label_material'
+    face_eles[Instance_Index] = 'label_instance'
+    face_eles[Category_Index] = 'label_category'
     datas_face = []
     for e in face_eles:
         datas_face.append(datas[e])
@@ -183,9 +186,9 @@ def parse_ply_vertex_semantic(ply_fn):
 
     vertex_semantic, vertex_indices_multi_semantic, face_indices_multi_semantic =\
       get_vertex_label_from_face(datas['vidx_per_face'], face_semantic, num_vertex)
-    datas['v_label_category'] = vertex_semantic[:,0:1]
-    datas['v_label_instance'] = vertex_semantic[:,1:2]
-    datas['v_label_material'] = vertex_semantic[:,2:3]
+    datas['v_label_category'] = vertex_semantic[:,Category_Index:Category_Index+1]
+    datas['v_label_instance'] = vertex_semantic[:,Instance_Index:Instance_Index+1]
+    datas['v_label_material'] = vertex_semantic[:,Material_Index+Material_Index+1]
 
     IsDeleteNonPosId = True
     if IsDeleteNonPosId:
@@ -199,11 +202,17 @@ def parse_ply_vertex_semantic(ply_fn):
       vertex_del_indices = vertex_indices_multi_semantic
       face_del_indices = face_indices_multi_semantic
 
+    vertex_remain_indices = np.array([i for i in range(num_vertex) if i not in vertex_del_indices])
+    raw_vidx_2_sp_vidx = np.zeros([num_vertex]).astype(np.int32)
+    _num_vertex_sp = vertex_remain_indices.shape[0]
+    raw_vidx_2_sp_vidx[vertex_remain_indices] = np.arange(_num_vertex_sp)
+
     # Del VexMultiSem
     for ele in ['xyz', 'nxnynz', 'color', 'v_label_category', 'v_label_instance', 'v_label_material']:
       datas[ele] = np.delete(datas[ele], vertex_del_indices, axis=0)
     for ele in ['vidx_per_face']:
       datas[ele] = np.delete(datas[ele], face_del_indices, axis=0)
+    datas['vidx_per_face'] = np.take(raw_vidx_2_sp_vidx, datas['vidx_per_face'])
     for ele in ['label_material', 'label_instance', 'label_raw_category', 'label_category']:
       del datas[ele]
 
@@ -239,7 +248,9 @@ def get_vertex_label_from_face(vertex_idx_per_face, face_semantic, num_vertex):
                     face_indices_multi_semantic.add(i)
     vertex_indices_multi_semantic = np.array(list(vertex_indices_multi_semantic))
     face_indices_multi_semantic = np.array(list(face_indices_multi_semantic))
-    print('vertex rate with multiple semantic: %f'%(1.0*vertex_indices_multi_semantic.shape[0]/num_vertex))
+    multi_rate = 1.0*vertex_indices_multi_semantic.shape[0]/num_vertex
+    print('vertex rate with multiple semantic: %f'%(multi_rate))
+    assert multi_rate < 0.05
 
     vertex_semantic = vertex_semantic.astype(np.int32)
 
