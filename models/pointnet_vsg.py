@@ -50,15 +50,20 @@ class Model(ResConvOps):
     points = tf.expand_dims( inputs['points'], 1)
 
     endpoints = []
+    xyz_scales = []
     scale_n = self.model_paras.scale_num
+    #***************************************************************************
+    # Encoder
     for scale in range(scale_n):
         points = self.point_encoder(scale, points)
         endpoints.append(points)
         if scale>0:
-          points = self.pooling(scale, points)
+          points = self.pooling(scale, points, xyz)
         if scale != scale_n-1:
-          points = self.sampling_grouping(scale, points, inputs['grouped_pindex'][scale])
+          points, xyz = self.sampling_grouping(scale, points, inputs['grouped_pindex'][scale], xyz)
 
+    #***************************************************************************
+    # Decoder
     for i in range(scale_n-1):
       scale = scale_n - i -2
       points = self.interp_uppooling(scale, points, inputs['flatting_idx'][scale], endpoints[scale])
@@ -70,6 +75,27 @@ class Model(ResConvOps):
     label_weights = tf.constant(1.0)
     return logits, label_weights
 
+  def parse_inputs(self, features):
+    inputs = {}
+    points = []
+    for e in self.data_configs['feed_data']:
+      ele = self.get_ele(features, e)
+      if e=='xyz':
+        xyz = ele = self.normalize_xyz(ele)
+      if e=='color':
+        ele = self.normalize_color(ele)
+      points.append(ele)
+    inputs['points'] = points = tf.concat(points, -1)
+
+    sg_params = self.gather_sg_params(features)
+    inputs.update(sg_params)
+
+    vshape = TfUtil.get_tensor_shape(points)
+    #self.batch_size = vshape[0]
+    self.num_vertex0 = vshape[1]
+    self.log_tensor_p(points, 'points', 'raw_input')
+    return inputs, xyz
+
   def point_encoder(self, scale,  points):
     with tf.variable_scope('PointEncoder_S%d'%(scale)):
       block_paras = self.model_paras('e',scale)
@@ -78,17 +104,22 @@ class Model(ResConvOps):
                                     with_initial_layer = scale==0)
     return new_points
 
-  def pooling(self, scale, points, pool='max'):
+  def pooling(self, scale, points, xyz, pool='max', use_xyz = True):
     with tf.variable_scope('Pool_S%d'%(scale)):
       points = tf.reduce_max(points, 2)
       points = tf.expand_dims(points, 1)
-      self.log_tensor_p(points, pool+' pooling', 'scale%d'%(scale))
+      if use_xyz:
+        points = tf.concat([points, tf.expand_dims(xyz,1)], -1)
+      self.log_tensor_p(points, 'use xyz' if use_xyz else '', pool+' pooling')
       return points
 
-  def sampling_grouping(self, scale, points, grouped_pindex):
-    with tf.variable_scope('Pool_S%d'%(scale)):
+  def sampling_grouping(self, scale, points, grouped_pindex, xyz):
+    with tf.variable_scope('SG_S%d'%(scale)):
       new_points = TfUtil.gather_third_d(points, grouped_pindex)
-    return new_points
+      new_xyz = TfUtil.gather_second_d(xyz, grouped_pindex)
+      new_xyz = tf.reduce_mean(new_xyz, 2)
+      self.log_tensor_p(points, '', 'saming grouping')
+    return new_points, new_xyz
 
   def point_decoder(self, scale,  points):
     with tf.variable_scope('PointDecoder_S%d'%(scale)):
@@ -112,7 +143,6 @@ class Model(ResConvOps):
       self.log_tensor_p(points, 'mean & interperation', 'scale%d'%(scale))
 
     return points
-
 
   def get_ele(self, features, ele):
     return ele_in_feature(features, ele, self.dset_shape_idx)
@@ -139,27 +169,6 @@ class Model(ResConvOps):
     else:
       raise NotImplementedError
     return new_xyz
-
-  def parse_inputs(self, features):
-    inputs = {}
-    points = []
-    for e in self.data_configs['feed_data']:
-      ele = self.get_ele(features, e)
-      if e=='xyz':
-        xyz = ele = self.normalize_xyz(ele)
-      if e=='color':
-        ele = self.normalize_color(ele)
-      points.append(ele)
-    inputs['points'] = points = tf.concat(points, -1)
-
-    sg_params = self.gather_sg_params(features)
-    inputs.update(sg_params)
-
-    vshape = TfUtil.get_tensor_shape(points)
-    #self.batch_size = vshape[0]
-    self.num_vertex0 = vshape[1]
-    self.log_tensor_p(points, 'points', 'raw_input')
-    return inputs, xyz
 
   def gather_sg_params(self, features):
     if not hasattr(self, 'sg_settings'):

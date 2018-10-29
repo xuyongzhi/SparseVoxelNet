@@ -420,7 +420,7 @@ def define_model_dir(flags_obj, net_data_configs):
   wd = -int(wd.split('E')[1])
   logname += '-wd' + str(wd)
 
-  model_dir = os.path.join(ROOT_DIR, 'results/meshseg', logname)
+  model_dir = os.path.join(ROOT_DIR, 'results/seg', logname)
   flags_obj.model_dir = model_dir
 
   if not os.path.exists(model_dir):
