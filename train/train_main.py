@@ -198,7 +198,7 @@ def _parse_example_proto(example_serialized):
 
 
 def input_fn(is_training, data_dir, batch_size, num_epochs=1, num_gpus=None,
-             examples_per_epoch=None):
+             examples_per_epoch=None, sg_settings=None):
   """Input function which provides batches for train or eval.
 
   Args:
@@ -239,6 +239,7 @@ def input_fn(is_training, data_dir, batch_size, num_epochs=1, num_gpus=None,
       num_epochs=num_epochs,
       num_gpus=num_gpus,
       examples_per_epoch=examples_per_epoch if is_training else None,
+      sg_settings = sg_settings
   )
 
 
@@ -345,6 +346,12 @@ def parse_flags_update_configs(flags_obj):
   data_configs['normxyz'] = flags_obj.normxyz
 
   net_data_configs['data_configs'] = data_configs
+
+  #*****************************************************************************
+  # sampling and grouping
+  from utils.sg_settings import get_sg_settings
+  sg_settings = get_sg_settings(flags_obj.sg)
+  net_data_configs['sg_settings'] = sg_settings
 
   #*****************************************************************************
   # net_configs
@@ -464,6 +471,7 @@ def define_network_flags():
   flags.DEFINE_string('shortcut','C','C Z')
   flags.DEFINE_string('drop_imo','000','dropout rate for input, middle and out')
   flags.DEFINE_bool(name='pred_ply', default=False, help ="")
+  flags.DEFINE_string('sg', '8192_1_1024_64_4', help='sampling and grouping settings')
 
   #if SMALL_FNUM:
   #  update_examples_num(True, data_dir)

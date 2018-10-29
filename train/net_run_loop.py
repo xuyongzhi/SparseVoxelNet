@@ -47,7 +47,7 @@ from models.meshnet_model import DEFAULT_DTYPE
 ################################################################################
 def process_record_dataset(dataset, is_training, batch_size, shuffle_buffer,
                            parse_record_fn, dset_shape_idx, num_epochs=1, num_gpus=None,
-                           examples_per_epoch=None):
+                           examples_per_epoch=None, sg_settings=None):
   """Given a Dataset with raw records, return an iterator over the records.
 
   Args:
@@ -89,12 +89,18 @@ def process_record_dataset(dataset, is_training, batch_size, shuffle_buffer,
     total_batches = total_examples // batch_size // num_gpus * num_gpus
     dataset.take(total_batches * batch_size)
 
+  if sg_settings is None:
+    bsg = None
+  else:
+    from utils.grouping_sampling_voxelization import BlockGroupSampling
+    bsg = BlockGroupSampling(sg_settings)
+
   # Parse the raw records into images and labels. Testing has shown that setting
   # num_parallel_batches > 1 produces no improvement in throughput, since
   # batch_size is almost always much greater than the number of CPU cores.
   dataset = dataset.apply(
       tf.contrib.data.map_and_batch(
-          lambda value: parse_record_fn(value, is_training, dset_shape_idx),
+          lambda value: parse_record_fn(value, is_training, dset_shape_idx, bsg=bsg),
           batch_size=batch_size,
           num_parallel_batches=1,
           drop_remainder=True))
@@ -556,7 +562,8 @@ def net_main(
             flags_obj.batch_size, flags_core.get_num_gpus(flags_obj)),
         num_epochs=num_epochs,
         num_gpus=flags_core.get_num_gpus(flags_obj),
-        examples_per_epoch = flags_obj.examples_per_epoch
+        examples_per_epoch = flags_obj.examples_per_epoch,
+        sg_settings = net_data_configs['sg_settings']
         )
 
   def input_fn_eval():
@@ -565,6 +572,7 @@ def net_main(
         batch_size=distribution_utils.per_device_batch_size(
             flags_obj.batch_size, flags_core.get_num_gpus(flags_obj)),
         num_epochs=1,
+        sg_settings = net_data_configs['sg_settings']
         )
 
   if flags_obj.eval_only or flags_obj.pred_ply or not flags_obj.train_epochs:

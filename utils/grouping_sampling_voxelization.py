@@ -1889,6 +1889,7 @@ def main_eager(DATASET_NAME, filenames, sg_settings, dset_shape_idx, batch_size,
       flatting_idx, flat_valid_mask, nb_enoughp_ave, others = \
       bsg.grouping_multi_scale(raw_xyz)
 
+    import pdb; pdb.set_trace()  # XXX BREAKPOINT
     samplings_i = bsg.samplings
     samplings_np_ms = []
     for s in range(len(samplings_i)):
