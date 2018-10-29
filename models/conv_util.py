@@ -90,54 +90,6 @@ def tensor_info(tensor_ls, tensor_name_ls=None, layer_name=None,
   return tensor_sum
 
 
-def unique_nd( inputs, axis=-1, unit=3 ):
-    org_inputs = inputs
-    org_shape = inputs.shape
-    batch_size = org_shape[0].value
-    block_num = org_shape[1].value
-    point_num = org_shape[2].value
-    assert org_shape[3].value == 3
-
-    units = tf.constant( [[9],[3],[1]], tf.float32 )
-    inputs = tf.identity( inputs, name='uni_in0' ) # gpu_0/sa_layer4/uni_in0:0
-    inputs = tf.reshape( inputs, [batch_size*block_num, point_num,3] )
-    first_unique_masks = []
-    for i in range(batch_size*block_num):
-        inputs_i = tf.reshape( inputs[i], [-1,3], name='uni_inb_%d'%(i) ) # gpu_0/sa_layer4/uni_inb_0:0
-        ids = tf.squeeze( tf.matmul( inputs_i, units, name='ids_%d'%(i) ))
-        ids_unique, idx_unique = tf.unique( ids, name='idx_unique_%d'%(i) ) # gpu_0/sa_layer4/idx_unique_0:0  gpu_0/sa_layer4/idx_unique_0:1
-        is_the_first = idx_unique[1:] - idx_unique[0:idx_unique.shape[0]-1]
-        is_the_first = tf.concat( [tf.constant([1],tf.int32),is_the_first],0, name='is_the_first_%d'%(i) ) # gpu_0/sa_layer4/is_the_first_0:0
-        first_unique_mask = tf.equal( is_the_first, 1, name='first_unique_mask_%d'%(i) ) # gpu_0/sa_layer4/first_unique_mask_0:0
-        first_unique_masks.append( tf.expand_dims(first_unique_mask,0) )
-    first_unique_masks = tf.concat( first_unique_masks, 0)
-    first_unique_masks = tf.reshape( first_unique_masks, org_shape[0:3], name='first_unique_masks' )
-    # set all the replicated items as -9999
-    first_unique_masks = tf.expand_dims( first_unique_masks,-1 )
-    first_unique_masks = tf.tile( first_unique_masks, [1,1,1,3] )
-    output = tf.where( first_unique_masks, org_inputs, tf.ones(org_shape,tf.float32)*(-99), name='uni_out' ) # gpu_0/sa_layer4/uni_out:0
-    return output, first_unique_masks
-
-################################################################################
-# Convenience functions for building the ResNet model.
-################################################################################
-
-
-def conv3d_fixed_padding(inputs, filters, kernel_size, strides, padding, data_format):
-  """Strided 3-D convolution with explicit padding."""
-  # The padding is consistent and is based only on `kernel_size`, not on the
-  # dimensions of `inputs` (as opposed to using `tf.layers.conv2d` alone).
-  if strides > 1:
-    import pdb; pdb.set_trace()  # XXX BREAKPOINT
-    inputs = fixed_padding(inputs, kernel_size, data_format)
-
-  return tf.layers.conv3d(
-      inputs=inputs, filters=filters, kernel_size=kernel_size, strides=strides,
-      padding=padding, use_bias=False,
-      kernel_initializer=KERNEL_INI,
-      data_format=data_format)
-
-
 class ResConvOps(object):
   ''' Basic convolution operations '''
   _block_layers_num = 0
@@ -962,33 +914,6 @@ class ResConvOps(object):
           inputs = tf.layers.dropout(inputs, out_drop_rate, training=is_training)
     self.log_dotted_line('Dense End')
     return inputs
-
-
-def mytile(tensor, axis, eval_views):
-  org_shape = tensor.shape.as_list()
-  tensor = tf.expand_dims(tensor, axis)
-  multiples = np.ones(len(tensor.shape))
-  multiples[axis] = eval_views
-  tensor = tf.tile(tensor, multiples)
-  org_shape[0]=-1
-  tensor = tf.reshape(tensor, org_shape)
-  return tensor
-
-
-def my_reduce_mean(grouped_center):
-  '''
-  reduce mean exclusive of 0.
-  grouped_center mayu include 0 that should not be included by mean
-  grouped_center: (b,n1.n2,3)
-  mean_xyz:(b,n1,3)
-  '''
-  sum_xyz = tf.reduce_sum(grouped_center, -2)
-  tmp = tf.reduce_mean(grouped_center,-1)
-  tmp = tf.cast(tf.not_equal(tmp, 0),tf.float32)
-  valid_num = tf.reduce_sum(tmp, -1)
-  valid_num = tf.expand_dims(valid_num, -1)
-  mean_xyz = sum_xyz / valid_num
-  return mean_xyz
 
 
 def pc_normalize(points):
