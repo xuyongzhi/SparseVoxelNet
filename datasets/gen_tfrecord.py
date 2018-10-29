@@ -25,8 +25,7 @@ if NET_FLAG == 'FaceLabel_GraphCnn':
 elif NET_FLAG == 'VertexLabel_PointCnn':
   Vertex_feles = ['xyz','nxnynz']
   Vertex_ieles = []
-  Vertex_uint8_eles = ['color', 'v_label_category']
-  Face_ieles = ['vidx_per_face']
+  Vertex_uint8_eles = ['color', 'label_category']
   Face_ieles = []
   _parse_local_graph_pv = False
 
@@ -417,7 +416,7 @@ class Raw_To_Tfrecord():
       self.record_shape_idx(block_sampled_datas, dls)
       print(self.ele_idxs)
 
-    max_category =  np.max( self.get_label(dls) )
+    max_category =  np.max(ele_in_feature(dls, 'label_category', self.ele_idxs))
     assert max_category < self.dataset_meta.num_classes, "max_category {} > {}".format(\
                                           max_category, self.dataset_meta.num_classes)
 
@@ -448,13 +447,6 @@ class Raw_To_Tfrecord():
 
     if self.fi %5 ==0:
       print('{}/{} write tfrecord OK: {}'.format(self.fi, self.fn, tfrecord_fn))
-
-
-  def get_label(self, dls):
-    data = ele_in_feature(dls, 'label_category', self.ele_idxs)
-    if data is None:
-      data = ele_in_feature(dls, 'v_label_category', self.ele_idxs)
-    return data
 
 def read_dataset_summary(data_dir):
   import pickle

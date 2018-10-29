@@ -184,11 +184,14 @@ def parse_ply_vertex_semantic(ply_fn):
         datas_face.append(datas[e])
     face_semantic = np.concatenate(datas_face,axis=1)
 
+    for ele in ['label_material', 'label_instance', 'label_raw_category', 'label_category']:
+      del datas[ele]
+
     vertex_semantic, vertex_indices_multi_semantic, face_indices_multi_semantic =\
       get_vertex_label_from_face(datas['vidx_per_face'], face_semantic, num_vertex)
-    datas['v_label_category'] = vertex_semantic[:,Category_Index:Category_Index+1]
-    datas['v_label_instance'] = vertex_semantic[:,Instance_Index:Instance_Index+1]
-    datas['v_label_material'] = vertex_semantic[:,Material_Index+Material_Index+1]
+    datas['label_category'] = vertex_semantic[:,Category_Index:Category_Index+1]
+    datas['label_instance'] = vertex_semantic[:,Instance_Index:Instance_Index+1]
+    datas['label_material'] = vertex_semantic[:,Material_Index+Material_Index+1]
 
     IsDeleteNonPosId = True
     if IsDeleteNonPosId:
@@ -208,13 +211,11 @@ def parse_ply_vertex_semantic(ply_fn):
     raw_vidx_2_sp_vidx[vertex_remain_indices] = np.arange(_num_vertex_sp)
 
     # Del VexMultiSem
-    for ele in ['xyz', 'nxnynz', 'color', 'v_label_category', 'v_label_instance', 'v_label_material']:
+    for ele in ['xyz', 'nxnynz', 'color', 'label_category', 'label_instance', 'label_material']:
       datas[ele] = np.delete(datas[ele], vertex_del_indices, axis=0)
     for ele in ['vidx_per_face']:
       datas[ele] = np.delete(datas[ele], face_del_indices, axis=0)
     datas['vidx_per_face'] = np.take(raw_vidx_2_sp_vidx, datas['vidx_per_face'])
-    for ele in ['label_material', 'label_instance', 'label_raw_category', 'label_category']:
-      del datas[ele]
 
     return datas
 

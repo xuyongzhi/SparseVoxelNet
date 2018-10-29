@@ -157,7 +157,7 @@ class ResConvOps(object):
     res = 'R' if net_configs['residual'] else 'P'
     key_para_names = 'model bs feed drop_imo lr0 \n'
     key_paras_str = '{net_flag} {bs} {feed_data_eles} \
-{drop_imo}  {lr0}'.format(
+      {drop_imo}  {lr0}'.format(
       net_flag=dnc['net_flag'],
       bs=net_configs['batch_size'],
       feed_data_eles=data_configs['feed_data_eles'].replace('nxnynz','n') ,
@@ -465,7 +465,7 @@ class ResConvOps(object):
       assert len(get_tensor_shape(edgev_per_vertex)) == 3
 
     shortcut = vertices
-    if not initial_layer and not no_prenorm:
+    if (not initial_layer) and (not no_prenorm):
       vertices = self.batch_norm_act(vertices, training)
 
     if edgev_per_vertex is not None:
@@ -509,8 +509,8 @@ class ResConvOps(object):
     else:
       return vertices
 
-  def building_block_v2(self, vertices, block_params, training, projection_shortcut,
-                        half_layer=None, no_ini_bn=False):
+  def building_block_v2(self, inputs, block_params, training, projection_shortcut,
+                        half_layer=None, initial_layer=False, no_prenorm=False):
     """A single block for ResNet v2, without a bottleneck.
 
     Batch normalization then ReLu then convolution as described by:
@@ -539,7 +539,7 @@ class ResConvOps(object):
     pad_stride1 = block_params['pad_stride1']
 
     shortcut = inputs
-    if not no_ini_bn:
+    if (not initial_layer) and (not no_prenorm):
       inputs = self.batch_norm_act(inputs, training)
     if projection_shortcut == 'FirstResUnit':
       # For pointnet, projection shortcut is not needed at the First ResUnit.
@@ -569,7 +569,7 @@ class ResConvOps(object):
       self.log_tensor_c(inputs, kernels, 1, 's',
                         tf.get_variable_scope().name)
 
-    if self.residual:
+    if self.residual and (not initial_layer):
       assert inputs.shape == shortcut.shape
       if self.IsShowModel: self.log('Add shortcut*%0.1f'%(self.res_scale))
       return inputs * self.res_scale + shortcut
@@ -577,7 +577,7 @@ class ResConvOps(object):
       return inputs
 
   def bottleneck_block_v2(self, inputs, block_params, training, projection_shortcut,
-                          half_layer=None, no_ini_bn=False):
+                          half_layer=None, initial_layer=False, no_prenorm=False):
     """A single block for ResNet v2, with a bottleneck.
 
     Similar to building_block_v2(), except using the "bottleneck" blocks
@@ -614,7 +614,7 @@ class ResConvOps(object):
     pad_stride1 = block_params['pad_stride1']
 
     shortcut = inputs
-    if not no_ini_bn:
+    if (not initial_layer) and (not no_prenorm):
       inputs = self.batch_norm_act(inputs, training)
 
     # The projection shortcut should come after the first batch norm and ReLU
@@ -668,7 +668,7 @@ class ResConvOps(object):
     return net
 
   def inception_block_v2(self, inputs, block_params, training,
-                         projection_shortcut, half_layer=None, no_ini_bn=False):
+                         projection_shortcut, half_layer=None, no_prenorm=False):
     """A single block for ResNet v2, with inception structure
 
 
@@ -688,7 +688,7 @@ class ResConvOps(object):
       The output tensor of the block; shape should match inputs.
     """
     shortcut = inputs
-    if not no_ini_bn:
+    if not no_prenorm:
       inputs = self.batch_norm_act(inputs, training)
 
     # The projection shortcut should come after the first batch norm and ReLU
@@ -720,7 +720,7 @@ class ResConvOps(object):
     inputs = self.conv1d2d3d(inputs, block_params['filters'], 1, 1, 's')
     self.log_tensor_c(inputs, 1, 1, 's', tf.get_variable_scope().name)
 
-    if self.residual:
+    if self.residual and (not initial_layer):
       if not inputs.shape == shortcut.shape:
         if NoRes_InceptionReduction:
           return inputs
@@ -834,6 +834,7 @@ class ResConvOps(object):
       raise NotImplementedError
     return shortcut
 
+
   def blocks_layers(self, inputs, blocks_params, block_fn, is_training,
                     scope, edgev_per_vertex=None, with_initial_layer=True):
     self.log_tensor_p(inputs, 'input', scope)
@@ -844,7 +845,7 @@ class ResConvOps(object):
       with tf.variable_scope('initial_layer'):
         self.log_dotted_line(scope+'_Initial_Layer', 1)
         inputs = block_fn(inputs, blocks_params[0], is_training, projection_shortcut=None,
-                          initial_layer=True, edgev_per_vertex=edgev_per_vertex)
+                          initial_layer=True)
 
     for bi in range(0+with_initial_layer, len(blocks_params)):
       with tf.variable_scope(scope+'_B%d'%(bi)):
@@ -889,7 +890,7 @@ class ResConvOps(object):
     # and pad_stride1
     with tf.variable_scope('L0'):
       inputs = block_fn(inputs, block_params, is_training, shortcut_projection,
-                        edgev_per_vertex=edgev_per_vertex, no_prenorm=no_prenorm)
+                        no_prenorm=no_prenorm)
 
     block_params['strides'] = 1
     block_params['pad_stride1'] = 's'

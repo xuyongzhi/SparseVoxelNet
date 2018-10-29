@@ -38,7 +38,7 @@ class MeshSampling():
   _vertex_eles = ['color', 'xyz', 'nxnynz', 'fidx_per_vertex', 'edgev_per_vertex', 'valid_ev_num_pv',\
                   'edges_per_vertex', 'edges_pv_empty_mask', 'fidx_pv_empty_mask',\
                   'same_normal_mask', 'same_category_mask',\
-                  'v_label_category', 'v_label_instance', 'v_label_material']
+                  'label_category', 'label_instance', 'label_material']
   _face_eles = ['label_raw_category', 'label_instance', 'label_material', \
                 'label_category', 'vidx_per_face', ]
 
@@ -130,7 +130,7 @@ class MeshSampling():
     IsGenply_Cleaned = False
     IsGenply_SameMask = False
     IsGenply_Splited = False
-    IsGenply_SplitedSampled = True
+    IsGenply_SplitedSampled = False
 
     if IsGenply_Raw:
       GenPlys.gen_mesh_ply_basic(raw_datas, 'Raw', 'raw', ply_dir)
@@ -660,9 +660,8 @@ class MeshSampling():
 
   @staticmethod
   def rm_some_labels(raw_datas, dset_metas, splited_vidx):
-    face_label = 'label_category' in raw_datas
-    if face_label:
-      assert 'v_label_category' not in raw_datas
+    vertex_label =  raw_datas['label_category'].shape[0] == raw_datas['xyz'].shape[0]
+    if not vertex_label:
       return MeshSampling.rm_some_face_labels(raw_datas, dset_metas, splited_vidx)
     else:
       return MeshSampling.rm_some_vertex_labels(raw_datas, dset_metas, splited_vidx)
@@ -672,7 +671,7 @@ class MeshSampling():
     unwanted_classes = ['void']
     unwanted_labels = tf.constant([[dset_metas.class2label[c] for c in unwanted_classes]], tf.int32)
 
-    label_category = raw_datas['v_label_category']
+    label_category = raw_datas['label_category']
     keep_vertex_mask = tf.not_equal(label_category, unwanted_labels)
     keep_vertex_mask = tf.reduce_all(keep_vertex_mask, 1)
     keep_vertex_idx = tf.squeeze(tf.cast(tf.where(keep_vertex_mask), tf.int32),1)
@@ -1878,16 +1877,11 @@ class GenPlys():
 
     # **************
     ply_fn = '{}/{}.ply'.format(path, base_name)
-    if 'label_category' in datas:
-      label_category = datas['label_category']
+    label_category = datas['label_category']
+    if 'vidx_per_face' in datas:
       ply_util.gen_mesh_ply(ply_fn, datas['xyz'], datas['vidx_per_face'],
                           face_label=label_category)
     else:
-      label_category = datas['v_label_category']
-      if 'vidx_per_face' in datas:
-        ply_util.gen_mesh_ply(ply_fn, datas['xyz'], datas['vidx_per_face'],
-                          vertex_label=label_category)
-      else:
         ply_util.create_ply(datas['xyz'], ply_fn)
 
 if __name__ == '__main__':

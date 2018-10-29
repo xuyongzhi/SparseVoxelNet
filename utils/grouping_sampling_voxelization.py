@@ -1740,7 +1740,7 @@ def main_input_pipeline(DATASET_NAME, filenames, sg_settings, dset_shape_idx, ba
 
         #****************
         xyz = get_ele(features, 'xyz', dset_shape_idx)
-        label_category = np.squeeze(get_ele(features, 'v_label_category', dset_shape_idx),2)
+        label_category = np.squeeze(get_ele(features, 'label_category', dset_shape_idx),2)
         if sg_settings['gen_ply']:
           gen_plys_raw(DATASET_NAME, xyz, label_category)
           #gen_plys_sg(DATASET_NAME, grouped_bot_cen_top, out_bot_cen_top, nb_enoughp_ave)

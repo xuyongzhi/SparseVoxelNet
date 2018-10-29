@@ -107,8 +107,6 @@ def parse_record(tfrecord_serialized, is_training, dset_shape_idx, \
 
     #*************
     label_category = get_ele(features, 'label_category', dset_shape_idx)
-    if label_category is None:
-      label_category = get_ele(features, 'v_label_category', dset_shape_idx)
     labels = tf.squeeze(label_category,1)
 
     return features, labels

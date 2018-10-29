@@ -32,12 +32,13 @@ from official.utils.flags import core as flags_core
 from official.utils.logs import logger
 
 from train import net_run_loop
-from models import meshnet_model
+from models import meshnet_model, pointnet_vsg
+ModelUsed = pointnet_vsg
 from datasets.tfrecord_util import parse_record, get_dset_shape_idxs
 from datasets.all_datasets_meta.datasets_meta import DatasetsMeta
 
 TMPDEBUG = False
-SMALL_FNUM = False
+SMALL_FNUM = True
 FILE_RATE = 0.01 if SMALL_FNUM else 1.0
 DATA_DIR = os.path.join(ROOT_DIR, 'data')
 
@@ -212,7 +213,7 @@ def input_fn(is_training, data_dir, batch_size, num_epochs=1, num_gpus=None,
     A dataset that can be used for iteration.
   """
   filenames = get_filenames(is_training, data_dir)
-  assert len(filenames)>0
+  assert len(filenames)>0, data_dir
   dset_shape_idx = get_dset_shape_idxs(data_dir)
   dataset = tf.data.Dataset.from_tensor_slices(filenames)
 
@@ -252,11 +253,11 @@ def get_synth_input_fn(dtype):
 ###############################################################################
 # Running the model
 ###############################################################################
-class MeshnetModel(meshnet_model.Model):
+class Model3D(ModelUsed.Model):
   """Model class with appropriate defaults for Imagenet data."""
 
   def __init__(self, net_data_configs, data_format=None,
-               dtype=meshnet_model.DEFAULT_DTYPE):
+               dtype=ModelUsed.DEFAULT_DTYPE):
     """These are the parameters that work for Imagenet data.
 
     Args:
@@ -267,7 +268,7 @@ class MeshnetModel(meshnet_model.Model):
       dtype: The TensorFlow dtype to use for calculations.
     """
 
-    super(MeshnetModel, self).__init__(
+    super(Model3D, self).__init__(
         net_data_configs=net_data_configs,
         data_format=data_format,
         dtype=dtype
@@ -306,7 +307,7 @@ def network_model_fn(features, labels, mode, params):
       features=features,
       labels=labels,
       mode=mode,
-      model_class=MeshnetModel,
+      model_class=Model3D,
       net_data_configs=params['net_data_configs'],
       weight_decay=params['weight_decay'],
       learning_rate_fn=learning_rate_fn,
@@ -319,7 +320,8 @@ def network_model_fn(features, labels, mode, params):
   )
 
 def parse_flags_update_configs(flags_obj):
-  from models.block_configs_fancnn import block_configs
+  #from models.block_configs_fancnn import block_configs
+  from models.block_configs_pointnet import block_configs
   flags_obj.max_train_steps = int(flags_obj.train_epochs * flags_obj.examples_per_epoch)
 
   #*****************************************************************************
@@ -437,7 +439,7 @@ def add_log_file(model_dir):
 def define_network_flags():
   net_run_loop.define_net_flags()
   flags.adopt_module_key_flags(net_run_loop)
-  data_dir = os.path.join(DATA_DIR,'MATTERPORT_TF/mesh_tfrecord')
+  data_dir = os.path.join(DATA_DIR,'MATTERPORT_TF/tfrecord')
   flags_core.set_defaults(train_epochs=150*2,
                           data_dir=data_dir,
                           batch_size=2,
@@ -454,7 +456,7 @@ def define_network_flags():
   flags.DEFINE_float('bnd0', default=0.9, help="base bnd")
   flags.DEFINE_float('bnd_decay', default=0.1, help="")
   flags.DEFINE_integer('lrd_epochs', default=20, help="learning_rate decay epoches")
-  flags.DEFINE_string('feed_data','xyz-nxnynz','xyz-nxnynz-color')
+  flags.DEFINE_string('feed_data','xyz-nxnynz-color','xyz-nxnynz-color')
   flags.DEFINE_string('normxyz','min0','raw, mean0, min0')
   flags.DEFINE_string('normedge','raw','raw, l0, all')
   flags.DEFINE_bool('residual', short_name='rs', default=False,
@@ -482,7 +484,7 @@ def run_network(flags_obj):
 
   # debug mode
   net_data_configs['net_configs']['bn_decay_fn'] = None
-  #net_run_loop.net_main_check(flags_obj, MeshnetModel, input_function, net_data_configs)
+  #net_run_loop.net_main_check(flags_obj, Model3D, input_function, net_data_configs)
 
 
 def main(_):
