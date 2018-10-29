@@ -161,9 +161,9 @@ def get_sg_settings(sgflag):
   sg_settings['num_sg_scale'] = len(sg_settings['width'])
   # When the raw input scope is gurannted to be within sg_settings['width'][0],
   # enable skil global scale to speed up
-  sg_settings['skip_global_scale'] = True and sg_settings['nblock'][0]==1
-  sg_settings['gen_ply'] = True
-  sg_settings['record'] = True
+  sg_settings['skip_global_scale'] = False and sg_settings['nblock'][0]==1
+  sg_settings['gen_ply'] = False
+  sg_settings['record'] = False
 
   sg_settings['nblocks_per_point'] = []
   for s in range(len(sg_settings['width'])):

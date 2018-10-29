@@ -351,7 +351,7 @@ class BlockGroupSampling():
     '''
     xyz: (batch_size, num_point, 3)
     '''
-    xyz_shape = [e.value for e in xyz.shape]
+    xyz_shape = TfUtil.t_shape(xyz)
     assert len(xyz_shape) == 3
     assert xyz_shape[2] == 3
     #xyz = self.pre_sampling(xyz)
@@ -1727,64 +1727,26 @@ def main_input_pipeline(DATASET_NAME, filenames, sg_settings, dset_shape_idx, ba
     get_next = dataset.make_one_shot_iterator().get_next()
     features_next, label_next = get_next
 
-
-    raw_points_next = features_next['vertex_f']
-    raw_labels_next = label_next
-
-    import pdb; pdb.set_trace()  # XXX BREAKPOINT
-    points_next = features_next['points']
-    grouped_pindex_next = []
-    vox_index_next = []
-    grouped_bot_cen_top = []
-    empty_mask_next = []
-    bot_cen_top_next = []
-    nblock_valid_next = []
-    others_next = []
-
     num_scale = bsg._num_scale
-    for s in range(num_scale):
-      grouped_pindex_next.append(features_next['grouped_pindex_%d'%(s)])
-      vox_index_next.append(features_next['vox_index_%d'%(s)])
-      grouped_bot_cen_top.append(features_next['grouped_bot_cen_top_%d'%(s)])
-      empty_mask_next.append(features_next['empty_mask_%d'%(s)])
-      bot_cen_top_next.append(features_next['bot_cen_top_%d'%(s)])
-      nblock_valid_next.append(features_next['nblock_valid_%d'%(s)])
-
-      others_next.append({})
-      for name0 in features_next:
-        if 'OTS_' in name0:
-          name = name0.split('OTS_')[1]
-          others_next[s][name] = features_next[name0]
-    #samplings_next = bsg.samplings
-
     init = tf.global_variables_initializer()
 
     config = tf.ConfigProto(allow_soft_placement=True)
     with tf.Session(config=config) as sess:
       for i in xrange(cycles):
-        #points_i = sess.run(points_next)
-        #grouped_pindex = sess.run(grouped_pindex_next)
-        #empty_masks = sess.run(empty_mask_next)
-        #bot_cen_tops = sess.run(bot_cen_top_next)
-        #others = sess.run(others_next)
-
         t0 = time.time()
-        raw_points, raw_labels, points, labels, grouped_pindex, vox_index,\
-          grouped_bot_cen_top, empty_masks, bot_cen_tops, nblock_valid, others = \
-          sess.run([raw_points_next, raw_labels_next, points_next, label_next, grouped_pindex_next, vox_index_next,\
-                    grouped_bot_cen_top, empty_mask_next, bot_cen_top_next, nblock_valid_next, others_next] )
-
+        features =  sess.run(features_next)
         t_batch = time.time()-t0
-        xyzs = points[:,:,0:3]
         print("\n\n{} t_batch:{} t_frame:{}\n".format(i, t_batch*1000, t_batch/batch_size*1000))
 
+        #****************
+        xyz = get_ele(features, 'xyz', dset_shape_idx)
+        label_category = np.squeeze(get_ele(features, 'v_label_category', dset_shape_idx),2)
         if sg_settings['gen_ply']:
-          gen_plys_scale0(DATASET_NAME, raw_points, raw_labels, points, labels, dset_shape_idx, nblock_valid[0])
-          gen_plys_sg(DATASET_NAME, grouped_bot_cen_top, bot_cen_tops, nblock_valid[0])
-          import pdb; pdb.set_trace()  # XXX BREAKPOINT
-          pass
+          gen_plys_raw(DATASET_NAME, xyz, label_category)
+          #gen_plys_sg(DATASET_NAME, grouped_bot_cen_top, out_bot_cen_top, nb_enoughp_ave)
 
-  return xyzs, grouped_bot_cen_top, others, bsg._shuffle
+
+  #return xyzs, grouped_bot_cen_top, others, bsg._shuffle
 
 
 def main_gpu(DATASET_NAME, filenames, sg_settings, dset_shape_idx, batch_size, cycles=1, num_epoch=10):
@@ -1920,12 +1882,12 @@ def main_eager(DATASET_NAME, filenames, sg_settings, dset_shape_idx, batch_size,
 
   for n in range(cycles):
     get_next = iterator.get_next()
-    features, label = get_next
-    xyz = get_ele(features, 'xyz', dset_shape_idx)
+    features, raw_label = get_next
+    raw_xyz = get_ele(features, 'xyz', dset_shape_idx)
 
     grouped_pindex, vox_index, grouped_bot_cen_top, empty_mask, out_bot_cen_top,\
       flatting_idx, flat_valid_mask, nb_enoughp_ave, others = \
-      bsg.grouping_multi_scale(xyz)
+      bsg.grouping_multi_scale(raw_xyz)
 
     samplings_i = bsg.samplings
     samplings_np_ms = []
@@ -1938,10 +1900,10 @@ def main_eager(DATASET_NAME, filenames, sg_settings, dset_shape_idx, batch_size,
   # apply grouped_pindex
   xyz_grouped = []
   label_grouped = []
-  for s in range(1):
+  for s in range(0):
     if s==0:
-      xyz_last = xyz
-      label_last = label
+      xyz_last = raw_xyz
+      label_last = raw_label
     else:
       xyz_last = xyz_grouped[s-1]
       label_last = label_grouped[s-1]
@@ -2036,14 +1998,15 @@ def main(filenames, dset_shape_idx, main_flag, batch_size = 2, cycles = 1):
       main_eager(DATASET_NAME, filenames, sg_settings, dset_shape_idx, batch_size, cycles)
     num_gb = xyzs_E.shape[0]
   if 'i' in main_flag:
-    xyzs, grouped_bot_cen_top, others, shuffle = \
-      main_input_pipeline(DATASET_NAME, filenames, sg_settings, dset_shape_idx, batch_size, cycles, num_epoch)
-    num_gb = xyzs.shape[0]
+    #xyzs, grouped_bot_cen_top, others, shuffle = \
+    main_input_pipeline(DATASET_NAME, filenames, sg_settings, dset_shape_idx, batch_size, cycles, num_epoch)
+    #num_gb = xyzs.shape[0]
   if 'G' in main_flag:
     xyzs, grouped_bot_cen_top, others, shuffle = \
       main_gpu(DATASET_NAME, filenames, sg_settings, dset_shape_idx, batch_size, cycles, num_epoch)
     num_gb = xyzs.shape[0]
 
+  return
 
   if main_flag=='eg' and shuffle==False and shuffle_E==False:
     assert xyzs.shape[0] == xyzs_E.shape[0], "Make batch_size=batch_size in main "
@@ -2115,12 +2078,12 @@ if __name__ == '__main__':
       print('batch_size {}'.format(batch_size))
   else:
     main_flag = 'i'
-    main_flag = 'G'
+    #main_flag = 'G'
     #main_flag = 'eg'
     #main_flag = 'e'
   print(main_flag)
 
-  if main_flag:
+  if 'e' in main_flag:
     tf.enable_eager_execution()
   #main_1by1_file(filenames, dset_shape_idx, main_flag, batch_size)
 

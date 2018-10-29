@@ -48,6 +48,7 @@ def int64_feature(values):
 def get_tensor_shape(t):
   return TfUtil.get_tensor_shape(t)
 
+
 def get_shape0(t):
   return TfUtil.tshape0(t)
 
@@ -99,6 +100,12 @@ def parse_record(tfrecord_serialized, is_training, dset_shape_idx, \
     if 'face_i' in tfrecord_features:
       features['face_i'] = face_i
       features['valid_num_face'] = valid_num_face
+
+    #*************
+    if bsg is not None:
+      features = voxel_sampling_grouping(bsg, features, dset_shape_idx)
+
+    #*************
     label_category = get_ele(features, 'label_category', dset_shape_idx)
     if label_category is None:
       label_category = get_ele(features, 'v_label_category', dset_shape_idx)
@@ -107,20 +114,37 @@ def parse_record(tfrecord_serialized, is_training, dset_shape_idx, \
     return features, labels
 
 
-def gather_labels_for_each_gb(points, labels, grouped_pindex0):
-  #grouped_pindex0 = tf.squeeze(grouped_pindex0, 1)
+def voxel_sampling_grouping(bsg, features, dset_shape_idx):
+  from utils.grouping_sampling_voxelization import do_group
+  xyz = get_ele(features, 'xyz', dset_shape_idx)
+  xyz = tf.expand_dims(xyz, 0)
 
-  shape0 = [e.value for e in grouped_pindex0.shape]
-  points_gbs = tf.gather(points, grouped_pindex0)
-  labels_gbs = tf.gather(labels, grouped_pindex0)
-  points_gbs = tf.squeeze(points_gbs, 0)
-  labels_gbs = tf.squeeze(labels_gbs, 0)
+  dsb = {}
+  dsb['grouped_pindex'], dsb['vox_index'], dsb['grouped_bot_cen_top'], dsb['empty_mask'],\
+    dsb['out_bot_cen_top'], dsb['flatting_idx'], dsb['flat_valid_mask'], dsb['nb_enough_p'], others =\
+                    bsg.grouping_multi_scale(xyz)
 
-  # reshape all the gbs in a batch to one dim
-  # need to reshape it back after input pipeline
-  #points_gbs = tf.reshape(points_gbs, [-1, points.shape[-1].value])
-  #labels_gbs = tf.reshape(labels_gbs, [-1, labels_gbs.shape[-1].value])
-  return points_gbs, labels_gbs
+  # **********
+  for s in range(1, bsg._num_scale):
+    for item in ['grouped_pindex', 'grouped_bot_cen_top', 'empty_mask', 'nb_enough_p']:
+      features[item+'_%d'%(s)] = tf.squeeze(dsb[item][s], 0)
+    for item in ['flatting_idx', 'flat_valid_mask']:
+      features[item+'_%d'%(s)] = dsb[item][s]
+
+  # **********
+  vertices = tf.concat([features['vertex_f'], \
+                        tf.cast(features['vertex_uint8'], tf.float32)], -1)
+  vertices = tf.expand_dims(vertices, 0)
+
+  vertices_gped = do_group(vertices, dsb['grouped_pindex'][0])
+  vertices_gped = tf.squeeze(tf.squeeze(vertices_gped,0), 0)
+  vertices_gped = tf.squeeze(vertices_gped,0)
+
+  tmp = dset_shape_idx['shape']['vertex_f'][-1]
+  features['vertex_f'] = vertices_gped[...,0:tmp]
+  features['vertex_uint8'] = tf.cast(vertices_gped[...,tmp:], tf.uint8)
+
+  return features
 
 
 def read_dataset_summary(data_dir):
