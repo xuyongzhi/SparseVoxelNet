@@ -8,6 +8,7 @@ import tensorflow as tf
 from datasets.all_datasets_meta.datasets_meta import DatasetsMeta
 from models.conv_util import ResConvOps, gather_second_d
 from utils.tf_util import TfUtil
+import numpy as np
 
 DEBUG = False
 
@@ -51,12 +52,15 @@ class Model(ResConvOps):
     scale_n = self.block_paras.scale_num
     for scale in range(scale_n):
         points = self.point_encoder(scale, points)
-        points = self.sg_pooling(scale, points, inputs['grouped_pindex'][scale])
+        if scale>0:
+          points = self.pooling(scale, points)
+        if scale != scale_n-1:
+          points = self.sampling_grouping(scale, points, inputs['grouped_pindex'][scale])
 
-    import pdb; pdb.set_trace()  # XXX BREAKPOINT
-    for scale in range(scale_n):
-        points = self.point_decoder(scale, points)
-        points = self.interp_uppooling(scale, points)
+    for i in range(scale_n):
+      scale = scale_n - i -2
+      points = self.interp_uppooling(scale, points, inputs['flatting_idx'][scale])
+      points = self.point_decoder(scale, points)
 
     import pdb; pdb.set_trace()  # XXX BREAKPOINT
     pass
@@ -69,7 +73,13 @@ class Model(ResConvOps):
                                     with_initial_layer = scale==0)
     return new_points
 
-  def sg_pooling(self, scale, points, grouped_pindex):
+  def pooling(self, scale, points, pool='max'):
+    with tf.variable_scope('Pool_S%d'%(scale)):
+      points = tf.reduce_max(points, 2)
+      points = tf.expand_dims(points, 1)
+      return points
+
+  def sampling_grouping(self, scale, points, grouped_pindex):
     with tf.variable_scope('Pool_S%d'%(scale)):
       new_points = TfUtil.gather_third_d(points, grouped_pindex)
     return new_points
@@ -79,8 +89,9 @@ class Model(ResConvOps):
       new_points = points
     return new_points
 
-  def interp_uppooling(self, scale, points):
+  def interp_uppooling(self, scale, points, flatting_idx):
     with tf.variable_scope('UpPool_S%d'%(scale)):
+      import pdb; pdb.set_trace()  # XXX BREAKPOINT
       new_points = points
     return new_points
 
@@ -136,14 +147,18 @@ class Model(ResConvOps):
     if not hasattr(self, 'sg_settings'):
       return {}
     sg_scale_num = self.sg_settings['num_sg_scale']
-    assert sg_scale_num >= self.block_paras.scale_num + 1, "not enough sg scales"
+    assert sg_scale_num >= self.block_paras.scale_num -1 , "not enough sg scales"
     sg_params = {}
     for s in range(sg_scale_num):
-      for item in ['grouped_pindex', 'grouped_bot_cen_top', 'empty_mask', 'nb_enough_p']:
+      for item in ['grouped_pindex', 'grouped_bot_cen_top', 'empty_mask', \
+                   'nb_enough_p', 'flatting_idx', 'flat_valid_mask']:
         if s==0:
           sg_params[item] = []
         else:
-          sg_params[item].append(tf.squeeze( features[item+'_%d'%(s)], 1) )
+          item_v = features[item+'_%d'%(s)]
+          if item not in ['flatting_idx', 'flat_valid_mask']:
+            item_v =  tf.squeeze( item_v, 1)
+          sg_params[item].append( item_v )
     return sg_params
 
   def simplicity_classifier(self, points):
@@ -151,9 +166,6 @@ class Model(ResConvOps):
     simplicity_logits = self.dense_block(points, dense_filters, self.is_training)
     return simplicity_logits
 
-
-
-import numpy as np
 
 class BlockParas():
   def __init__(self, block_configs):
