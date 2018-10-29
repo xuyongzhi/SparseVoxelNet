@@ -117,6 +117,12 @@ def permutation_combination_3D(up_bound_3d, low_bound_3d=[0,0,0]):
   return pairs_3d
 
 
+def do_group(t0, grouped_pindex):
+  if TfUtil.t_shape(grouped_pindex)[-1] == 0:
+    t1 = tf.expand_dims(tf.expand_dims(t0, 1),2)
+  else:
+    t1 = TfUtil.gather_second_d(t0, grouped_pindex)
+  return t1
 
 class BlockGroupSampling():
   def __init__(self, sg_settings, log_path=None):
@@ -141,6 +147,7 @@ class BlockGroupSampling():
     self._empty_point_index = 'first' # -1(GPU only) or 'first'
     self._vox_sizes = sg_settings['vox_size']
     self._auto_adjust_gb_stride = sg_settings['auto_adjust_gb_stride']
+    self._skip_global_scale = sg_settings['skip_global_scale']
 
     self._flat_nums = [3]*self._num_scale
     self._flat_nums = [np.prod(e) for e in self._nblocks_per_point]
@@ -194,15 +201,17 @@ class BlockGroupSampling():
     xyz_max = tf.reduce_max(xyz, 1)
     xyz_min = tf.reduce_min(xyz, 1)
     xyz_mean = (xyz_max + xyz_min) / 2
-    self.xyz_scope = xyz_max - xyz_min
 
     #xyz = tf.Print(xyz, [self.xyz_scope], message="\n\nxyz scope: ")
     #print('raw xyz scope:{}'.format(self.xyz_scope))
 
-    # align to 0.1
-    bot0 =  tf.floor(xyz_min / 0.01) / 100
-    top0 =  tf.ceil(xyz_max / 0.01) / 100
-    scope0 = top0 - bot0
+    ## align to 0.1
+    #bot0 =  tf.floor(xyz_min / 0.01) / 100
+    #top0 =  tf.ceil(xyz_max / 0.01) / 100
+    bot0 = xyz_min
+    top0 = xyz_max
+    self.xyz_scope = scope0 = top0 - bot0
+    scope0 = self.check_skip_global(scope0)
 
     def adjust_stride_gb(scope0_bi):
       #*************************************************************************
@@ -309,6 +318,14 @@ class BlockGroupSampling():
     #print('xyz: {}'.format(xyz[:,0:3,:]))
     #print('\bscale global   global_bot_cen_top:\n{}'.format(self.global_bot_cen_top))
 
+  def check_skip_global(self, xyz_scope):
+    if not self._skip_global_scale:
+      return xyz_scope
+    dif = tf.reduce_min(self._widths[0] - xyz_scope)
+    check = tf.assert_greater_equal(dif, 0.0, message="cannot skip global scale, scope too large")
+    with tf.control_dependencies([check]):
+      xyz_scope = tf.identity(xyz_scope)
+    return xyz_scope
 
   def update_global_bot_cen_top_for_sub(self, out_bot_cen_top_scale0):
     out_bot_cen_top = tf.squeeze( out_bot_cen_top_scale0, 1, name='out_bot_cen_top')
@@ -357,14 +374,14 @@ class BlockGroupSampling():
         assert in_bot_cen_top.shape[3] == 9
         global_block_num = in_bot_cen_top.shape[1].value
 
-        others = {}
-        ds = {}
-
-        ds = {}
-        ds['grouped_pindex'], ds['vox_index'], ds['grouped_bot_cen_top'], \
-          ds['grouped_empty_mask'], ds['out_bot_cen_top'], ds['nb_enough_p'],\
-          ds['flatting_idx'], ds['flat_valid_mask'], others = \
-          self.grouping(s, in_bot_cen_top)
+        if s==0 and self._skip_global_scale:
+          ds, others = self.identity_grouping(s, in_bot_cen_top)
+        else:
+          ds = {}
+          ds['grouped_pindex'], ds['vox_index'], ds['grouped_bot_cen_top'], \
+            ds['grouped_empty_mask'], ds['out_bot_cen_top'], ds['nb_enough_p'],\
+            ds['flatting_idx'], ds['flat_valid_mask'], others = \
+            self.grouping(s, in_bot_cen_top)
 
         if s == 0:
           in_bot_cen_top = tf.squeeze(ds['grouped_bot_cen_top'], 1, name='in_bot_cen_top')
@@ -410,7 +427,7 @@ class BlockGroupSampling():
     if self._record_samplings:
       write_record = self.write_sg_log()
       with tf.control_dependencies([write_record]):
-        ds_ms['grouped_pindex'][0] = tf.identity(ds_ms['grouped_pindex'][0])
+        ds_ms['grouped_pindex'][1] = tf.identity(ds_ms['grouped_pindex'][1])
         return ds_ms['grouped_pindex'], ds_ms['vox_index'], ds_ms['grouped_bot_cen_top'],\
           ds_ms['grouped_empty_mask'], ds_ms['out_bot_cen_top'], ds_ms['flatting_idx'],\
           ds_ms['flat_valid_mask'], ds_ms['nb_enough_p'], others_ms
@@ -436,6 +453,29 @@ class BlockGroupSampling():
     global_empty_mask = tf.less(grouped_empty_mask, nb_enough_p)
     return global_vox_index, global_empty_mask
 
+
+
+  def identity_grouping(self, s, in_bot_cen_top):
+    assert s==0
+    shape0 = TfUtil.get_tensor_shape(in_bot_cen_top)
+    batch_size = shape0[0]
+    vertex_num0 = shape0[2]
+
+    vertex_num0 = 0
+
+    ds = {}
+    ds['grouped_pindex'] = tf.zeros([batch_size, 1,1,vertex_num0], tf.int32)
+    ds['vox_index'] = tf.zeros([batch_size, 0,0,0,0], tf.int32)
+    ds['grouped_bot_cen_top'] = tf.expand_dims(in_bot_cen_top, 2)
+    ds['grouped_empty_mask'] = tf.zeros([batch_size, 1,1,vertex_num0], tf.int32)
+    ds['out_bot_cen_top'] = self.global_bot_cen_top
+    ds['nb_enough_p'] = tf.ones([1,1], tf.int32)
+    ds['flatting_idx'] = tf.zeros([0,0], tf.int32)
+    ds['flat_valid_mask'] = tf.zeros([0,0], tf.int32)
+    others = {}
+    others['name'] = []
+    others['value'] = []
+    return ds, others
 
   def grouping(self, scale, bot_cen_top):
     '''
@@ -588,6 +628,8 @@ class BlockGroupSampling():
 
   def show_samplings_np_multi_scale(self, samplings_np_ms):
     for s in range(len(samplings_np_ms)):
+      if s==0 and self._skip_global_scale:
+        continue
       samplings_np = samplings_np_ms[s]
       self.show_samplings_np(samplings_np,s)
 
@@ -662,6 +704,8 @@ class BlockGroupSampling():
 
     sg_str_ms = []
     for scale in range(self._num_scale):
+      if scale ==0 and self._skip_global_scale:
+        continue
       for item in the_items:
         istr = item_str(scale, item)
         sg_str_ms.append(istr)
@@ -1817,10 +1861,14 @@ def pre_sampling_grouping(points, sg_settings, log_path):
 
     #*************************************************************
     # get inputs for each global block
-    if TfUtil.get_tensor_shape(dsb['grouped_pindex'][0])[2] > 1:
-      raise NotImplementedError, "Currently only one global block allowed"
-    grouped_pindex_global = tf.squeeze(dsb['grouped_pindex'][0], 2, name='grouped_pindex_global')
-    dsb['points'] = TfUtil.gather_second_d(points, grouped_pindex_global)
+    if TfUtil.t_shape(dsb['grouped_pindex'][0])[-1] == 0:
+      dsb['points'] = tf.expand_dims(points, 1)
+    else:
+      if TfUtil.get_tensor_shape(dsb['grouped_pindex'][0])[2] > 1:
+        print("Currently only one global block allowed")
+        raise NotImplementedError
+      grouped_pindex_global = tf.squeeze(dsb['grouped_pindex'][0], 2, name='grouped_pindex_global')
+      dsb['points'] = TfUtil.gather_second_d(points, grouped_pindex_global)
 
     #shape0 = [e.value for e in grouped_pindex_global.shape]
     #grouped_pindex_global = tf.expand_dims(grouped_pindex_global, -1)
@@ -1890,9 +1938,17 @@ def main_eager(DATASET_NAME, filenames, sg_settings, dset_shape_idx, batch_size,
   # apply grouped_pindex
   xyz_grouped = []
   label_grouped = []
-  for s in range(num_sg_scale):
-    xyz_grouped.append( TfUtil.gather_second_d(xyz, grouped_pindex[s]) )
-    label_grouped.append( TfUtil.gather_second_d(label, grouped_pindex[s]) )
+  for s in range(1):
+    if s==0:
+      xyz_last = xyz
+      label_last = label
+    else:
+      xyz_last = xyz_grouped[s-1]
+      label_last = label_grouped[s-1]
+    xyz_grouped.append(   do_group(xyz_last, grouped_pindex[s]) )
+    label_grouped.append( do_group(label_last, grouped_pindex[s]) )
+    #xyz_grouped.append( TfUtil.gather_second_d(xyz, grouped_pindex[s]) )
+    #label_grouped.append( TfUtil.gather_second_d(label, grouped_pindex[s]) )
 
   #*****************************************************************************
   # plys
@@ -2042,7 +2098,7 @@ if __name__ == '__main__':
   data_path = os.path.join(raw_tfrecord_path, 'data')
   #data_path = os.path.join(raw_tfrecord_path, 'merged_data')
   tmp = '*'
-  tmp = '17DRP5sb8fy_region0*'
+  tmp = '17DRP5sb8fy_region0_*'
   #tmp = '17DRP5sb8fy_*'
   #tmp = '1LXtFkjw3qL_region0'
   filenames = glob.glob(os.path.join(data_path, tmp+'.tfrecord'))

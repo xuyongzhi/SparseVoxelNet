@@ -50,6 +50,10 @@ class TfUtil():
     return vmin
 
   @ staticmethod
+  def t_shape(tensor):
+    return TfUtil.get_tensor_shape(tensor)
+
+  @ staticmethod
   def get_tensor_shape(tensor):
     if isinstance(tensor, tf.Tensor):
       shape = tensor.shape.as_list()
