@@ -10,16 +10,22 @@ def block_configs(net_flag):
   block_configs['dense_filters'] = [256, 128]
 
   if net_flag == '3A':
-    filters = [ [64], [ 128], [256], [256] ]
-    block_sizes = [[1]*1, [1]*1, [1]*1, [1]*1]
+    filters_e = [ [64], [ 128], [256], [256] ]
+    block_sizes_e = [[1]*1, [1]*1, [1]*1, [1]*1]
+
+    filters_d = [ [512], [256], [256]]
+    block_sizes_d = [[1]*1, [1]*1, [1]*1]
 
   else:
     raise NotImplementedError
 
   block_flag = ''
 
-  block_configs['block_sizes'] = block_sizes
-  block_configs['filters'] = filters
+  block_configs['block_sizes_e'] = block_sizes_e
+  block_configs['filters_e'] = filters_e
+
+  block_configs['block_sizes_d'] = block_sizes_d
+  block_configs['filters_d'] = filters_d
   #*****************************************************************************
 
   block_configs['block_flag'] = ''

@@ -263,8 +263,9 @@ def net_model_fn( features, labels, mode, model_class,
     current mode.
   """
 
-  from datasets.tfrecord_util import get_ele
-  labels = tf.squeeze(get_ele(features, 'label_category', net_data_configs['dset_shape_idx']), 2)
+  labels = tf.cast(labels, tf.int32)
+  #from datasets.tfrecord_util import get_ele
+  #labels = tf.squeeze(get_ele(features, 'label_category', net_data_configs['dset_shape_idx']), 2)
 
   model = model_class(net_data_configs=net_data_configs,
                       data_format=data_format, dtype=dtype)
@@ -280,7 +281,6 @@ def net_model_fn( features, labels, mode, model_class,
       'classes': tf.argmax(logits, axis=-1),
       'probabilities': tf.nn.softmax(logits, name='softmax_tensor'),
       'labels': labels,
-      'label_weight': label_weight
   }
 
   if mode == tf.estimator.ModeKeys.PREDICT:
@@ -300,7 +300,7 @@ def net_model_fn( features, labels, mode, model_class,
 
   # Calculate loss, which includes softmax cross entropy and L2 regularization.
   cross_entropy = tf.losses.sparse_softmax_cross_entropy(
-      logits=logits, labels=labels, weights=label_weight)
+      logits=logits, labels=labels)
 
   # Create a tensor named cross_entropy for logging purposes.
   tf.identity(cross_entropy, name='cross_entropy')
@@ -380,9 +380,9 @@ def net_model_fn( features, labels, mode, model_class,
   else:
     train_op = None
 
-  accuracy = tf.metrics.accuracy(labels, predictions['classes'], label_weight)
+  accuracy = tf.metrics.accuracy(labels, predictions['classes'])
   num_classes = net_data_configs['dset_metas'].num_classes
-  mean_iou = tf.metrics.mean_iou(labels, predictions['classes'], num_classes, label_weight)
+  mean_iou = tf.metrics.mean_iou(labels, predictions['classes'], num_classes)
   mean_iou = (mean_iou[0], tf.identity(mean_iou[1]))
 
   # Create a tensor named train_accuracy for logging purposes

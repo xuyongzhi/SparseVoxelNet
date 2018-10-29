@@ -836,7 +836,7 @@ class ResConvOps(object):
 
 
   def blocks_layers(self, inputs, blocks_params, block_fn, is_training,
-                    scope, edgev_per_vertex=None, with_initial_layer=True):
+                    scope, edgev_per_vertex=None, with_initial_layer=False):
     self.log_tensor_p(inputs, 'input', scope)
     self.log_dotted_line(scope)
 
