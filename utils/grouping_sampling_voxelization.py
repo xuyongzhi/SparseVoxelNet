@@ -2,9 +2,10 @@
 import tensorflow as tf
 import glob, os, sys
 import numpy as np
-from datasets.rawh5_to_tfrecord import parse_pl_record, get_dset_shape_idxs
+from datasets.tfrecord_util import get_dset_shape_idxs, parse_record, get_ele
 from datasets.all_datasets_meta.datasets_meta import DatasetsMeta
 from utils.ply_util import create_ply_dset, draw_blocks_by_bot_cen_top
+from utils.tf_util import TfUtil
 import time
 
 DEBUG = False
@@ -20,7 +21,7 @@ def get_data_summary_from_tfrecord(filenames, raw_tfrecord_path):
     dataset = tf.data.TFRecordDataset(filenames)
     dataset = dataset.apply(
       tf.contrib.data.map_and_batch(
-        lambda value: parse_pl_record(value, is_training),
+        lambda value: parse_record(value, is_training),
         batch_size=batch_size,
         num_parallel_batches=1,
         drop_remainder=False))
@@ -251,6 +252,7 @@ class BlockGroupSampling():
       #print('i:{} bn:{}  {}'.format(i, bn, tf.reduce_prod(bn)))
 
       strides0 = (scope0_bi - self._widths[0]) / (bn-1-1e-5)
+      strides0 = tf.maximum(strides0, tf.ones([3], tf.float32)*1e-3 )
       strides0 = tf.minimum(strides0, self._widths[0])
       gb_stride = tf.expand_dims(tf.ceil(strides0 / 0.01) / 100, 0)
       overlap_rate = 1-gb_stride / self._widths[0]
@@ -384,7 +386,8 @@ class BlockGroupSampling():
         #if self._record_samplings:
         #  self.samplings[s]['t_per_frame_'] += tf.timestamp() - t0
 
-
+    # **************************************************************************
+    # voxelization
     self.scale = num_scale
     if num_scale>1:
       global_vox_index, global_empty_mask = self.gen_global_voxelization(
@@ -1647,7 +1650,7 @@ class BlockGroupSampling():
 
 
 
-def main_input_pipeline(DATASET_NAME, filenames, sg_settings, dset_metas, batch_size, cycles=1, num_epoch=1):
+def main_input_pipeline(DATASET_NAME, filenames, sg_settings, dset_shape_idx, batch_size, cycles=1, num_epoch=1):
   dataset_meta = DatasetsMeta(DATASET_NAME)
   num_classes = dataset_meta.num_classes
   log_path = os.path.dirname(os.path.dirname(filenames[0]))
@@ -1672,7 +1675,7 @@ def main_input_pipeline(DATASET_NAME, filenames, sg_settings, dset_metas, batch_
     dataset = dataset.prefetch(buffer_size=batch_size)
     dataset = dataset.apply(
       tf.contrib.data.map_and_batch(
-        lambda value: parse_pl_record(value, is_training, dset_metas, bsg, gen_ply=True),
+        lambda value: parse_record(value, is_training, dset_shape_idx, bsg=bsg, gen_ply=True),
         batch_size=batch_size,
         num_parallel_batches=1,
         drop_remainder=True))
@@ -1681,9 +1684,10 @@ def main_input_pipeline(DATASET_NAME, filenames, sg_settings, dset_metas, batch_
     features_next, label_next = get_next
 
 
-    raw_points_next = features_next['raw_points']
-    raw_labels_next = features_next['raw_labels']
+    raw_points_next = features_next['vertex_f']
+    raw_labels_next = label_next
 
+    import pdb; pdb.set_trace()  # XXX BREAKPOINT
     points_next = features_next['points']
     grouped_pindex_next = []
     vox_index_next = []
@@ -1731,7 +1735,7 @@ def main_input_pipeline(DATASET_NAME, filenames, sg_settings, dset_metas, batch_
         print("\n\n{} t_batch:{} t_frame:{}\n".format(i, t_batch*1000, t_batch/batch_size*1000))
 
         if sg_settings['gen_ply']:
-          gen_plys_scale0(DATASET_NAME, raw_points, raw_labels, points, labels, dset_metas, nblock_valid[0])
+          gen_plys_scale0(DATASET_NAME, raw_points, raw_labels, points, labels, dset_shape_idx, nblock_valid[0])
           gen_plys_sg(DATASET_NAME, grouped_bot_cen_top, bot_cen_tops, nblock_valid[0])
           import pdb; pdb.set_trace()  # XXX BREAKPOINT
           pass
@@ -1739,7 +1743,7 @@ def main_input_pipeline(DATASET_NAME, filenames, sg_settings, dset_metas, batch_
   return xyzs, grouped_bot_cen_top, others, bsg._shuffle
 
 
-def main_gpu(DATASET_NAME, filenames, sg_settings, dset_metas, batch_size, cycles=1, num_epoch=10):
+def main_gpu(DATASET_NAME, filenames, sg_settings, dset_shape_idx, batch_size, cycles=1, num_epoch=10):
   tg0 = time.time()
   dataset_meta = DatasetsMeta(DATASET_NAME)
   num_classes = dataset_meta.num_classes
@@ -1759,7 +1763,7 @@ def main_gpu(DATASET_NAME, filenames, sg_settings, dset_metas, batch_size, cycle
     dataset = dataset.prefetch(buffer_size=batch_size)
     dataset = dataset.apply(
       tf.contrib.data.map_and_batch(
-        lambda value: parse_pl_record(value, is_training, dset_metas),
+        lambda value: parse_record(value, is_training, dset_shape_idx),
         batch_size=batch_size,
         num_parallel_batches=1,
         drop_remainder=True))
@@ -1767,7 +1771,7 @@ def main_gpu(DATASET_NAME, filenames, sg_settings, dset_metas, batch_size, cycle
     get_next = dataset.make_one_shot_iterator().get_next()
     features_next, label_next = get_next
 
-    points_next = features_next['points']
+    points_next = features_next['vertex_f']
     tg1 = time.time()
     print('before pre sg:{}'.format(tg1-tg0))
     dsb_next = pre_sampling_grouping(points_next, sg_settings, log_path)
@@ -1788,6 +1792,7 @@ def main_gpu(DATASET_NAME, filenames, sg_settings, dset_metas, batch_size, cycle
         print("t_batch:{} t_frame:{}".format( t_batch * 1000, t_batch/batch_size*1000 ))
 
         print('group OK %d'%(i))
+    return dsb['points'][...,0:3], dsb['grouped_bot_cen_top'], None, True
 
 
 def pre_sampling_grouping(points, sg_settings, log_path):
@@ -1801,8 +1806,8 @@ def pre_sampling_grouping(points, sg_settings, log_path):
     dsbb = {}
 
     dsb = {}
-    dsb['grouped_pindex'], dsb['vox_index'], dsb['grouped_xyz'], dsb['empty_mask'],\
-      dsb['bot_cen_top'], dsb['flatting_idx'], dsb['flat_valid_mask'], nb_enough_p, others =\
+    dsb['grouped_pindex'], dsb['vox_index'], dsb['grouped_bot_cen_top'], dsb['empty_mask'],\
+      dsb['out_bot_cen_top'], dsb['flatting_idx'], dsb['flat_valid_mask'], nb_enough_p, others =\
       bsg.grouping_multi_scale(points[...,0:3])
 
     #*************************************************************
@@ -1812,13 +1817,17 @@ def pre_sampling_grouping(points, sg_settings, log_path):
 
     #*************************************************************
     # get inputs for each global block
+    if TfUtil.get_tensor_shape(dsb['grouped_pindex'][0])[2] > 1:
+      raise NotImplementedError, "Currently only one global block allowed"
     grouped_pindex_global = tf.squeeze(dsb['grouped_pindex'][0], 2, name='grouped_pindex_global')
-    shape0 = [e.value for e in grouped_pindex_global.shape]
-    grouped_pindex_global = tf.expand_dims(grouped_pindex_global, -1)
-    tmp0 = tf.reshape(tf.range(0, batch_size, 1), [-1, 1, 1, 1])
-    tmp0 = tf.tile(tmp0, [1]+shape0[1:]+[1])
-    tmp1 = tf.concat([tmp0, grouped_pindex_global], -1)
-    dsb['points'] = tf.gather_nd(points, tmp1)
+    dsb['points'] = TfUtil.gather_second_d(points, grouped_pindex_global)
+
+    #shape0 = [e.value for e in grouped_pindex_global.shape]
+    #grouped_pindex_global = tf.expand_dims(grouped_pindex_global, -1)
+    #tmp0 = tf.reshape(tf.range(0, batch_size, 1), [-1, 1, 1, 1])
+    #tmp0 = tf.tile(tmp0, [1]+shape0[1:]+[1])
+    #tmp1 = tf.concat([tmp0, grouped_pindex_global], -1)
+    #dsb['points'] = tf.gather_nd(points, tmp1)
 
     #sg_t_batch = (tf.timestamp() - t0)*1000
     #tf.summary.scalar('sg_t_batch', sg_t_batch)
@@ -1828,10 +1837,11 @@ def pre_sampling_grouping(points, sg_settings, log_path):
     return dsb
 
 
-def main_eager(DATASET_NAME, filenames, sg_settings, dset_metas, batch_size, cycles=1):
+def main_eager(DATASET_NAME, filenames, sg_settings, dset_shape_idx, batch_size, cycles=1):
   #tf.enable_eager_execution()
   dataset_meta = DatasetsMeta(DATASET_NAME)
   num_classes = dataset_meta.num_classes
+  num_sg_scale = sg_settings['num_sg_scale']
 
   log_path = os.path.dirname(os.path.dirname(filenames[0]))
   log_path = os.path.join(log_path, 'sg_log')
@@ -1849,7 +1859,7 @@ def main_eager(DATASET_NAME, filenames, sg_settings, dset_metas, batch_size, cyc
   dataset = dataset.prefetch(buffer_size=batch_size)
   dataset = dataset.apply(
     tf.contrib.data.map_and_batch(
-      lambda value: parse_pl_record(value, is_training, dset_metas),
+      lambda value: parse_record(value, is_training, dset_shape_idx),
       batch_size=batch_size,
       num_parallel_batches=1,
       drop_remainder=False))
@@ -1862,12 +1872,12 @@ def main_eager(DATASET_NAME, filenames, sg_settings, dset_metas, batch_size, cyc
 
   for n in range(cycles):
     get_next = iterator.get_next()
-    features_next, label_next = get_next
-    points_next = features_next['points']
+    features, label = get_next
+    xyz = get_ele(features, 'xyz', dset_shape_idx)
 
     grouped_pindex, vox_index, grouped_bot_cen_top, empty_mask, out_bot_cen_top,\
       flatting_idx, flat_valid_mask, nb_enoughp_ave, others = \
-      bsg.grouping_multi_scale(points_next[:,:,0:3])
+      bsg.grouping_multi_scale(xyz)
 
     samplings_i = bsg.samplings
     samplings_np_ms = []
@@ -1877,148 +1887,88 @@ def main_eager(DATASET_NAME, filenames, sg_settings, dset_metas, batch_size, cyc
         samplings_np_ms[s][name] = samplings_i[s][name].numpy()
     bsg.show_samplings_np_multi_scale(samplings_np_ms)
 
+  # apply grouped_pindex
+  xyz_grouped = []
+  label_grouped = []
+  for s in range(num_sg_scale):
+    xyz_grouped.append( TfUtil.gather_second_d(xyz, grouped_pindex[s]) )
+    label_grouped.append( TfUtil.gather_second_d(label, grouped_pindex[s]) )
 
-  raw_points = points_next.numpy()
-  num_scale = len(grouped_pindex)
-  for s in range(num_scale):
-    nb_enoughp_ave[s] = nb_enoughp_ave[s].numpy()
-    grouped_pindex[s] = grouped_pindex[s].numpy()
-    grouped_bot_cen_top[s] = grouped_bot_cen_top[s].numpy()
-    out_bot_cen_top[s] = out_bot_cen_top[s].numpy()
-    for item in others:
-      others[item][s] = others[item][s].numpy()
-
-  points = tf.gather(raw_points, grouped_pindex[0], axis=1)
-  points = tf.squeeze(points,[1,2]).numpy()
-  raw_labels = label_next.numpy()
-  labels = tf.gather(raw_labels, grouped_pindex[0], axis=1)
-  labels = tf.squeeze(labels,[1,2]).numpy()
-
+  #*****************************************************************************
+  # plys
   if sg_settings['gen_ply']:
-    gen_plys_scale0(DATASET_NAME, raw_points, raw_labels, points, labels, dset_metas, nb_enoughp_ave[0])
-    gen_plys_sg(DATASET_NAME, grouped_bot_cen_top, out_bot_cen_top, nb_enoughp_ave[0])
-    pass
+    gen_plys_raw(DATASET_NAME, xyz, label)
+    gen_plys_grouped(DATASET_NAME, xyz_grouped, label_grouped)
+    gen_plys_sg(DATASET_NAME, grouped_bot_cen_top, out_bot_cen_top, nb_enoughp_ave)
 
-  # gen ply
-  #if bsg._gen_ply:
-  #  valid_flag = ''
-  #  if not bsg._shuffle:
-  #    valid_flag += '_NoShuffle'
-  #  for f in range(batch_size):
-  #    for s in range(num_scale):
-  #      global_block_num = grouped_bot_cen_top[s].shape[1]
-  #      for g in range(global_block_num):
-  #        gen_plys(DATASET_NAME, f, points[f], grouped_bot_cen_top[s][f,g],
-  #                out_bot_cen_top[s][f,g], valid_flag, '_ES%sGb%d'%(s,g))
-
-  return points, grouped_bot_cen_top, others, bsg._shuffle
+  return xyz, grouped_bot_cen_top, xyz_grouped, bsg._shuffle
 
 
-def gen_plys_scale0(DATASET_NAME, raw_points, raw_labels, points, labels, dset_metas, nblock_valid0):
-  raw_shape = raw_points.shape
-  p_shape = points.shape
-  assert len(raw_shape) == 3
-  assert len(p_shape) == 4
-  batch_size = raw_shape[0]
-  global_block_num = p_shape[1]
-
-  points_idxs = dset_metas['indices']['points']
-  xyz_color_idxs = points_idxs['xyz'] + points_idxs['color']
-
-  categry_idx = dset_metas['indices']['labels']['label_category'][0]
+def gen_plys_raw(DATASET_NAME, xyz, label):
+  assert TfUtil.tsize(xyz) == 3
+  assert TfUtil.tsize(label) == 2
+  xyz_shape = TfUtil.get_tensor_shape(xyz)
+  batch_size = xyz_shape[0]
   for bi in range(batch_size):
     path = '/tmp/batch%d_plys'%(bi)
-    ply_fn = path+'/raw_points.ply'
-    xyz_color = np.take(raw_points[bi], xyz_color_idxs, axis=1)
-    create_ply_dset(DATASET_NAME, xyz_color, ply_fn,
-                    extra='random_same_color')
-
     ply_fn = path+'/raw_points_labeled.ply'
-    create_ply_dset(DATASET_NAME, raw_points[bi,:,0:3], ply_fn, raw_labels[bi,:, categry_idx],
+    create_ply_dset(DATASET_NAME, xyz[bi], ply_fn, label[bi],
                     extra='random_same_color')
 
-    for gi in range(global_block_num):
-      if nblock_valid0.ndim == 2:
-        nbv = nblock_valid0[bi,0]
-      else:
-        nbv = nblock_valid0[bi,0,0]
-      valid_flag = '_v' if gi < nbv else '_inv'
-      ply_fn = path+'/gb%d%s_points.ply'%(gi, valid_flag)
-      xyz_color = np.take(points[bi, gi], xyz_color_idxs, axis=1)
-      create_ply_dset(DATASET_NAME, xyz_color, ply_fn,
-                    extra='random_same_color')
+def gen_plys_grouped(DATASET_NAME, xyz_grouped, label_grouped):
+  assert TfUtil.tsize(xyz_grouped[0]) == 5
+  assert TfUtil.tsize(label_grouped[0]) == 4
+  xyz_shape = TfUtil.get_tensor_shape(xyz_grouped[0])
+  batch_size = xyz_shape[0]
+  global_block_num = xyz_shape[1]
 
-      ply_fn = path+'/gb%d%s_points_labeled.ply'%(gi, valid_flag)
-      create_ply_dset(DATASET_NAME, points[bi,gi,:,0:3], ply_fn, labels[bi,gi,:,categry_idx],
-                    extra='random_same_color')
+  scale_num = len(xyz_grouped)
+  for s in range(scale_num):
+    xyz_grouped[s] = xyz_grouped[s].numpy()
+    label_grouped[s] = label_grouped[s].numpy()
+    for bi in range(batch_size):
+      for gi in range(global_block_num):
+        path = '/tmp/batch%d_plys/gb%d'%(bi, gi)
+        ply_fn = path+'/scale_%d_grouped_points_labeled.ply'%(s)
+        gn = TfUtil.get_tensor_shape(xyz_grouped[s])[-3]
+        sample_idx = np.arange(0, gn, max(1,int(gn/10.0)) )
+        create_ply_dset(DATASET_NAME, xyz_grouped[s][bi,:,sample_idx,:,:], ply_fn, label_grouped[s][bi,:,sample_idx,:],
+                        extra='random_same_color')
 
-
-def gen_plys_sg(DATASET_NAME, grouped_bot_cen_top, bot_cen_tops, nblock_valid0):
+def gen_plys_sg(DATASET_NAME, grouped_bot_cen_top, bot_cen_tops, nblock_valid):
   num_scale = len(grouped_bot_cen_top)
-  shape0 = grouped_bot_cen_top[0].shape
+  assert TfUtil.tsize(grouped_bot_cen_top[0]) == 5
+  assert TfUtil.tsize(bot_cen_tops[0]) == 4
+  assert TfUtil.tsize(nblock_valid[0]) == 2
+
+  shape0 = TfUtil.get_tensor_shape(grouped_bot_cen_top[0])
+  assert shape0[-1]==9
   batch_size = shape0[0]
-  global_block_num = shape0[2]
+  global_block_num = shape0[1]
 
   for bi in range(batch_size):
-    path_bi = '/tmp/batch%d_plys'%(bi)
-    for s in range(num_scale):
-      if s==0:
-        continue
-      path_s = path_bi + '/scale_%d'%(s)
-      for gi in range(global_block_num):
-        valid_flag = '_v' if gi < nblock_valid0[bi,0,0] else '_inv'
-        ply_fn = '%s/gb%d%s_blocks.ply'%(path_s, gi, valid_flag)
-        draw_blocks_by_bot_cen_top(ply_fn, bot_cen_tops[s][bi, gi], random_crop=0)
+    for gi in range(global_block_num):
+      path = '/tmp/batch%d_plys/gb%d'%(bi, gi)
+      for s in range(num_scale):
+        #if s==0:
+        #  continue
+        for gi in range(global_block_num):
+          valid_flag = '_valid' if gi < nblock_valid[s][bi,0] else '_invalid'
+          ply_fn = '%s/scale%d_gb%d%s_blocks.ply'%(path, s, gi, valid_flag)
+          draw_blocks_by_bot_cen_top(ply_fn, bot_cen_tops[s][bi, gi], random_crop=0)
 
-        ply_fn = '%s/gb%d%s_blocks_center.ply'%(path_s, gi, valid_flag)
-        create_ply_dset(DATASET_NAME, bot_cen_tops[s][bi,gi,:,3:6], ply_fn,
-                        extra='random_same_color')
-        pass
-
-
-def gen_plys(DATASET_NAME, frame, points, grouped_bot_cen_top,
-             out_bot_cen_top, valid_flag='', main_flag=''):
-  path = '/tmp/%d_plys'%(frame) + main_flag
-  grouped_xyz = grouped_bot_cen_top[...,3:6]
-
-  xyz_shape = grouped_xyz.shape
-  out_shape = out_bot_cen_top.shape
-  #assert len(xyz_shape) == 2
-  assert len(out_shape) == 2
+          ply_fn = '%s/scale%d_gb%d%s_blocks_center.ply'%(path, s, gi, valid_flag)
+          create_ply_dset(DATASET_NAME, bot_cen_tops[s][bi,gi,:,3:6], ply_fn,
+                          extra='random_same_color')
+          pass
 
 
-  if type(points)!=type(None):
-    ply_fn = '%s/points.ply'%(path)
-    create_ply_dset(DATASET_NAME, points, ply_fn,
-                    extra='random_same_color')
-
-  ply_fn = '%s/grouped_points_%s.ply'%(path, valid_flag)
-  create_ply_dset(DATASET_NAME, grouped_xyz, ply_fn,
-                  extra='random_same_color')
-
-  ply_fn = '%s/block_center_%s.ply'%(path, valid_flag)
-  create_ply_dset(DATASET_NAME, out_bot_cen_top[...,3:6], ply_fn,
-                  extra='random_same_color')
-
-  ply_fn = '%s/blocks%s.ply'%(path, valid_flag)
-  draw_blocks_by_bot_cen_top(ply_fn, out_bot_cen_top, random_crop=0)
-
-  tmp = np.random.randint(0, min(grouped_xyz.shape[0], 10))
-  tmp = np.arange(0, min(grouped_xyz.shape[0],10))
-  for j in tmp:
-    ply_fn = '%s/blocks%s/%d_blocks.ply'%(path, valid_flag, j)
-    draw_blocks_by_bot_cen_top(ply_fn, out_bot_cen_top[j:j+1], random_crop=0)
-    ply_fn = '%s/blocks%s/%d_points.ply'%(path, valid_flag, j)
-    create_ply_dset(DATASET_NAME, grouped_xyz[j], ply_fn,
-                  extra='random_same_color')
-
-
-def main(filenames, dset_metas, main_flag, batch_size = 2, cycles = 1):
+def main(filenames, dset_shape_idx, main_flag, batch_size = 2, cycles = 1):
   from utils.sg_settings import get_sg_settings
   #sg_settings = get_sg_settings('32768_1024_64')
   #sg_settings = get_sg_settings('20480_2')
-  sg_settings = get_sg_settings('8192_4')
-  #sg_settings = get_sg_settings('8192_2_1024_64')
+  #sg_settings = get_sg_settings('8192_4')
+  sg_settings = get_sg_settings('8192_1_1024_64_4')
 
   #file_num = len(filenames)
   num_epoch = 1
@@ -2026,15 +1976,17 @@ def main(filenames, dset_metas, main_flag, batch_size = 2, cycles = 1):
   #cycles = 100
 
   if 'e' in main_flag:
-    xyzs_E, grouped_bot_cen_top_E, others_E, shuffle_E = \
-      main_eager(DATASET_NAME, filenames, sg_settings, dset_metas, batch_size, cycles)
+    xyzs_E, grouped_bot_cen_top_E, xyz_grouped_E, shuffle_E = \
+      main_eager(DATASET_NAME, filenames, sg_settings, dset_shape_idx, batch_size, cycles)
     num_gb = xyzs_E.shape[0]
-  if 'g' in main_flag:
+  if 'i' in main_flag:
     xyzs, grouped_bot_cen_top, others, shuffle = \
-      main_input_pipeline(DATASET_NAME, filenames, sg_settings, dset_metas, batch_size, cycles, num_epoch)
+      main_input_pipeline(DATASET_NAME, filenames, sg_settings, dset_shape_idx, batch_size, cycles, num_epoch)
     num_gb = xyzs.shape[0]
   if 'G' in main_flag:
-    main_gpu(DATASET_NAME, filenames, sg_settings, dset_metas, batch_size, cycles, num_epoch)
+    xyzs, grouped_bot_cen_top, others, shuffle = \
+      main_gpu(DATASET_NAME, filenames, sg_settings, dset_shape_idx, batch_size, cycles, num_epoch)
+    num_gb = xyzs.shape[0]
 
 
   if main_flag=='eg' and shuffle==False and shuffle_E==False:
@@ -2070,7 +2022,7 @@ def main(filenames, dset_metas, main_flag, batch_size = 2, cycles = 1):
   return num_gb
 
 
-def main_1by1_file(filenames, dset_metas, main_flag, batch_size):
+def main_1by1_file(filenames, dset_shape_idx, main_flag, batch_size):
   num_file = len(filenames)
   for i in range(0, num_file, batch_size):
     #if i<28:
@@ -2078,7 +2030,7 @@ def main_1by1_file(filenames, dset_metas, main_flag, batch_size):
     print('\n\nfile id: {} to {}\n'.format(i, i+batch_size))
     fnls_i = filenames[i:i+batch_size]
     #print(fnls_i)
-    num_gb = main(fnls_i, dset_metas, main_flag, batch_size=batch_size, cycles=1)
+    num_gb = main(fnls_i, dset_shape_idx, main_flag, batch_size=batch_size, cycles=1)
     assert num_gb == batch_size
 
 if __name__ == '__main__':
@@ -2086,18 +2038,18 @@ if __name__ == '__main__':
 
   DATASET_NAME = 'MODELNET40'
   DATASET_NAME = 'MATTERPORT'
-  raw_tfrecord_path = '/home/z/Research/SparseVoxelNet/data/{}_H5TF/raw_tfrecord'.format(DATASET_NAME)
+  raw_tfrecord_path = '/DS/Matterport3D/{}_TF/mesh_tfrecord_15_15_30_8K'.format(DATASET_NAME)
   data_path = os.path.join(raw_tfrecord_path, 'data')
   #data_path = os.path.join(raw_tfrecord_path, 'merged_data')
   tmp = '*'
-  tmp = '17DRP5sb8fy_region0'
+  tmp = '17DRP5sb8fy_region0*'
   #tmp = '17DRP5sb8fy_*'
   #tmp = '1LXtFkjw3qL_region0'
   filenames = glob.glob(os.path.join(data_path, tmp+'.tfrecord'))
   random.shuffle(filenames)
   assert len(filenames) >= 1, data_path
 
-  dset_metas = get_dset_shape_idxs(raw_tfrecord_path)
+  dset_shape_idx = get_dset_shape_idxs(raw_tfrecord_path)
 
   batch_size = 1
   if len(sys.argv) > 1:
@@ -2106,19 +2058,19 @@ if __name__ == '__main__':
       batch_size = int(sys.argv[2])
       print('batch_size {}'.format(batch_size))
   else:
-    main_flag = 'g'
-    #main_flag = 'G'
+    main_flag = 'i'
+    main_flag = 'G'
     #main_flag = 'eg'
     #main_flag = 'e'
   print(main_flag)
 
   if main_flag:
     tf.enable_eager_execution()
-  main_1by1_file(filenames, dset_metas, main_flag, batch_size)
+  #main_1by1_file(filenames, dset_shape_idx, main_flag, batch_size)
 
   cycles = len(filenames)//batch_size
   #cycles = 1
-  #main(filenames, dset_metas, main_flag, batch_size, cycles)
+  main(filenames, dset_shape_idx, main_flag, batch_size, cycles)
 
   #get_data_summary_from_tfrecord(filenames, raw_tfrecord_path)
 

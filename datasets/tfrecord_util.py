@@ -47,31 +47,38 @@ def int64_feature(values):
 
 def get_tensor_shape(t):
   return TfUtil.get_tensor_shape(t)
+
 def get_shape0(t):
   return TfUtil.tshape0(t)
 
+
 def parse_record(tfrecord_serialized, is_training, dset_shape_idx, \
-                    is_rm_void_labels=False, gen_ply=False):
+                    bsg=None, gen_ply=False):
     from utils.aug_data_tf import aug_main, aug_views
     #if dset_shape_idx!=None:
     #  from aug_data_tf import aug_data, tf_Rz
     #  R = tf_Rz(1)
     #  import pdb; pdb.set_trace()  # XXX BREAKPOINT
+
+    eles = dset_shape_idx['indices'].keys()
     features_map = {
         'vertex_f': tf.FixedLenFeature([], tf.string),
-        'vertex_i': tf.FixedLenFeature([], tf.string),
         'vertex_uint8': tf.FixedLenFeature([], tf.string),
-        'face_i':   tf.FixedLenFeature([], tf.string),
-        'valid_num_face': tf.FixedLenFeature([1], tf.int64, default_value=-1)
     }
+    if 'vertex_i' in eles:
+      features['vertex_i'] = tf.FixedLenFeature([], tf.string)
+    if 'face_i' in eles:
+      features['face_i'] = tf.FixedLenFeature([], tf.string)
+      features['valid_num_face'] = tf.FixedLenFeature([1], tf.int64, default_value=-1)
 
     tfrecord_features = tf.parse_single_example(tfrecord_serialized,
                                                 features=features_map,
                                                 name='pl_features')
 
     #*************
-    vertex_i = tf.decode_raw(tfrecord_features['vertex_i'], tf.int32)
-    vertex_i = tf.reshape(vertex_i, dset_shape_idx['shape']['vertex_i'])
+    if 'vertex_i' in eles:
+      vertex_i = tf.decode_raw(tfrecord_features['vertex_i'], tf.int32)
+      vertex_i = tf.reshape(vertex_i, dset_shape_idx['shape']['vertex_i'])
 
     vertex_f = tf.decode_raw(tfrecord_features['vertex_f'], tf.float32)
     vertex_f = tf.reshape(vertex_f, dset_shape_idx['shape']['vertex_f'])
@@ -79,16 +86,23 @@ def parse_record(tfrecord_serialized, is_training, dset_shape_idx, \
     vertex_uint8 = tf.decode_raw(tfrecord_features['vertex_uint8'], tf.uint8)
     vertex_uint8 = tf.reshape(vertex_uint8, dset_shape_idx['shape']['vertex_uint8'])
 
-    face_i = tf.decode_raw(tfrecord_features['face_i'], tf.int32)
-    face_i = tf.reshape(face_i, dset_shape_idx['shape']['face_i'])
-    valid_num_face = tfrecord_features['valid_num_face']
+    if 'face_i' in eles:
+      face_i = tf.decode_raw(tfrecord_features['face_i'], tf.int32)
+      face_i = tf.reshape(face_i, dset_shape_idx['shape']['face_i'])
+      valid_num_face = tfrecord_features['valid_num_face']
 
     #*************
-    features = {"vertex_i": vertex_i, "vertex_f": vertex_f, \
-                "vertex_uint8": vertex_uint8, "face_i": face_i, "valid_num_face": valid_num_face}
-    labels = tf.squeeze(get_ele(features, 'label_category', dset_shape_idx),1)
-
-    #del features["vertex_i"]
+    features = { "vertex_f": vertex_f, \
+                "vertex_uint8": vertex_uint8}
+    if 'vertex_i' in tfrecord_features:
+      features['vertex_i'] = vertex_i
+    if 'face_i' in tfrecord_features:
+      features['face_i'] = face_i
+      features['valid_num_face'] = valid_num_face
+    label_category = get_ele(features, 'label_category', dset_shape_idx)
+    if label_category is None:
+      label_category = get_ele(features, 'v_label_category', dset_shape_idx)
+    labels = tf.squeeze(label_category,1)
 
     return features, labels
 
@@ -174,6 +188,13 @@ def get_dset_shape_idxs(tf_path):
         dset_shape_idx[tmp[0]][tmp[1]][tmp[2]] = value
       else:
         raise NotImplementedError
+
+    for ele in ['shape', 'indices']:
+      d = dset_shape_idx[ele]
+      for item in d.keys():
+        if d[item] == {}:
+          del d[item]
+
     return dset_shape_idx
 
 
@@ -187,6 +208,7 @@ def get_ele(datas, ele, dset_shape_idx):
       else:
         ele_data = datas[g][..., ele_idx]
       return ele_data
+  return None
   raise ValueError, ele+' not found'
 
 
@@ -284,6 +306,7 @@ def read_tfrecord(dataset_name, tf_path, loss_lw_gama=-1):
   get_label_num_weights(dataset_summary, loss_lw_gama)
   return dataset_summary
 
+
 def check_nan(features, dset_shape_idx):
   for key in ['xyz', 'color', 'vidx_per_face', 'edgev_per_vertex',\
               'valid_ev_num_pv']:
@@ -294,6 +317,7 @@ def check_nan(features, dset_shape_idx):
       import pdb; pdb.set_trace()  # XXX BREAKPOINT
       pass
   print('no nan found')
+
 
 def write_dataset_summary(dataset_summary, data_dir):
   import pickle, shutil
