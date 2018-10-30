@@ -60,7 +60,10 @@ def ele_in_feature(features, ele, ds_idxs):
   for g in ds_idxs:
     if ele in ds_idxs[g]:
       ele_idx = ds_idxs[g][ele]
-      ele_data = tf.gather(features[g], ele_idx, axis=-1)
+      if isinstance(features[g], tf.Tensor):
+        ele_data = tf.gather(features[g], ele_idx, axis=-1)
+      else:
+        ele_data = np.take(features[g], ele_idx, axis=-1)
       return ele_data
   return None
   #raise ValueError, ele+' not found'
@@ -349,8 +352,8 @@ class Raw_To_Tfrecord():
     assert min_sp_rate > self.min_sample_rate, 'got small sample rate:{} < {}'.format(
                                               min_sp_rate, self.min_sample_rate)
 
-    main_split_sampling_rawmesh = MeshSampling.eager_split_sampling_rawmesh
-    #main_split_sampling_rawmesh = MeshSampling.sess_split_sampling_rawmesh
+    #main_split_sampling_rawmesh = MeshSampling.eager_split_sampling_rawmesh
+    main_split_sampling_rawmesh = MeshSampling.sess_split_sampling_rawmesh
     splited_sampled_datas, raw_vertex_nums, mesh_summary = main_split_sampling_rawmesh(
         raw_datas, self.num_point, splited_vidx, self.dataset_meta,
         _parse_local_graph_pv, self.ply_dir)
@@ -644,12 +647,12 @@ def main_matterport():
   #dset_path = '/home/z/DS/Matterport3D/Matterport3D_WHOLE_extracted/v1/scans'
   #tfrecord_path = os.path.join(ROOT_DIR, 'data/MATTERPORT_TF')
 
-  region_name = 'region0'
+  region_name = 'region*'
   scene_names_all = os.listdir(dset_path) # 91
   scene_names_all.sort()
   scene_names = ['17DRP5sb8fy']
   #scene_names = ['2t7WUuJeko7']
-  #scene_names = scene_names_all
+  scene_names = scene_names_all
   raw_fns = []
   for scene_name in scene_names:
     raw_glob = os.path.join(dset_path, '{}/*/region_segmentations/{}.ply'.format(
@@ -662,7 +665,7 @@ def main_matterport():
   raw_fns.sort()
   main_write_multi(dataset_name, raw_fns, tfrecord_path, num_point,\
               block_size, ply_dir,
-              multiprocessing=0) # 4 to process data, 0 to check
+              multiprocessing=4) # 4 to process data, 0 to check
 
   #main_merge_tfrecord(dataset_name, tfrecord_path)
 

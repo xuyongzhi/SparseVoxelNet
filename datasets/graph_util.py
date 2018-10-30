@@ -748,15 +748,23 @@ class MeshSampling():
     with tf.control_dependencies([tf.assert_greater(duplicate_num, 0, message="duplicate_num")]):
       duplicate_num = tf.identity(duplicate_num)
 
-    raw_datas['same_category_mask']  = tf.cast(raw_datas['same_category_mask'], tf.int32)
-    raw_datas['same_normal_mask']  = tf.cast(raw_datas['same_normal_mask'], tf.int32)
+    if 'same_category_mask' in raw_datas:
+      raw_datas['same_category_mask']  = tf.cast(raw_datas['same_category_mask'], tf.int32)
+      raw_datas['same_normal_mask']  = tf.cast(raw_datas['same_normal_mask'], tf.int32)
     for item in raw_datas:
       is_vertex = item in MeshSampling._vertex_eles
       if is_vertex:
-        duplicated = tf.tile(raw_datas[item][-1:,:], [duplicate_num, 1])
+        if TfUtil.tsize(raw_datas[item])>1:
+          duplicated = tf.tile(raw_datas[item][-1:,:], [duplicate_num, 1])
+        else:
+          duplicated = tf.tile(raw_datas[item][-1:], [duplicate_num])
         raw_datas[item] = tf.concat([raw_datas[item], duplicated], 0)
-    raw_datas['same_category_mask']  = tf.cast(raw_datas['same_category_mask'], tf.int8)
-    raw_datas['same_normal_mask']  = tf.cast(raw_datas['same_normal_mask'], tf.int8)
+        shape0 = TfUtil.get_tensor_shape(raw_datas[item])
+        shape0[0] = _num_vertex_sp
+        raw_datas[item].set_shape(shape0)
+    if 'same_category_mask' in raw_datas:
+      raw_datas['same_category_mask']  = tf.cast(raw_datas['same_category_mask'], tf.int8)
+      raw_datas['same_normal_mask']  = tf.cast(raw_datas['same_normal_mask'], tf.int8)
     return raw_datas
 
 
@@ -811,7 +819,11 @@ class MeshSampling():
       with tf.control_dependencies([check0]):
         is_vertex = tf.identity(is_vertex)
 
-      sp_indices = tf.cond(is_vertex,
+      if face_sp_indices is None:
+        with tf.control_dependencies([tf.assert_equal(is_vertex, True)]):
+          sp_indices = vertex_spidx
+      else:
+        sp_indices = tf.cond(is_vertex,
                            lambda: vertex_spidx,
                            lambda: face_sp_indices )
       new_datas[item] = tf.gather(datas[item], sp_indices)
