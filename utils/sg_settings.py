@@ -54,8 +54,16 @@ def get_sg_settings(sgflag):
   sg_settings['width'] =  [[1.5,1.5,3.1], [0.3,0.3,0.3], [0.7,0.7,0.7], [1.5,1.5,1.5]]
   sg_settings['stride'] = [[1.5,1.5,3.1], [0.2,0.2,0.2], [0.4,0.4,0.4], [1.5,1.5,0.8]]
   sg_settings['nblock'] =  [1,            320,    64, 4]
-  sg_settings['npoint_per_block'] = [8192, 96,   16, 32]
+  sg_settings['npoint_per_block'] = [8192, 128,   16, 32]
   sg_settings['np_perb_min_include'] = [1,1,1, 1]
+  sg_settings_all[sg_flag(sg_settings)] = sg_settings
+  #-----------------------------------------------------------------------------
+  sg_settings = {}
+  sg_settings['width'] =  [[1.5,1.5,3.0], [0.2,0.2,0.2], [0.6,0.6,1.2]]
+  sg_settings['stride'] = [[1.5,1.5,3.0], [0.2,0.2,0.2], [0.3,0.3,0.6]]
+  sg_settings['nblock'] =  [1,            240,    64]
+  sg_settings['npoint_per_block'] = [8192, 64,   24]
+  sg_settings['np_perb_min_include'] = [1,1,1]
   sg_settings_all[sg_flag(sg_settings)] = sg_settings
   sg_settings_all['default'] = sg_settings
   #-----------------------------------------------------------------------------
@@ -85,7 +93,7 @@ def get_sg_settings(sgflag):
   sg_settings['flag'] = 'SG_'+sg_flag(sg_settings) + tmpf
   sg_settings['num_sg_scale'] = len(sg_settings['width'])
   sg_settings['gen_ply'] = False
-  sg_settings['record'] = True
+  sg_settings['record'] = False
 
   sg_settings['nblocks_per_point'] = []
   for s in range(len(sg_settings['width'])):

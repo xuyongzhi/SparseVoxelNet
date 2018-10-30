@@ -133,6 +133,7 @@ class BlockGroupSampling():
     '''
     if log_path!=None:
       self.log_path = log_path + '/'
+    self.no_voxelization = True
     self._num_scale = len(sg_settings['width'])
     self._widths =  sg_settings['width']
     self._strides = sg_settings['stride']
@@ -180,7 +181,7 @@ class BlockGroupSampling():
 
 
     # debug flags
-    self._shuffle = False  # compulsory
+    self._shuffle = True  # compulsory
     self._cut_bindex_by_global_scope = True # compulsory
 
     self._check_optional = True
@@ -1663,7 +1664,7 @@ class BlockGroupSampling():
     assert shape0[2] == shape1[2]
     assert shape0[-1] == shape1[-1] == 9
 
-    if self.scale <= 1:
+    if self.scale <= 1 or self.no_voxelization:
       return tf.zeros([self.batch_size]+[0]*4, tf.int32)
     out_bot_cen_top = tf.expand_dims(out_bot_cen_top, -2)
     grouped_bot_aligned = grouped_bot_cen_top[...,0:3] - out_bot_cen_top[...,0:3]
@@ -2038,7 +2039,7 @@ if __name__ == '__main__':
   #data_path = os.path.join(raw_tfrecord_path, 'merged_data')
   tmp = '*'
   #tmp = '17DRP5sb8fy_region2_0*'
-  #tmp = '17DRP5sb8fy_*'
+  #tmp = '1LXtFkjw3qL_region11_0*'
   #tmp = '1LXtFkjw3qL_region0'
   filenames = glob.glob(os.path.join(data_path, tmp+'.tfrecord'))
   random.shuffle(filenames)
