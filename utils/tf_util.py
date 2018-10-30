@@ -106,6 +106,13 @@ class TfUtil():
       vn_idx = tf.reshape(tf.range(vertex_num), [1,-1,1,1])
       vn_idx = tf.tile(vn_idx, [batch_size, 1, evn, 1])
 
+    elif len(idx_shape)==4:
+      batch_size, vertex_num, n2, n3 = idx_shape
+      batch_idx = tf.reshape(tf.range(batch_size), [-1,1,1,1,1])
+      batch_idx = tf.tile(batch_idx, [1, vertex_num, n2, n3, 1])
+      vn_idx = tf.reshape(tf.range(vertex_num), [1,-1,1,1,1])
+      vn_idx = tf.tile(vn_idx, [batch_size, 1, n2, n3, 1])
+
     indices = tf.expand_dims(indices, -1)
     indices = tf.concat([batch_idx, vn_idx, indices], -1)
     outputs = tf.gather_nd(inputs, indices)

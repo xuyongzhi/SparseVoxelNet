@@ -54,25 +54,39 @@ class Model(ResConvOps):
     scale_n = self.model_paras.scale_num
     #***************************************************************************
     # Encoder
+    with_global_scale = False
     for scale in range(scale_n):
-        points = self.point_encoder(scale, points)
-        endpoints.append(points)
-        if scale>0:
-          points = self.pooling(scale, points, xyz)
-        if scale != scale_n-1:
-          points, xyz = self.sampling_grouping(scale, points, inputs['grouped_pindex'][scale], xyz)
+      points = self.point_encoder(scale, points)
+      endpoints.append(points)
+      if scale>0:
+        # Change voxel to point. Scale 0 is already point, no need pooing
+        points = self.pooling(scale, points, xyz)
+      if scale != scale_n-1:
+        if scale > len(inputs['grouped_pindex'])-1:
+          assert scale == scale_n-2 # global scale has to be the last
+          grouped_pindex_s = None
+          with_global_scale = True
+        else:
+          grouped_pindex_s = inputs['grouped_pindex'][scale]
+        points, xyz = self.sampling_grouping(scale, points, grouped_pindex_s, xyz)
 
     #***************************************************************************
     # Decoder
     for i in range(scale_n-1):
       scale = scale_n - i -2
-      points = self.interp_uppooling(scale, points, inputs['flatting_idx'][scale], endpoints[scale])
+      if with_global_scale and scale == scale_n -2:
+        flatting_idx = None
+      else:
+        flatting_idx = inputs['flatting_idx'][scale]
+      points = self.interp_uppooling(scale, points, flatting_idx, endpoints[scale])
       points = self.point_decoder(scale, points)
 
     dense_filters = self.model_paras.dense_filters + [self.dset_metas.num_classes]
     points = tf.squeeze(points, 2)
     logits = self.dense_block(points, dense_filters, self.is_training)
     label_weights = tf.constant(1.0)
+
+    self.log_model_summary()
     return logits, label_weights
 
   def parse_inputs(self, features):
@@ -108,17 +122,22 @@ class Model(ResConvOps):
     with tf.variable_scope('Pool_S%d'%(scale)):
       points = tf.reduce_max(points, 2)
       points = tf.expand_dims(points, 1)
-      if use_xyz:
+      if use_xyz and xyz is not None:
         points = tf.concat([points, tf.expand_dims(xyz,1)], -1)
       self.log_tensor_p(points, 'use xyz' if use_xyz else '', pool+' pooling')
       return points
 
   def sampling_grouping(self, scale, points, grouped_pindex, xyz):
     with tf.variable_scope('SG_S%d'%(scale)):
-      new_points = TfUtil.gather_third_d(points, grouped_pindex)
-      new_xyz = TfUtil.gather_second_d(xyz, grouped_pindex)
-      new_xyz = tf.reduce_mean(new_xyz, 2)
-      self.log_tensor_p(points, '', 'saming grouping')
+      if grouped_pindex is None:
+        # global scale
+        new_points = points
+        new_xyz = None
+      else:
+        new_points = TfUtil.gather_third_d(points, grouped_pindex)
+        new_xyz = TfUtil.gather_second_d(xyz, grouped_pindex)
+        new_xyz = tf.reduce_mean(new_xyz, 2)
+        self.log_tensor_p(new_points, '', 'saming grouping')
     return new_points, new_xyz
 
   def point_decoder(self, scale,  points):
@@ -131,7 +150,11 @@ class Model(ResConvOps):
 
   def interp_uppooling(self, scale, points, flatting_idx, last_points):
     with tf.variable_scope('UpPool_S%d'%(scale)):
-      points = TfUtil.gather_third_d(points, flatting_idx)
+      if flatting_idx is None:
+        voexl_num = TfUtil.get_tensor_shape(last_points)[1]
+        points = tf.tile(points, [1,voexl_num,1,1])
+      else:
+        points = TfUtil.gather_third_d(points, flatting_idx)
       self.log_tensor_p(points, 'uppooling', 'scale%d'%(scale))
       points = tf.reduce_mean(points, 2, keepdims=True)
 
@@ -192,13 +215,14 @@ class Model(ResConvOps):
 class ModelParams():
   def __init__(self, block_configs):
     # include global
-    self.scale_num = len(block_configs['filters_e'])
     self.dense_filters = block_configs['dense_filters']
 
     self.blocks_paras_scales = {}
+    scale_nums = {}
     for net in ['e', 'd']:
+      scale_nums[net] = scale_num = len(block_configs['filters_'+net])
       self.blocks_paras_scales[net] = []
-      for s in range(self.scale_num-int(net=='d')):
+      for s in range(scale_num):
         block_num = len(block_configs['block_sizes_'+net][s])
         assert block_num == len(block_configs['filters_'+net][s])
         blocks_pars = []
@@ -212,6 +236,9 @@ class ModelParams():
           blocks_pars.append(bpar)
 
         self.blocks_paras_scales[net].append( blocks_pars )
+
+    self.scale_num = scale_nums['e']
+    assert scale_nums['e'] == scale_nums['d'] + 1
 
   def __call__(self, encoder_or_decoder, scale):
     return self.blocks_paras_scales[encoder_or_decoder][scale]

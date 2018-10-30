@@ -113,7 +113,6 @@ def parse_record(tfrecord_serialized, is_training, dset_shape_idx, \
 
 
 def voxel_sampling_grouping(bsg, features, dset_shape_idx):
-  from utils.grouping_sampling_voxelization import do_group
   xyz = get_ele(features, 'xyz', dset_shape_idx)
   xyz = tf.expand_dims(xyz, 0)
 
@@ -134,9 +133,12 @@ def voxel_sampling_grouping(bsg, features, dset_shape_idx):
                         tf.cast(features['vertex_uint8'], tf.float32)], -1)
   vertices = tf.expand_dims(vertices, 0)
 
-  vertices_gped = do_group(vertices, dsb['grouped_pindex'][0])
-  vertices_gped = tf.squeeze(tf.squeeze(vertices_gped,0), 0)
-  vertices_gped = tf.squeeze(vertices_gped,0)
+  if TfUtil.t_shape(dsb['grouped_pindex'][0])[-1] == 0:
+    vertices_gped = vertices
+  else:
+    vertices = TfUtil.gather_second_d(vertices, dsb['grouped_pindex'][0])
+    import pdb; pdb.set_trace()  # XXX BREAKPOINT
+    vertices_gped = tf.squeeze(vertices_gped, [0,1,2])
 
   tmp = dset_shape_idx['shape']['vertex_f'][-1]
   features['vertex_f'] = vertices_gped[...,0:tmp]

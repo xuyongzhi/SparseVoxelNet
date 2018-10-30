@@ -62,11 +62,11 @@ def get_filenames_1(is_training, data_dir):
   data_dir = os.path.join(data_dir, 'data')
   if is_training:
     scene = '17DRP5sb8fy'
-    scene = "*"
+    #scene = "*"
   else:
     #scene = '2t7WUuJeko7'
     scene = '17DRP5sb8fy'
-    scene = "*"
+    #scene = "*"
   region = "*"
 
 

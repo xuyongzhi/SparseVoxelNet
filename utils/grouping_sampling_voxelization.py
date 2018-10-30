@@ -2,6 +2,11 @@
 import tensorflow as tf
 import glob, os, sys
 import numpy as np
+
+BASE_DIR = os.path.abspath(__file__)
+ROOT_DIR = os.path.dirname(os.path.dirname(BASE_DIR))
+sys.path.append(ROOT_DIR)
+
 from datasets.tfrecord_util import get_dset_shape_idxs, parse_record, get_ele
 from datasets.all_datasets_meta.datasets_meta import DatasetsMeta
 from utils.ply_util import create_ply_dset, draw_blocks_by_bot_cen_top
@@ -117,13 +122,6 @@ def permutation_combination_3D(up_bound_3d, low_bound_3d=[0,0,0]):
   return pairs_3d
 
 
-def do_group(t0, grouped_pindex):
-  if TfUtil.t_shape(grouped_pindex)[-1] == 0:
-    t1 = tf.expand_dims(tf.expand_dims(t0, 1),2)
-  else:
-    t1 = TfUtil.gather_second_d(t0, grouped_pindex)
-  return t1
-
 class BlockGroupSampling():
   def __init__(self, sg_settings, log_path=None):
     '''
@@ -182,7 +180,7 @@ class BlockGroupSampling():
 
 
     # debug flags
-    self._shuffle = True  # compulsory
+    self._shuffle = False  # compulsory
     self._cut_bindex_by_global_scope = True # compulsory
 
     self._check_optional = True
@@ -196,6 +194,64 @@ class BlockGroupSampling():
     self.debugs = {}
     self._gen_ply = sg_settings['gen_ply']
 
+  def adjust_stride_gb(self, scope0_bi):
+    #*************************************************************************
+    # max stride=width -> min block num
+    max_stride = self._widths[0]
+    bn_min = tf.maximum((scope0_bi - self._widths[0]) / max_stride,0) + 1
+    bn_min_fixed = tf.ceil(bn_min)
+    bn_min_fixed_err = bn_min_fixed - bn_min
+    bn_min_3d = tf.reduce_prod(bn_min_fixed)
+
+    #*************************************************************************
+    # max overlap rate=0.6 ->  min stride=width*0.4 -> max block num
+    max_overlap_rate = 0.8
+    min_stride = self._widths[0] * (1-max_overlap_rate)
+    bn_max = tf.maximum((scope0_bi - self._widths[0]) / min_stride,0) + 1
+    bn_max_fixed = tf.ceil(bn_max)
+
+    #print('bn_min:{}'.format(bn_min))
+    #print('bn_min_fixed:{}'.format(bn_min_fixed))
+    #print('bn_min_fixed_err:{}'.format(bn_min_fixed_err))
+    #print('bn_min_3d:{}'.format(bn_min_3d))
+    #print('_nblock0:{}'.format(self._nblocks[0]))
+
+    #self._nblocks[0] = 19
+
+    # the aim is the reduce strides (increae bn) as much as possible, if
+    # condition of still making bn_3d < self._nblocks[0]
+    order = tf.contrib.framework.argsort(-bn_min_fixed_err)
+    bn = bn_min_fixed
+    eye3 = tf.eye(3)
+    i = tf.constant(0, tf.int32)
+    def body(i, bn):
+      j = order[i]
+      i += 1
+      i = i * tf.cast(tf.less(i,3), tf.int32)
+      not_skip = tf.cast(tf.less(bn[j], bn_max_fixed[j]), tf.float32)
+      bn += tf.gather(eye3,j) * not_skip
+      #print('{}  {}'.format(i, bn))
+      return i, bn
+    def cond(i, bn):
+      cond0 = tf.less(tf.reduce_prod(bn), self._nblocks[0])
+      #cond1 = tf.reduce_all(tf.less_equal(bn, bn_max_fixed))
+      cond1 = tf.logical_not( tf.reduce_all(tf.equal(bn, bn_max_fixed)) )
+      return tf.logical_and(cond0, cond1)
+
+    i, bn = tf.while_loop(cond, body, [i, bn])
+    #print('i:{} bn:{}  {}'.format(i, bn, tf.reduce_prod(bn)))
+
+    strides0 = (scope0_bi - self._widths[0]) / (bn-1-1e-5)
+    strides0 = tf.maximum(strides0, tf.ones([3], tf.float32)*1e-3 )
+    strides0 = tf.minimum(strides0, self._widths[0])
+    gb_stride = tf.expand_dims(tf.ceil(strides0 / 0.01) / 100, 0)
+    overlap_rate = 1-gb_stride / self._widths[0]
+    #print('gb_stride:{}  overlap_rate:{}'.format(gb_stride, overlap_rate))
+
+    bn = tf.cast(bn, tf.int32)
+    gb_nblocks_per_point =  tf.cast(tf.ceil( self._widths[0] / gb_stride[0,:] - MAX_FLOAT_DRIFT), tf.int32)
+    gb_nblocks_per_point = tf.expand_dims(tf.minimum(gb_nblocks_per_point, bn), 0)
+    return gb_stride, gb_nblocks_per_point
 
   def update_global_bot_cen_top_for_global(self, xyz):
     xyz_max = tf.reduce_max(xyz, 1)
@@ -211,72 +267,14 @@ class BlockGroupSampling():
     bot0 = xyz_min
     top0 = xyz_max
     self.xyz_scope = scope0 = top0 - bot0
-    scope0 = self.check_skip_global(scope0)
+    scope0 = self.check_skip_global(scope0, xyz)
 
-    def adjust_stride_gb(scope0_bi):
-      #*************************************************************************
-      # max stride=width -> min block num
-      max_stride = self._widths[0]
-      bn_min = tf.maximum((scope0_bi - self._widths[0]) / max_stride,0) + 1
-      bn_min_fixed = tf.ceil(bn_min)
-      bn_min_fixed_err = bn_min_fixed - bn_min
-      bn_min_3d = tf.reduce_prod(bn_min_fixed)
-
-      #*************************************************************************
-      # max overlap rate=0.6 ->  min stride=width*0.4 -> max block num
-      max_overlap_rate = 0.8
-      min_stride = self._widths[0] * (1-max_overlap_rate)
-      bn_max = tf.maximum((scope0_bi - self._widths[0]) / min_stride,0) + 1
-      bn_max_fixed = tf.ceil(bn_max)
-
-      #print('bn_min:{}'.format(bn_min))
-      #print('bn_min_fixed:{}'.format(bn_min_fixed))
-      #print('bn_min_fixed_err:{}'.format(bn_min_fixed_err))
-      #print('bn_min_3d:{}'.format(bn_min_3d))
-      #print('_nblock0:{}'.format(self._nblocks[0]))
-
-      #self._nblocks[0] = 19
-
-      # the aim is the reduce strides (increae bn) as much as possible, if
-      # condition of still making bn_3d < self._nblocks[0]
-      order = tf.contrib.framework.argsort(-bn_min_fixed_err)
-      bn = bn_min_fixed
-      eye3 = tf.eye(3)
-      i = tf.constant(0, tf.int32)
-      def body(i, bn):
-        j = order[i]
-        i += 1
-        i = i * tf.cast(tf.less(i,3), tf.int32)
-        not_skip = tf.cast(tf.less(bn[j], bn_max_fixed[j]), tf.float32)
-        bn += tf.gather(eye3,j) * not_skip
-        #print('{}  {}'.format(i, bn))
-        return i, bn
-      def cond(i, bn):
-        cond0 = tf.less(tf.reduce_prod(bn), self._nblocks[0])
-        #cond1 = tf.reduce_all(tf.less_equal(bn, bn_max_fixed))
-        cond1 = tf.logical_not( tf.reduce_all(tf.equal(bn, bn_max_fixed)) )
-        return tf.logical_and(cond0, cond1)
-
-      i, bn = tf.while_loop(cond, body, [i, bn])
-      #print('i:{} bn:{}  {}'.format(i, bn, tf.reduce_prod(bn)))
-
-      strides0 = (scope0_bi - self._widths[0]) / (bn-1-1e-5)
-      strides0 = tf.maximum(strides0, tf.ones([3], tf.float32)*1e-3 )
-      strides0 = tf.minimum(strides0, self._widths[0])
-      gb_stride = tf.expand_dims(tf.ceil(strides0 / 0.01) / 100, 0)
-      overlap_rate = 1-gb_stride / self._widths[0]
-      #print('gb_stride:{}  overlap_rate:{}'.format(gb_stride, overlap_rate))
-
-      bn = tf.cast(bn, tf.int32)
-      gb_nblocks_per_point =  tf.cast(tf.ceil( self._widths[0] / gb_stride[0,:] - MAX_FLOAT_DRIFT), tf.int32)
-      gb_nblocks_per_point = tf.expand_dims(tf.minimum(gb_nblocks_per_point, bn), 0)
-      return gb_stride, gb_nblocks_per_point
 
     if self._auto_adjust_gb_stride:
       gb_stride = []
       gb_nblocks_per_point = []
       for bi in range(self.batch_size):
-        gb_stride_i, gb_nblocks_per_point_i = adjust_stride_gb(scope0[bi])
+        gb_stride_i, gb_nblocks_per_point_i = self.adjust_stride_gb(scope0[bi])
         gb_stride.append(gb_stride_i)
         gb_nblocks_per_point.append(gb_nblocks_per_point_i)
       self._gb_stride = tf.concat(gb_stride, 0)
@@ -318,11 +316,17 @@ class BlockGroupSampling():
     #print('xyz: {}'.format(xyz[:,0:3,:]))
     #print('\bscale global   global_bot_cen_top:\n{}'.format(self.global_bot_cen_top))
 
-  def check_skip_global(self, xyz_scope):
+  def check_skip_global(self, xyz_scope, xyz):
     if not self._skip_global_scale:
       return xyz_scope
+    assert TfUtil.get_tensor_shape(xyz)[1] == self._npoint_per_blocks[0],\
+          "cannot skip global scale, num point not same"
     dif = tf.reduce_min(self._widths[0] - xyz_scope)
-    check = tf.assert_greater_equal(dif, 0.0, message="cannot skip global scale, scope too large")
+    if dif < 0:
+      import pdb; pdb.set_trace()  # XXX BREAKPOINT
+      pass
+    check = tf.assert_greater_equal(dif, 0.0,
+                    message="cannot skip global scale, scope too large")
     with tf.control_dependencies([check]):
       xyz_scope = tf.identity(xyz_scope)
     return xyz_scope
@@ -1739,14 +1743,16 @@ def main_input_pipeline(DATASET_NAME, filenames, sg_settings, dset_shape_idx, ba
         print("\n\n{} t_batch:{} t_frame:{}\n".format(i, t_batch*1000, t_batch/batch_size*1000))
 
         #****************
-        xyz = get_ele(features, 'xyz', dset_shape_idx)
+        xyz_global_block = get_ele(features, 'xyz', dset_shape_idx)
         label_category = np.squeeze(get_ele(features, 'label_category', dset_shape_idx),2)
-        if sg_settings['gen_ply']:
-          gen_plys_raw(DATASET_NAME, xyz, label_category)
-          #gen_plys_sg(DATASET_NAME, grouped_bot_cen_top, out_bot_cen_top, nb_enoughp_ave)
 
+        grouped_bot_cen_top = [None]
+        grouped_pindex = [None]
+        for scale in range(1,num_scale):
+          grouped_pindex.append( features['grouped_pindex_%d'%(scale)] )
+          grouped_bot_cen_top.append( features['grouped_bot_cen_top_%d'%(scale)] )
 
-  #return xyzs, grouped_bot_cen_top, others, bsg._shuffle
+  return grouped_pindex, bsg._shuffle
 
 
 def main_gpu(DATASET_NAME, filenames, sg_settings, dset_shape_idx, batch_size, cycles=1, num_epoch=10):
@@ -1780,7 +1786,7 @@ def main_gpu(DATASET_NAME, filenames, sg_settings, dset_shape_idx, batch_size, c
     points_next = features_next['vertex_f']
     tg1 = time.time()
     print('before pre sg:{}'.format(tg1-tg0))
-    dsb_next = pre_sampling_grouping(points_next, sg_settings, log_path)
+    dsb_next, is_shuffle = pre_sampling_grouping(points_next, sg_settings, log_path)
     tg2 = time.time()
     print('pre sg:{}'.format(tg2-tg1))
 
@@ -1798,8 +1804,7 @@ def main_gpu(DATASET_NAME, filenames, sg_settings, dset_shape_idx, batch_size, c
         print("t_batch:{} t_frame:{}".format( t_batch * 1000, t_batch/batch_size*1000 ))
 
         print('group OK %d'%(i))
-    return dsb['points'][...,0:3], dsb['grouped_bot_cen_top'], None, True
-
+    return dsb['grouped_pindex'], is_shuffle
 
 def pre_sampling_grouping(points, sg_settings, log_path):
   # get the indices for grouping and sampling on line
@@ -1844,7 +1849,7 @@ def pre_sampling_grouping(points, sg_settings, log_path):
     #sg_t_frame = sg_t_batch / tf.cast(batch_size,tf.float64)
     #tf.summary.scalar('sg_t_frame', sg_t_frame)
 
-    return dsb
+    return dsb, bsg._shuffle
 
 
 def main_eager(DATASET_NAME, filenames, sg_settings, dset_shape_idx, batch_size, cycles=1):
@@ -1889,7 +1894,6 @@ def main_eager(DATASET_NAME, filenames, sg_settings, dset_shape_idx, batch_size,
       flatting_idx, flat_valid_mask, nb_enoughp_ave, others = \
       bsg.grouping_multi_scale(raw_xyz)
 
-    import pdb; pdb.set_trace()  # XXX BREAKPOINT
     samplings_i = bsg.samplings
     samplings_np_ms = []
     for s in range(len(samplings_i)):
@@ -1898,45 +1902,61 @@ def main_eager(DATASET_NAME, filenames, sg_settings, dset_shape_idx, batch_size,
         samplings_np_ms[s][name] = samplings_i[s][name].numpy()
     bsg.show_samplings_np_multi_scale(samplings_np_ms)
 
-  # apply grouped_pindex
-  xyz_grouped = []
-  label_grouped = []
-  for s in range(0):
-    if s==0:
-      xyz_last = raw_xyz
-      label_last = raw_label
-    else:
-      xyz_last = xyz_grouped[s-1]
-      label_last = label_grouped[s-1]
-    xyz_grouped.append(   do_group(xyz_last, grouped_pindex[s]) )
-    label_grouped.append( do_group(label_last, grouped_pindex[s]) )
-    #xyz_grouped.append( TfUtil.gather_second_d(xyz, grouped_pindex[s]) )
-    #label_grouped.append( TfUtil.gather_second_d(label, grouped_pindex[s]) )
-
+  #*****************************************************************************
+  xyz_grouped, label_grouped = apply_grouped_pindex(raw_xyz, raw_label, grouped_pindex)
+  xyz_global_block = xyz_grouped[0]
+  label_global_block = label_grouped[0]
+  #*****************************************************************************
+  for s in range(num_sg_scale):
+    grouped_pindex[s] = grouped_pindex[s].numpy()
   #*****************************************************************************
   # plys
   if sg_settings['gen_ply']:
-    gen_plys_raw(DATASET_NAME, xyz, label)
+    gen_points_ply(DATASET_NAME, raw_xyz, raw_label, 'raw')
+    gen_points_ply(DATASET_NAME, xyz_global_block, label_global_block, 'global_block')
     gen_plys_grouped(DATASET_NAME, xyz_grouped, label_grouped)
     gen_plys_sg(DATASET_NAME, grouped_bot_cen_top, out_bot_cen_top, nb_enoughp_ave)
 
-  return xyz, grouped_bot_cen_top, xyz_grouped, bsg._shuffle
+  return grouped_pindex, bsg._shuffle
+
+def mean_grouping(t0, grouped_pindex):
+  assert TfUtil.tsize(t0) >= 3
+  if TfUtil.t_shape(grouped_pindex)[-1] == 0:
+    t1 = t0
+  else:
+    t1 = TfUtil.gather_third_d(t0, grouped_pindex)
+    t1 = tf.reduce_mean(t1, 3)
+  assert TfUtil.tsize(t1) == TfUtil.tsize(t0)
+  return t1
 
 
-def gen_plys_raw(DATASET_NAME, xyz, label):
-  assert TfUtil.tsize(xyz) == 3
-  assert TfUtil.tsize(label) == 2
+def apply_grouped_pindex(raw_xyz, raw_label, grouped_pindex):
+  # apply grouped_pindex
+  num_sg_scale = len(grouped_pindex)
+  xyz_grouped = []
+  label_grouped = []
+  xyz_last = tf.expand_dims(raw_xyz, 1)
+  label_last = tf.expand_dims(raw_label, 1)
+  for s in range(num_sg_scale):
+    xyz_last = mean_grouping(xyz_last, grouped_pindex[s])
+    label_last = mean_grouping(label_last, grouped_pindex[s])
+
+    xyz_grouped.append( xyz_last )
+    label_grouped.append( label_last )
+  return xyz_grouped, label_grouped
+
+def gen_points_ply(DATASET_NAME, xyz, label, flag=''):
   xyz_shape = TfUtil.get_tensor_shape(xyz)
   batch_size = xyz_shape[0]
   for bi in range(batch_size):
     path = '/tmp/batch%d_plys'%(bi)
-    ply_fn = path+'/raw_points_labeled.ply'
+    ply_fn = path+'/%s_points_labeled.ply'%(flag)
     create_ply_dset(DATASET_NAME, xyz[bi], ply_fn, label[bi],
                     extra='random_same_color')
 
 def gen_plys_grouped(DATASET_NAME, xyz_grouped, label_grouped):
-  assert TfUtil.tsize(xyz_grouped[0]) == 5
-  assert TfUtil.tsize(label_grouped[0]) == 4
+  assert TfUtil.tsize(xyz_grouped[0]) == 4
+  assert TfUtil.tsize(label_grouped[0]) == 3
   xyz_shape = TfUtil.get_tensor_shape(xyz_grouped[0])
   batch_size = xyz_shape[0]
   global_block_num = xyz_shape[1]
@@ -1947,11 +1967,12 @@ def gen_plys_grouped(DATASET_NAME, xyz_grouped, label_grouped):
     label_grouped[s] = label_grouped[s].numpy()
     for bi in range(batch_size):
       for gi in range(global_block_num):
+        if gi>10:
+          break
         path = '/tmp/batch%d_plys/gb%d'%(bi, gi)
         ply_fn = path+'/scale_%d_grouped_points_labeled.ply'%(s)
-        gn = TfUtil.get_tensor_shape(xyz_grouped[s])[-3]
-        sample_idx = np.arange(0, gn, max(1,int(gn/10.0)) )
-        create_ply_dset(DATASET_NAME, xyz_grouped[s][bi,:,sample_idx,:,:], ply_fn, label_grouped[s][bi,:,sample_idx,:],
+        create_ply_dset(DATASET_NAME, xyz_grouped[s],
+                        ply_fn, label_grouped[s],
                         extra='random_same_color')
 
 def gen_plys_sg(DATASET_NAME, grouped_bot_cen_top, bot_cen_tops, nblock_valid):
@@ -1984,10 +2005,7 @@ def gen_plys_sg(DATASET_NAME, grouped_bot_cen_top, bot_cen_tops, nblock_valid):
 
 def main(filenames, dset_shape_idx, main_flag, batch_size = 2, cycles = 1):
   from utils.sg_settings import get_sg_settings
-  #sg_settings = get_sg_settings('32768_1024_64')
-  #sg_settings = get_sg_settings('20480_2')
-  #sg_settings = get_sg_settings('8192_4')
-  sg_settings = get_sg_settings('8192_1_1024_64_4')
+  sg_settings = get_sg_settings('default')
 
   #file_num = len(filenames)
   num_epoch = 1
@@ -1995,78 +2013,36 @@ def main(filenames, dset_shape_idx, main_flag, batch_size = 2, cycles = 1):
   #cycles = 100
 
   if 'e' in main_flag:
-    xyzs_E, grouped_bot_cen_top_E, xyz_grouped_E, shuffle_E = \
+    grouped_pindex_E, shuffle_E = \
       main_eager(DATASET_NAME, filenames, sg_settings, dset_shape_idx, batch_size, cycles)
-    num_gb = xyzs_E.shape[0]
   if 'i' in main_flag:
-    #xyzs, grouped_bot_cen_top, others, shuffle = \
-    main_input_pipeline(DATASET_NAME, filenames, sg_settings, dset_shape_idx, batch_size, cycles, num_epoch)
-    #num_gb = xyzs.shape[0]
-  if 'G' in main_flag:
-    xyzs, grouped_bot_cen_top, others, shuffle = \
+    grouped_pindex_I, shuffle_I = \
+      main_input_pipeline(DATASET_NAME, filenames, sg_settings, dset_shape_idx, batch_size, cycles, num_epoch)
+  if 'g' in main_flag:
+    grouped_pindex_G, shuffle_G = \
       main_gpu(DATASET_NAME, filenames, sg_settings, dset_shape_idx, batch_size, cycles, num_epoch)
-    num_gb = xyzs.shape[0]
 
-  return
-
-  if main_flag=='eg' and shuffle==False and shuffle_E==False:
-    assert xyzs.shape[0] == xyzs_E.shape[0], "Make batch_size=batch_size in main "
-    batch_size = xyzs.shape[0]
-    for b in xrange(batch_size):
-      assert (xyzs_E[b] == xyzs[b]).all(), 'time %d xyz different'%(b)
-      print('time %d xyzs of g and e is same'%(b))
-
-      num_scale = len(grouped_bot_cen_top)
-      for s in xrange(num_scale):
-        for name in others_E[s]:
-          check = (others_E[s][name][b] == others[s][name][b]).all()
-          if not check:
-            print('time %d scale %d others- %s different'%(b, s, name))
-            err = others_E[s][name][b] != others[s][name][b]
-            nerr = np.sum(err)
-            print(others[s][name][b])
-            import pdb; pdb.set_trace()  # XXX BREAKPOINT
-            pass
-          else:
-            print('time %d scale %d others - %s of g and e is same'%(b, s, name))
-
-        diff = grouped_bot_cen_top_E[s][b] - grouped_bot_cen_top[s][b]
-        diff = np.sum(diff, -1)
-        nerr = np.sum(diff != 0)
-        if nerr!=0:
-          print("time %d, scale %d, grouped_xyz nerr=%d"%(b, s, nerr))
-          import pdb; pdb.set_trace()  # XXX BREAKPOINT
-        else:
-          print('time %d, sclae %s, grouped_bot_cen_top of g and e is same'%(b, s))
-
-  return num_gb
-
-
-def main_1by1_file(filenames, dset_shape_idx, main_flag, batch_size):
-  num_file = len(filenames)
-  for i in range(0, num_file, batch_size):
-    #if i<28:
-    #  continue
-    print('\n\nfile id: {} to {}\n'.format(i, i+batch_size))
-    fnls_i = filenames[i:i+batch_size]
-    #print(fnls_i)
-    num_gb = main(fnls_i, dset_shape_idx, main_flag, batch_size=batch_size, cycles=1)
-    assert num_gb == batch_size
+  if main_flag=='eg' and shuffle_G==False and shuffle_E==False:
+    scale_num = len(grouped_pindex_E)
+    for s in range(scale_num):
+      assert np.all(grouped_pindex_E[s] == grouped_pindex_G[s]), "eager model and graph model different"
+    print('eager and graph mode checked same')
 
 if __name__ == '__main__':
   import random
 
   DATASET_NAME = 'MODELNET40'
   DATASET_NAME = 'MATTERPORT'
-  raw_tfrecord_path = '/DS/Matterport3D/{}_TF/mesh_tfrecord_15_15_30_8K'.format(DATASET_NAME)
+  raw_tfrecord_path = '/DS/Matterport3D/{}_TF/tfrecord_15_15_30_8K'.format(DATASET_NAME)
   data_path = os.path.join(raw_tfrecord_path, 'data')
   #data_path = os.path.join(raw_tfrecord_path, 'merged_data')
   tmp = '*'
-  tmp = '17DRP5sb8fy_region0_*'
+  #tmp = '17DRP5sb8fy_region2_0*'
   #tmp = '17DRP5sb8fy_*'
   #tmp = '1LXtFkjw3qL_region0'
   filenames = glob.glob(os.path.join(data_path, tmp+'.tfrecord'))
   random.shuffle(filenames)
+  filenames = filenames[0:100]
   assert len(filenames) >= 1, data_path
 
   dset_shape_idx = get_dset_shape_idxs(raw_tfrecord_path)
@@ -2079,8 +2055,7 @@ if __name__ == '__main__':
       print('batch_size {}'.format(batch_size))
   else:
     main_flag = 'i'
-    #main_flag = 'G'
-    #main_flag = 'eg'
+    main_flag = 'g'
     #main_flag = 'e'
   print(main_flag)
 

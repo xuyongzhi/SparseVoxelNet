@@ -745,7 +745,7 @@ class MeshSampling():
     #MeshSampling.show_datas_shape(raw_datas)
     num_vertex0 = TfUtil.tshape0(raw_datas['xyz'])
     duplicate_num = _num_vertex_sp - num_vertex0
-    with tf.control_dependencies([tf.assert_greater(duplicate_num, 0, message="duplicate_num")]):
+    with tf.control_dependencies([tf.assert_greater_equal(duplicate_num, 0, message="duplicate_num")]):
       duplicate_num = tf.identity(duplicate_num)
 
     if 'same_category_mask' in raw_datas:

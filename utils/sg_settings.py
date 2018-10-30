@@ -48,96 +48,16 @@ def sg_flag(sg_settings_):
 
 def get_sg_settings(sgflag):
   sg_settings_all = {}
-
-
-  #-----------------------------------------------------------------------------
-  # matterport: 32768_1024_64
-  sg_settings = {}
-  sg_settings['width'] =  [[6.5,6.5,6.5], [0.5,0.5,0.5], [1.7,1.7,1.7]]
-  sg_settings['stride'] = [[7.0,7,7],     [0.3,0.3,0.3], [1.2,1.2,1.2]]
-  sg_settings['nblock'] =  [1,            1024,  64  ]
-  sg_settings['npoint_per_block'] = [32768, 32, 32]
-  sg_settings['np_perb_min_include'] = [1000, 1, 1]
-  sg_settings_all[sg_flag(sg_settings)] = sg_settings
-
-  #-----------------------------------------------------------------------------
-  # matterport: 32768
-  sg_settings = {}
-  sg_settings['width'] =  [[6.5,6.5,6.5],]
-  sg_settings['stride'] = [[7.0,7,7],    ]
-  sg_settings['nblock'] =  [1,             ]
-  sg_settings['npoint_per_block'] = [32768, ]
-  sg_settings['np_perb_min_include'] = [1000, ]
-  sg_settings_all[sg_flag(sg_settings)] = sg_settings
-
-  #-----------------------------------------------------------------------------
-  # matterport: 10240_2
-  sg_settings = {}
-  sg_settings['width']  =  [[4.3,4.3,4.3],]
-  sg_settings['stride'] =  [[2.0,2.0,2.0],]
-  sg_settings['nblock'] =  [2,             ]
-  sg_settings['npoint_per_block'] = [10240, ]
-  sg_settings['np_perb_min_include'] = [2000, ]
-  sg_settings_all[sg_flag(sg_settings)] = sg_settings
-  #-----------------------------------------------------------------------------
-  # matterport: 20480_2
-  sg_settings = {}
-  sg_settings['width']  =  [[4.3,4.3,4.3],]
-  sg_settings['stride'] =  [[2.0,2.0,2.0],]
-  sg_settings['nblock'] =  [2,             ]
-  sg_settings['npoint_per_block'] = [20480, ]
-  sg_settings['np_perb_min_include'] = [6000, ]
-  sg_settings_all[sg_flag(sg_settings)] = sg_settings
-
-  #-----------------------------------------------------------------------------
-  # 8192_2_1024_64
-  sg_settings = {}
-  sg_settings['width'] =  [[4.3,4.3,4.3], [0.3,0.3,0.3], [1.1,1.1,1.1]]
-  sg_settings['stride'] = [[2.0,2.0,2.0], [0.2,0.2,0.2], [0.8,0.8,0.8]]
-  sg_settings['nblock'] =  [2,            1024,    64]
-  sg_settings['npoint_per_block'] = [8192, 32,   48]
-  sg_settings['np_perb_min_include'] = [128,3,1]
-  sg_settings_all[sg_flag(sg_settings)] = sg_settings
-
-  #-----------------------------------------------------------------------------
-  sg_settings = {}
-  sg_settings['width'] =  [[2.2,2.2,2.2], [0.2,0.2,0.2], [0.6,0.6,0.6]]
-  sg_settings['stride'] = [[2.2,2.2,2.2], [0.1,0.1,0.1], [0.4,0.4,0.4]]
-  sg_settings['nblock'] =  [1, 1024,           48]
-  sg_settings['npoint_per_block'] = [4096, 40,  64]
-  sg_settings['np_perb_min_include'] = [1024, 2, 1]
-  sg_settings_all[sg_flag(sg_settings)] = sg_settings
-
-  #-----------------------------------------------------------------------------
-  # 2048_800_40
-  sg_settings = {}
-  sg_settings['width'] =  [[2.2,2.2,2.2], [0.2,0.2,0.2], [0.6,0.6,0.6]]
-  sg_settings['stride'] = [[2.2,2.2,2.2], [0.1,0.1,0.1], [0.4,0.4,0.4]]
-  sg_settings['nblock'] =  [1,     800,    40]
-  sg_settings['npoint_per_block'] = [2048, 24,  48]
-  sg_settings['np_perb_min_include'] = [1024, 2, 1]
-  sg_settings_all[sg_flag(sg_settings)] = sg_settings
-
-  #-----------------------------------------------------------------------------
-  # 2048
-  sg_settings = {}
-  sg_settings['width'] =  [[0.5,0.5,0.5]]
-  sg_settings['stride'] = [[0.5,0.5,0.5]]
-  sg_settings['nblock'] =  [1]
-  sg_settings['npoint_per_block'] = [2048]
-  sg_settings['np_perb_min_include'] = [10]
-  sg_settings_all[sg_flag(sg_settings)] = sg_settings
-
-
   #-----------------------------------------------------------------------------
   # 8192_2_1024_64
   sg_settings = {}
   sg_settings['width'] =  [[1.5,1.5,3.1], [0.3,0.3,0.3], [0.7,0.7,0.7], [1.5,1.5,1.5]]
   sg_settings['stride'] = [[1.5,1.5,3.1], [0.2,0.2,0.2], [0.4,0.4,0.4], [1.5,1.5,0.8]]
-  sg_settings['nblock'] =  [1,            1024,    64, 4]
-  sg_settings['npoint_per_block'] = [8192, 32,   48, 24]
-  sg_settings['np_perb_min_include'] = [128,3,1, 1]
+  sg_settings['nblock'] =  [1,            320,    64, 4]
+  sg_settings['npoint_per_block'] = [8192, 96,   16, 32]
+  sg_settings['np_perb_min_include'] = [1,1,1, 1]
   sg_settings_all[sg_flag(sg_settings)] = sg_settings
+  sg_settings_all['default'] = sg_settings
   #-----------------------------------------------------------------------------
 
   sg_settings = sg_settings_all[sgflag]
@@ -152,18 +72,20 @@ def get_sg_settings(sgflag):
       else:
         sg_settings[item][s] = sg_settings[item][s].astype(np.int32)
 
-  sg_settings['auto_adjust_gb_stride'] = True
+
+  # When the raw input scope is gurannted to be within sg_settings['width'][0],
+  # enable skil global scale to speed up
+  sg_settings['skip_global_scale'] = True and sg_settings['nblock'][0]==1
+  # no need to auto adjust global stride when skip it
+  sg_settings['auto_adjust_gb_stride'] = True and (not sg_settings['skip_global_scale'])
   if sg_settings['auto_adjust_gb_stride']:
     tmpf = '_ags'
   else:
     tmpf = ''
   sg_settings['flag'] = 'SG_'+sg_flag(sg_settings) + tmpf
   sg_settings['num_sg_scale'] = len(sg_settings['width'])
-  # When the raw input scope is gurannted to be within sg_settings['width'][0],
-  # enable skil global scale to speed up
-  sg_settings['skip_global_scale'] = False and sg_settings['nblock'][0]==1
   sg_settings['gen_ply'] = False
-  sg_settings['record'] = False
+  sg_settings['record'] = True
 
   sg_settings['nblocks_per_point'] = []
   for s in range(len(sg_settings['width'])):

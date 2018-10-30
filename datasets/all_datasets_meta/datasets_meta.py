@@ -80,7 +80,7 @@ class DatasetsMeta():
         return self.get_train_test_file_list_MATTERPORT(data_dir, is_training)
 
     def get_train_test_file_list_MATTERPORT(self, data_dir, is_training):
-      from MATTERPORT_util import benchmark
+      from MATTERPORT_util.MATTERPORT_util import benchmark
       tte_scene_names = benchmark()
       split = 'train' if is_training else 'test'
       scene_names = tte_scene_names[split]

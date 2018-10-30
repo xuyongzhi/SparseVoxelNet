@@ -31,8 +31,6 @@ elif NET_FLAG == 'VertexLabel_PointCnn':
 
 MAX_FLOAT_DRIFT = 1e-6
 DEBUG = False
-TMP = True
-
 
 def random_choice(org_vector, sample_N, random_sampl_pro=None,
                   keeporder=False, only_tile_last_one=False):
@@ -69,7 +67,8 @@ def ele_in_feature(features, ele, ds_idxs):
   #raise ValueError, ele+' not found'
 
 class Raw_To_Tfrecord():
-  def __init__(self, dataset_name, tfrecord_path, num_point=None, block_size=None, ply_dir=None, is_multi_pro=False):
+  def __init__(self, dataset_name, tfrecord_path, num_point=None, block_size=None,
+               dynamic_block_size=False, ply_dir=None, is_multi_pro=False):
     self.dataset_name = dataset_name
     self.tfrecord_path = tfrecord_path
     self.data_path = os.path.join(self.tfrecord_path, 'data')
@@ -77,9 +76,10 @@ class Raw_To_Tfrecord():
     if not os.path.exists(self.data_path):
       os.makedirs(self.data_path)
     self.num_point = num_point
-    self.min_sample_rate = 0.01 # sample_rate = self.num_point/org_num
+    self.min_sample_rate = 0.03 # sample_rate = self.num_point/org_num
     self.num_face = int(num_point * 8)
     self.block_size = block_size
+    self.dynamic_block_size = dynamic_block_size
     self.block_stride_rate =  0.8
     self.min_pn_inblock = min(self.num_point * 0.1, 2000)
     self.sampling_rates = []
@@ -128,8 +128,6 @@ class Raw_To_Tfrecord():
       if self.dataset_name == "MATTERPORT":
         block_num, valid_block_num, num_points_splited, xyz_scope_str,mesh_summary \
           = self.transfer_onefile_matterport(rawfn)
-        if TMP and block_num is None:
-          continue
 
       sp_rates = [1.0*self.num_point/orgn for orgn in  num_points_splited]
       if min(sp_rates) < min_sp_rate:
@@ -200,7 +198,7 @@ class Raw_To_Tfrecord():
       f.flush()
     print('write ok: {}'.format(metas_fn))
 
-  def dynamic_block_size(self, xyz_scope, num_vertex0):
+  def autoadjust_block_size(self, xyz_scope, num_vertex0):
     # keep xy area within the threshold, adjust to reduce block num
     _x,_y,_z = self.block_size
     _xy_area = _x*_y
@@ -240,7 +238,10 @@ class Raw_To_Tfrecord():
     xyz_scope = xyz_max - xyz_min
     num_vertex0 = xyz.shape[0]
 
-    block_size = self.dynamic_block_size(xyz_scope, num_vertex0)
+    if self.dynamic_block_size:
+      block_size = self.autoadjust_block_size(xyz_scope, num_vertex0)
+    else:
+      block_size = self.block_size
     block_stride = self.block_stride_rate * block_size
     block_dims0 =  (xyz_scope - block_size) / block_stride + 1
     block_dims0 = np.maximum(block_dims0, 1)
@@ -347,8 +348,6 @@ class Raw_To_Tfrecord():
                           for e in splited_vidx]
     sp_rates = [1.0*self.num_point/k for k in num_points_splited]
     min_sp_rate = min(sp_rates)
-    if TMP and min_sp_rate < self.min_sample_rate:
-      return [None]*5
     assert min_sp_rate > self.min_sample_rate, 'got small sample rate:{} < {}'.format(
                                               min_sp_rate, self.min_sample_rate)
 
@@ -484,24 +483,30 @@ def get_label_num_weights(dataset_summary, loss_lw_gama):
     plt.show()
 
 
-def main_write(dataset_name, raw_fns, tfrecord_path, num_point, block_size, ply_dir, is_multi_pro):
-  raw_to_tf = Raw_To_Tfrecord(dataset_name, tfrecord_path, num_point, block_size, ply_dir, is_multi_pro)
+def main_write(dataset_name, raw_fns, tfrecord_path, num_point, block_size,
+               dynamic_block_size, ply_dir, is_multi_pro):
+  raw_to_tf = Raw_To_Tfrecord(dataset_name, tfrecord_path, num_point, block_size,
+                              dynamic_block_size, ply_dir, is_multi_pro)
   raw_to_tf(raw_fns)
 
 
-def main_write_multi(dataset_name, raw_fns, tfrecord_path, num_point, block_size, ply_dir, multiprocessing=5):
+def main_write_multi(dataset_name, raw_fns, tfrecord_path, num_point,
+                     block_size, dynamic_block_size, ply_dir, multiprocessing=5):
   if multiprocessing<2:
-    main_write(dataset_name, raw_fns, tfrecord_path, num_point, block_size, ply_dir, False)
+    main_write(dataset_name, raw_fns, tfrecord_path, num_point, block_size,
+               dynamic_block_size, ply_dir, False)
     return
 
   import multiprocessing as mp
   pool = mp.Pool(multiprocessing)
   for fn in raw_fns:
-    pool.apply_async(main_write, (dataset_name, [fn], tfrecord_path, num_point, block_size, ply_dir, True))
+    pool.apply_async(main_write, (dataset_name, [fn], tfrecord_path, num_point,
+                                  block_size, dynamic_block_size, ply_dir, True))
   pool.close()
   pool.join()
 
-  main_write(dataset_name, raw_fns, tfrecord_path, num_point, block_size, ply_dir, False)
+  main_write(dataset_name, raw_fns, tfrecord_path, num_point, block_size,
+                dynamic_block_size, ply_dir, False)
 
 def split_fn_ls( tfrecordfn_ls, merged_n):
     nf = len(tfrecordfn_ls)
@@ -638,11 +643,12 @@ def main_matterport():
   num_points = {'MODELNET40':None, 'MATTERPORT':8192}
   num_point = num_points[dataset_name]
   block_sizes = {'MODELNET40':None, 'MATTERPORT':np.array([1.5, 1.5, 3.0]) }
+  dynamic_block_size = False
   block_size = block_sizes[dataset_name]
   flag = '_'.join([str(int(10*d)) for d in block_size]) + '_' + str(int(num_point/1000))+'K'
 
   dset_path = '/DS/Matterport3D/Matterport3D_WHOLE_extracted/v1/scans'
-  tfrecord_path = '/DS/Matterport3D/MATTERPORT_TF/mesh_tfrecord_%s'%(flag)
+  tfrecord_path = '/DS/Matterport3D/MATTERPORT_TF/tfrecord_%s'%(flag)
 
   #dset_path = '/home/z/DS/Matterport3D/Matterport3D_WHOLE_extracted/v1/scans'
   #tfrecord_path = os.path.join(ROOT_DIR, 'data/MATTERPORT_TF')
@@ -652,7 +658,7 @@ def main_matterport():
   scene_names_all.sort()
   scene_names = ['17DRP5sb8fy']
   #scene_names = ['2t7WUuJeko7']
-  scene_names = scene_names_all
+  scene_names = scene_names_all[0:2]
   raw_fns = []
   for scene_name in scene_names:
     raw_glob = os.path.join(dset_path, '{}/*/region_segmentations/{}.ply'.format(
@@ -664,7 +670,7 @@ def main_matterport():
   raw_fns = clean_bad_files(dataset_name, raw_fns, dset_path)
   raw_fns.sort()
   main_write_multi(dataset_name, raw_fns, tfrecord_path, num_point,\
-              block_size, ply_dir,
+              block_size, dynamic_block_size, ply_dir,
               multiprocessing=4) # 4 to process data, 0 to check
 
   #main_merge_tfrecord(dataset_name, tfrecord_path)
