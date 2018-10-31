@@ -658,7 +658,7 @@ def main_matterport():
   scene_names_all.sort()
   scene_names = ['17DRP5sb8fy']
   #scene_names = ['2t7WUuJeko7']
-  scene_names = scene_names_all[0:2]
+  scene_names = scene_names_all
   raw_fns = []
   for scene_name in scene_names:
     raw_glob = os.path.join(dset_path, '{}/*/region_segmentations/{}.ply'.format(
@@ -673,7 +673,7 @@ def main_matterport():
               block_size, dynamic_block_size, ply_dir,
               multiprocessing=4) # 4 to process data, 0 to check
 
-  #main_merge_tfrecord(dataset_name, tfrecord_path)
+  main_merge_tfrecord(dataset_name, tfrecord_path)
 
   #main_gen_ply(dataset_name, tfrecord_path)
   print('total time: {} sec'.format(time.time() - t0))

@@ -29,7 +29,7 @@ MATTERPORT_Meta['unlabelled_categories'] = [0,41]
 MATTERPORT_Meta['easy_categories'] = []
 
 bad_files = [('YFuZgdQ5vWj','region19'), ('VFuaQ6m2Qom','region38'), ('VFuaQ6m2Qom','region40'),
-             ('V2XKFyX4ASd','region28')] # all void
+             ('V2XKFyX4ASd','region28'), ('dhjEzFoUFzH', 'region2')] # all void
 MATTERPORT_Meta['bad_files'] = ['%s/%s/region_segmentations/%s.ply'%(e[0], e[0], e[1]) for e in bad_files]
 
 with open(mpcat40_fn,'r') as f:
@@ -252,7 +252,7 @@ def get_vertex_label_from_face(vertex_idx_per_face, face_semantic, num_vertex):
     face_indices_multi_semantic = np.array(list(face_indices_multi_semantic))
     multi_rate = 1.0*vertex_indices_multi_semantic.shape[0]/num_vertex
     print('vertex rate with multiple semantic: %f'%(multi_rate))
-    assert multi_rate < 0.07
+    assert multi_rate < 0.09
 
     vertex_semantic = vertex_semantic.astype(np.int32)
 
