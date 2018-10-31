@@ -38,7 +38,7 @@ from datasets.tfrecord_util import parse_record, get_dset_shape_idxs
 from datasets.all_datasets_meta.datasets_meta import DatasetsMeta
 
 TMPDEBUG = False
-SMALL_FNUM = True
+SMALL_FNUM = False
 FILE_RATE = 0.01 if SMALL_FNUM else 1.0
 DATA_DIR = os.path.join(ROOT_DIR, 'data')
 
@@ -47,7 +47,7 @@ _NUM_EXAMPLES_ALL['MATTERPORT'] = {
         'train': int(2924 * FILE_RATE), 'validation':-1}
 
 _NUM_TRAIN_FILES = 20 * 1
-_SHUFFLE_BUFFER = 200 * 1
+_SHUFFLE_BUFFER = 1000 * 1
 
 DATASET_NAME = 'MATTERPORT'
 _NUM_EXAMPLES = _NUM_EXAMPLES_ALL[DATASET_NAME]
@@ -449,7 +449,7 @@ def define_network_flags():
   data_dir = os.path.join(DATA_DIR,'MATTERPORT_TF/tfrecord')
   flags_core.set_defaults(train_epochs=150*2,
                           data_dir=data_dir,
-                          batch_size=2,
+                          batch_size=12,
                           num_gpus=2,
                           epochs_between_evals=5,)
 
@@ -471,7 +471,7 @@ def define_network_flags():
   flags.DEFINE_string('shortcut','C','C Z')
   flags.DEFINE_string('drop_imo','000','dropout rate for input, middle and out')
   flags.DEFINE_bool(name='pred_ply', default=False, help ="")
-  flags.DEFINE_string('sg', '8192_1_1024_64_4', help='sampling and grouping settings')
+  flags.DEFINE_string('sg', '8192_1_1024_48', help='sampling and grouping settings')
 
   #if SMALL_FNUM:
   #  update_examples_num(True, data_dir)

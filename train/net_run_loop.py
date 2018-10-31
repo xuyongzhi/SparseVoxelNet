@@ -449,26 +449,42 @@ def net_main_check(
   if True:
     def input_fn_train(num_epochs):
       return input_function(
-          is_training=False, data_dir=flags_obj.data_dir,
+          is_training=True, data_dir=flags_obj.data_dir,
           batch_size=distribution_utils.per_device_batch_size(
               flags_obj.batch_size, flags_core.get_num_gpus(flags_obj)),
           num_epochs=num_epochs,
           num_gpus=flags_core.get_num_gpus(flags_obj),
-          examples_per_epoch = flags_obj.examples_per_epoch
+          examples_per_epoch = flags_obj.examples_per_epoch,
+          sg_settings = net_data_configs['sg_settings']
           )
     dataset = input_fn_train(1)
     ds_iterator = dataset.make_one_shot_iterator()
-    features, labels = ds_iterator.get_next()
-    #model_cls.main_test_pool(features)
 
-    items = ['xyz', 'color', 'vidx_per_face', 'edgev_per_vertex','valid_ev_num_pv']
-    datas = {}
-    for item in items:
-      datas[item] = get_ele(features, item, dset_shape_idx)
+    for i in range(1000):
+      t0 = time.time()
+      features, labels = ds_iterator.get_next()
+      t = time.time() - t0
+      print('t: {} ms'.format(t*1000))
+      #model_cls.main_test_pool(features)
 
-    evidx_min = np.min(datas['edgev_per_vertex'])
-    import pdb; pdb.set_trace()  # XXX BREAKPOINT
-    pass
+      items = ['xyz', 'color', 'vidx_per_face', 'edgev_per_vertex','valid_ev_num_pv']
+      datas = {}
+      for item in items:
+        d = get_ele(features, item, dset_shape_idx)
+        if d is not None:
+          datas[item] = d
+
+      sg_params = {}
+      items = ['grouped_pindex', 'flatting_idx']
+      for s in range(net_data_configs['sg_settings']['num_sg_scale']):
+        for item in items:
+          if s==0:
+            sg_params[item] = []
+          else:
+            sg_params[item].append(features[item+'_%d'%(s)])
+      import pdb; pdb.set_trace()  # XXX BREAKPOINT
+      pass
+
 
 def net_main(
     flags_obj, model_function, input_function, net_data_configs, shape=None):

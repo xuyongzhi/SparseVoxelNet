@@ -148,8 +148,8 @@ class BlockGroupSampling():
     self._auto_adjust_gb_stride = sg_settings['auto_adjust_gb_stride']
     self._skip_global_scale = sg_settings['skip_global_scale']
 
-    self._flat_nums = [3]*self._num_scale
-    self._flat_nums = [np.prod(e) for e in self._nblocks_per_point]
+    max_flat_nums = [np.prod(e) for e in self._nblocks_per_point]
+    self._flat_nums = [min(4,n) for n in max_flat_nums]
 
     self._npoint_last_scale = [None]
     if self._num_scale>1:
@@ -323,9 +323,6 @@ class BlockGroupSampling():
     assert TfUtil.get_tensor_shape(xyz)[1] == self._npoint_per_blocks[0],\
           "cannot skip global scale, num point not same"
     dif = tf.reduce_min(self._widths[0] - xyz_scope)
-    if dif < 0:
-      import pdb; pdb.set_trace()  # XXX BREAKPOINT
-      pass
     check = tf.assert_greater_equal(dif, 0.0,
                     message="cannot skip global scale, scope too large")
     with tf.control_dependencies([check]):
@@ -1535,9 +1532,13 @@ class BlockGroupSampling():
       with tf.control_dependencies([check_missednp]):
         flatting_idx = tf.identity(flatting_idx)
 
-    # set -1 to 0, add flat_valid_mask
+
+    # add flat_valid_mask
     flat_valid_mask = tf.cast(tf.greater_equal(flatting_idx, 0), tf.int32)
-    flatting_idx += 1 - flat_valid_mask
+
+    # set -1 to the first
+    tmp = (flatting_idx[:,0:1]+1) * (1-flat_valid_mask)
+    flatting_idx += tmp
 
     return flatting_idx, flat_valid_mask
 

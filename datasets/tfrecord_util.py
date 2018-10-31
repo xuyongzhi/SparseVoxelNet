@@ -55,60 +55,70 @@ def get_shape0(t):
 
 def parse_record(tfrecord_serialized, is_training, dset_shape_idx, \
                     bsg=None, gen_ply=False):
-    from utils.aug_data_tf import aug_main, aug_views
-    #if dset_shape_idx!=None:
-    #  from aug_data_tf import aug_data, tf_Rz
-    #  R = tf_Rz(1)
-    #  import pdb; pdb.set_trace()  # XXX BREAKPOINT
+    with tf.variable_scope('parse_record'):
+      from utils.aug_data_tf import aug_main, aug_views
+      #if dset_shape_idx!=None:
+      #  from aug_data_tf import aug_data, tf_Rz
+      #  R = tf_Rz(1)
+      #  import pdb; pdb.set_trace()  # XXX BREAKPOINT
 
-    eles = dset_shape_idx['indices'].keys()
-    features_map = {
-        'vertex_f': tf.FixedLenFeature([], tf.string),
-        'vertex_uint8': tf.FixedLenFeature([], tf.string),
-    }
-    if 'vertex_i' in eles:
-      features['vertex_i'] = tf.FixedLenFeature([], tf.string)
-    if 'face_i' in eles:
-      features['face_i'] = tf.FixedLenFeature([], tf.string)
-      features['valid_num_face'] = tf.FixedLenFeature([1], tf.int64, default_value=-1)
+      eles = dset_shape_idx['indices'].keys()
+      features_map = {
+          'vertex_f': tf.FixedLenFeature([], tf.string),
+          'vertex_uint8': tf.FixedLenFeature([], tf.string),
+      }
+      if 'vertex_i' in eles:
+        features['vertex_i'] = tf.FixedLenFeature([], tf.string)
+      if 'face_i' in eles:
+        features['face_i'] = tf.FixedLenFeature([], tf.string)
+        features['valid_num_face'] = tf.FixedLenFeature([1], tf.int64, default_value=-1)
 
-    tfrecord_features = tf.parse_single_example(tfrecord_serialized,
-                                                features=features_map,
-                                                name='pl_features')
+      tfrecord_features = tf.parse_single_example(tfrecord_serialized,
+                                                  features=features_map,
+                                                  name='pl_features')
 
-    #*************
-    if 'vertex_i' in eles:
-      vertex_i = tf.decode_raw(tfrecord_features['vertex_i'], tf.int32)
-      vertex_i = tf.reshape(vertex_i, dset_shape_idx['shape']['vertex_i'])
+      #*************
+      if 'vertex_i' in eles:
+        vertex_i = tf.decode_raw(tfrecord_features['vertex_i'], tf.int32)
+        vertex_i = tf.reshape(vertex_i, dset_shape_idx['shape']['vertex_i'])
 
-    vertex_f = tf.decode_raw(tfrecord_features['vertex_f'], tf.float32)
-    vertex_f = tf.reshape(vertex_f, dset_shape_idx['shape']['vertex_f'])
+      vertex_f = tf.decode_raw(tfrecord_features['vertex_f'], tf.float32)
+      vertex_f = tf.reshape(vertex_f, dset_shape_idx['shape']['vertex_f'])
 
-    vertex_uint8 = tf.decode_raw(tfrecord_features['vertex_uint8'], tf.uint8)
-    vertex_uint8 = tf.reshape(vertex_uint8, dset_shape_idx['shape']['vertex_uint8'])
+      vertex_uint8 = tf.decode_raw(tfrecord_features['vertex_uint8'], tf.uint8)
+      vertex_uint8 = tf.reshape(vertex_uint8, dset_shape_idx['shape']['vertex_uint8'])
 
-    if 'face_i' in eles:
-      face_i = tf.decode_raw(tfrecord_features['face_i'], tf.int32)
-      face_i = tf.reshape(face_i, dset_shape_idx['shape']['face_i'])
-      valid_num_face = tfrecord_features['valid_num_face']
+      if 'face_i' in eles:
+        face_i = tf.decode_raw(tfrecord_features['face_i'], tf.int32)
+        face_i = tf.reshape(face_i, dset_shape_idx['shape']['face_i'])
+        valid_num_face = tfrecord_features['valid_num_face']
 
-    #*************
-    features = { "vertex_f": vertex_f, \
-                "vertex_uint8": vertex_uint8}
-    if 'vertex_i' in tfrecord_features:
-      features['vertex_i'] = vertex_i
-    if 'face_i' in tfrecord_features:
-      features['face_i'] = face_i
-      features['valid_num_face'] = valid_num_face
+      #*************
+      features = { "vertex_f": vertex_f, \
+                  "vertex_uint8": vertex_uint8}
+      if 'vertex_i' in tfrecord_features:
+        features['vertex_i'] = vertex_i
+      if 'face_i' in tfrecord_features:
+        features['face_i'] = face_i
+        features['valid_num_face'] = valid_num_face
 
-    #*************
-    if bsg is not None:
-      features = voxel_sampling_grouping(bsg, features, dset_shape_idx)
+      #*************
+      if bsg is not None:
+        features = voxel_sampling_grouping(bsg, features, dset_shape_idx)
 
-    #*************
-    label_category = get_ele(features, 'label_category', dset_shape_idx)
-    labels = tf.squeeze(label_category,1)
+      #*************
+      label_category = get_ele(features, 'label_category', dset_shape_idx)
+      labels = tf.squeeze(label_category,1)
 
+      for item in features.keys():
+        if 'nb_enough_p' in item:
+          assert TfUtil.tsize(features[item]) == 0, item
+        elif 'label' in item:
+          assert TfUtil.tsize(features[item]) == 1, item
+        elif 'grouped_bot_cen_top' in item:
+          assert TfUtil.tsize(features[item]) == 3, item
+        else:
+          assert TfUtil.tsize(features[item]) == 2, item
     return features, labels
 
 
@@ -124,20 +134,19 @@ def voxel_sampling_grouping(bsg, features, dset_shape_idx):
   # **********
   for s in range(1, bsg._num_scale):
     for item in ['grouped_pindex', 'grouped_bot_cen_top', 'empty_mask', 'nb_enough_p']:
-      features[item+'_%d'%(s)] = tf.squeeze(dsb[item][s], 0)
+      features[item+'_%d'%(s)] = tf.squeeze(dsb[item][s], [0,1])
     for item in ['flatting_idx', 'flat_valid_mask']:
       features[item+'_%d'%(s)] = dsb[item][s]
 
   # **********
   vertices = tf.concat([features['vertex_f'], \
                         tf.cast(features['vertex_uint8'], tf.float32)], -1)
-  vertices = tf.expand_dims(vertices, 0)
 
   if TfUtil.t_shape(dsb['grouped_pindex'][0])[-1] == 0:
     vertices_gped = vertices
   else:
-    vertices = TfUtil.gather_second_d(vertices, dsb['grouped_pindex'][0])
-    import pdb; pdb.set_trace()  # XXX BREAKPOINT
+    vertices = TfUtil.gather(vertices, dsb['grouped_pindex'][0], 0)
+    raise NotImplementedError
     vertices_gped = tf.squeeze(vertices_gped, [0,1,2])
 
   tmp = dset_shape_idx['shape']['vertex_f'][-1]

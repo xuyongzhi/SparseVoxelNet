@@ -905,15 +905,16 @@ class ResConvOps(object):
   def dense_block(self, inputs, filters, is_training):
     out_drop_rate = self.drop_imo[2]
     n = len(filters)
-    for i, f in enumerate(filters):
-      inputs = tf.layers.dense(inputs, f)
-      if self.IsShowModel: self.log_tensor_p(inputs, '', 'dense_%d'%(i))
-      if i!=n-1:
-        inputs = self.batch_norm_act(inputs, is_training)
-        if out_drop_rate>0:
-          if self.IsShowModel: self.log('dropout {}'.format(out_drop_rate))
-          inputs = tf.layers.dropout(inputs, out_drop_rate, training=is_training)
-    self.log_dotted_line('Dense End')
+    with tf.variable_scope('dense'):
+      for i, f in enumerate(filters):
+        inputs = tf.layers.dense(inputs, f)
+        if self.IsShowModel: self.log_tensor_p(inputs, '', 'dense_%d'%(i))
+        if i!=n-1:
+          inputs = self.batch_norm_act(inputs, is_training)
+          if out_drop_rate>0:
+            if self.IsShowModel: self.log('dropout {}'.format(out_drop_rate))
+            inputs = tf.layers.dropout(inputs, out_drop_rate, training=is_training)
+      self.log_dotted_line('Dense End')
     return inputs
 
 

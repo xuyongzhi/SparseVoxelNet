@@ -30,6 +30,17 @@ def check_sg_setting_for_vox(sg_settings):
   sg_settings['flag'] += flag
   return sg_settings
 
+def interr(x):
+    x0 = np.round(x).astype(np.int32)
+    err = np.max(np.abs(x0-x))
+    return err
+
+def check_good_strides(sg_settings):
+  for s in range(2, sg_settings['num_sg_scale']):
+    tmp = sg_settings['stride'][s] / sg_settings['stride'][s-1]
+    assert interr(tmp) < 1e-5, "stride is not integer times of the previous scale."+\
+      "This will lead to lose data. May be fixed later. Not ready yet."
+
 def update_sg_str(sg_settings):
   sg_str = ''
   str_items = ['width', 'stride', 'nblock', 'npoint_per_block', 'vox_size', 'auto_adjust_gb_stride']
@@ -60,9 +71,9 @@ def get_sg_settings(sgflag):
   #-----------------------------------------------------------------------------
   sg_settings = {}
   sg_settings['width'] =  [[1.5,1.5,3.0], [0.2,0.2,0.2], [0.6,0.6,1.2]]
-  sg_settings['stride'] = [[1.5,1.5,3.0], [0.2,0.2,0.2], [0.3,0.3,0.6]]
-  sg_settings['nblock'] =  [1,            240,    64]
-  sg_settings['npoint_per_block'] = [8192, 64,   24]
+  sg_settings['stride'] = [[1.5,1.5,3.0], [0.1,0.1,0.1], [0.3,0.3,0.6]]
+  sg_settings['nblock'] =  [1,            1024,    48]
+  sg_settings['npoint_per_block'] = [8192, 32,   64]
   sg_settings['np_perb_min_include'] = [1,1,1]
   sg_settings_all[sg_flag(sg_settings)] = sg_settings
   sg_settings_all['default'] = sg_settings
@@ -92,7 +103,7 @@ def get_sg_settings(sgflag):
     tmpf = ''
   sg_settings['flag'] = 'SG_'+sg_flag(sg_settings) + tmpf
   sg_settings['num_sg_scale'] = len(sg_settings['width'])
-  sg_settings['gen_ply'] = False
+  sg_settings['gen_ply'] = True
   sg_settings['record'] = False
 
   sg_settings['nblocks_per_point'] = []
@@ -102,6 +113,7 @@ def get_sg_settings(sgflag):
   sg_settings = check_sg_setting_for_vox(sg_settings)
   sg_settings = update_sg_str(sg_settings)
 
+  check_good_strides(sg_settings)
   return sg_settings
 
 if __name__ == '__main__':

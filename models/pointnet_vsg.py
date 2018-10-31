@@ -100,6 +100,7 @@ class Model(ResConvOps):
         ele = self.normalize_color(ele)
       points.append(ele)
     inputs['points'] = points = tf.concat(points, -1)
+    assert TfUtil.tsize(points) == 3
 
     sg_params = self.gather_sg_params(features)
     inputs.update(sg_params)
@@ -206,9 +207,12 @@ class Model(ResConvOps):
           sg_params[item] = []
         else:
           item_v = features[item+'_%d'%(s)]
-          if item not in ['flatting_idx', 'flat_valid_mask']:
-            item_v =  tf.squeeze( item_v, 1)
           sg_params[item].append( item_v )
+
+      if s>0:
+        assert TfUtil.tsize(sg_params['flatting_idx'][-1]) == 3
+        assert TfUtil.tsize(sg_params['grouped_pindex'][-1]) == 3
+        assert TfUtil.tsize(sg_params['grouped_bot_cen_top'][-1]) == 4
     return sg_params
 
 
