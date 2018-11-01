@@ -140,8 +140,8 @@ class Model(ResConvOps):
         new_points = TfUtil.gather_third_d(points, grouped_pindex)
         new_xyz = TfUtil.gather_second_d(xyz, grouped_pindex)
         new_xyz = tf.reduce_mean(new_xyz, 2)
-        self.log_tensor_p(new_points, '', 'saming grouping')
-    new_points = self.normalize_feature(new_points, 2)
+        new_points = self.normalize_feature(new_points, 2)
+        self.log_tensor_p(new_points, '', 'saming grouping norm')
     return new_points, new_xyz
 
   def point_decoder(self, scale,  points):
@@ -159,13 +159,17 @@ class Model(ResConvOps):
         points = tf.tile(points, [1,voexl_num,1,1])
       else:
         points = TfUtil.gather_third_d(points, flatting_idx)
+        points = tf.reduce_mean(points, 2, keepdims=True)
       self.log_tensor_p(points, 'uppooling', 'scale%d'%(scale))
-      points = tf.reduce_mean(points, 2, keepdims=True)
 
       if scale==0:
         last_points = tf.transpose(last_points, [0,2,1,3])
-      fnl = TfUtil.get_tensor_shape(last_points)[2]
-      points = tf.tile(points, [1,1,fnl,1])
+      if self.sg_settings['num_sg_scale'] >1:
+        fnl = TfUtil.get_tensor_shape(last_points)[2]
+        points = tf.tile(points, [1,1,fnl,1])
+      else:
+        fnl = TfUtil.get_tensor_shape(last_points)[1]
+        points = tf.tile(points, [1,fnl,1,1])
       points = tf.concat([last_points, points], -1)
       self.log_tensor_p(points, 'mean & interperation', 'scale%d'%(scale))
 

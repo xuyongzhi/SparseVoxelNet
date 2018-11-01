@@ -15,6 +15,13 @@ def block_configs(net_flag):
     filters_d = [ [256, 128], [384], [384]]
     block_sizes_d = [[1]*2, [1]*1, [1]*1]
 
+  elif net_flag == '1A':
+    filters_e = [ [32,128, 256,512], [512, 1024]]
+    block_sizes_e = [[1,2,2,1], [1]*2]
+
+    filters_d = [ [512, 256, 128],]
+    block_sizes_d = [[1, 2,2],]
+
 
   else:
     raise NotImplementedError
