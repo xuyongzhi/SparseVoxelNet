@@ -2,7 +2,7 @@
 
 net_flag='4A'
 ng=2
-bs=20
+bs=18
 rs=--rs
 
 

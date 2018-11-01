@@ -585,7 +585,7 @@ class BlockGroupSampling():
     out_bot_cen_top = tf.reshape(out_bot_cen_top, [-1,9])
     flatten_bot_cen_top = tf.gather(out_bot_cen_top, flatting_idx[:,0])
     empty_mask = tf.equal(flat_valid_mask[:,0], 0)
-    correct_mask, nerr_scope = self.check_block_inblock( bot_cen_top, flatten_bot_cen_top, empty_mask=empty_mask, max_neighbour_err=0.15*self.scale)
+    correct_mask, nerr_scope = self.check_block_inblock( bot_cen_top, flatten_bot_cen_top, empty_mask=empty_mask, max_neighbour_err=0.5*self.scale)
 
     if not self._close_all_checking_info:
       nerr_scope = tf.Print(nerr_scope, [self.scale, nerr_scope], message="scale, flat scope check err")
@@ -868,7 +868,7 @@ class BlockGroupSampling():
       bottom_out_mean_err = mean_out_err(bottom_err)
 
       max_out_err = tf.maximum(top_out_mean_err, bottom_out_mean_err)
-      max_out_err = tf.Print(max_out_err, [self.scale,max_out_err], "scale, max_neighbour_err")
+      #max_out_err = tf.Print(max_out_err, [self.scale,max_out_err], "scale, max_neighbour_err")
       check_nigh = tf.assert_less(max_out_err, max_neighbour_err,
         message="max_neighbour_err check failed. batch size>1 may be not ready for missed_flatidx_closest")
       with tf.control_dependencies([check_nigh]):
@@ -996,7 +996,7 @@ class BlockGroupSampling():
       ngpvr_min = 0.2
     else:
       ngpvr_min = 0.01
-    check1 = tf.assert_greater(self.ngp_valid_rate, [ngpvr_min, 0.05, 0.05, 0.0][self.scale],
+    check1 = tf.assert_greater(self.ngp_valid_rate, [ngpvr_min, 0.02, 0.02, 0.0][self.scale],
                   message="scale {} ngp_valid_rate {}".format(self.scale, self.ngp_valid_rate))
     with tf.control_dependencies([check0, check1]):
       bid_pindex = tf.identity(bid_pindex)

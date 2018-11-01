@@ -463,7 +463,7 @@ def define_network_flags():
   flags.DEFINE_float('bnd0', default=0.9, help="base bnd")
   flags.DEFINE_float('bnd_decay', default=0.1, help="")
   flags.DEFINE_integer('lrd_epochs', default=20, help="learning_rate decay epoches")
-  flags.DEFINE_string('feed_data','xyz-nxnynz-color','xyz-nxnynz-color')
+  flags.DEFINE_string('feed_data','xyz-nxnynz','xyz-nxnynz-color')
   flags.DEFINE_string('normxyz','min0','raw, mean0, min0')
   flags.DEFINE_string('normedge','raw','raw, l0, all')
   flags.DEFINE_bool('residual', short_name='rs', default=False,
@@ -488,11 +488,11 @@ def run_network(flags_obj):
                     input_fn)
   net_data_configs = parse_flags_update_configs(flags_obj)
 
-  #net_run_loop.net_main(flags_obj, network_model_fn, input_function, net_data_configs)
+  net_run_loop.net_main(flags_obj, network_model_fn, input_function, net_data_configs)
 
   # debug mode
   net_data_configs['net_configs']['bn_decay_fn'] = None
-  net_run_loop.net_main_check(flags_obj, Model3D, input_function, net_data_configs)
+  #net_run_loop.net_main_check(flags_obj, Model3D, input_function, net_data_configs)
 
 
 def main(_):
