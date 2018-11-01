@@ -509,6 +509,8 @@ class BlockGroupSampling():
           valid_bididx_sampled_all, flatting_idx, flat_valid_mask =\
           self.get_bid_point_index(bid_pindex)
 
+    flatting_idx = self.missed_flatidx_closest(flatting_idx, bot_cen_top)
+
     grouped_pindex, grouped_empty_mask = \
           self.get_grouped_pindex(bidspidx_pidxperb_pidx_VBVP)
 
@@ -583,7 +585,7 @@ class BlockGroupSampling():
     out_bot_cen_top = tf.reshape(out_bot_cen_top, [-1,9])
     flatten_bot_cen_top = tf.gather(out_bot_cen_top, flatting_idx[:,0])
     empty_mask = tf.equal(flat_valid_mask[:,0], 0)
-    correct_mask, nerr_scope = self.check_block_inblock( bot_cen_top, flatten_bot_cen_top, empty_mask=empty_mask)
+    correct_mask, nerr_scope = self.check_block_inblock( bot_cen_top, flatten_bot_cen_top, empty_mask=empty_mask, max_neighbour_err=0.2*self.scale)
 
     if not self._close_all_checking_info:
       nerr_scope = tf.Print(nerr_scope, [self.scale, nerr_scope], message="scale, flat scope check err")
@@ -820,7 +822,7 @@ class BlockGroupSampling():
     return pinb_mask, ngp_out_block
 
 
-  def check_block_inblock(self, bot_cen_top_small, bot_cen_top_large, empty_mask=None):
+  def check_block_inblock(self, bot_cen_top_small, bot_cen_top_large, empty_mask=None, max_neighbour_err = None):
     '''
     empty_mask for small only used to fix nerr_scope
     '''
@@ -849,6 +851,20 @@ class BlockGroupSampling():
     if empty_mask!=None:
       correct_mask = tf.logical_or(empty_mask, correct_mask)
     nerr_scope = tf.reduce_sum(1-tf.cast(correct_mask, tf.int32))
+
+    # some flatting_idx are missed, and replace by neighbour, check the distance
+    if max_neighbour_err is not None:
+      # both should be <0 if exactly included
+      top_err = bot_cen_top_small[...,6:9] - bot_cen_top_large[...,6:9]
+      max_top_err = tf.reduce_max(top_err)
+      bottom_err = bot_cen_top_large[...,0:3] - bot_cen_top_small[...,0:3]
+      max_bottom_err = tf.reduce_max(bottom_err)
+      max_err = tf.maximum(max_top_err, max_bottom_err)
+      max_err = tf.Print(max_err, [self.scale,max_err], "scale, max_nei_err")
+      check_nigh = tf.assert_less(max_err, max_neighbour_err)
+      with tf.control_dependencies([check_nigh]):
+        correct_mask = tf.identity(correct_mask)
+
     return correct_mask, nerr_scope
 
 
@@ -1536,12 +1552,55 @@ class BlockGroupSampling():
     # add flat_valid_mask
     flat_valid_mask = tf.cast(tf.greater_equal(flatting_idx, 0), tf.int32)
 
-    # set -1 to the first
+    # replace -1 by the first
     tmp = (flatting_idx[:,0:1]+1) * (1-flat_valid_mask)
     flatting_idx += tmp
 
     return flatting_idx, flat_valid_mask
 
+
+  def missed_flatidx_closest(self, flatting_idx, bot_cen_top):
+    '''
+    replace missed flatting_idx by closest valid one
+    '''
+    # add flat_valid_mask
+    flat_valid_mask = tf.greater_equal(flatting_idx, 0)
+    flat_valid_mask = tf.cast(flat_valid_mask, tf.int32)
+
+    flat_missed_mask = tf.less(flatting_idx[:,0], 0)
+    flat_missed_idx = tf.squeeze(tf.where(flat_missed_mask),1)
+    flat_missed_idx = tf.cast(flat_missed_idx, tf.int32)
+    flat_missed_num = TfUtil.tshape0( flat_missed_idx )
+    flatting_idx = tf.Print(flatting_idx, [self.scale, flat_missed_num], "scale, flat_missed_num")
+
+    # search the closest point with flatidx for each missed point
+    # set missed points to be very far, so will not search them
+    center_flat0 = tf.reshape(bot_cen_top, [-1, 9])[:,3:6]
+    auged_gb_num = TfUtil.tshape0(center_flat0)
+    far_pos = tf.ones([flat_missed_num], tf.float32)*(-1e7)
+    tmp = tf.sparse_to_dense(flat_missed_idx, [auged_gb_num], far_pos)
+    center_flat0 += tf.expand_dims(tmp,1)
+
+    num_point_gb = TfUtil.get_tensor_shape(bot_cen_top)[-2]
+    gb_idx = flat_missed_idx / num_point_gb
+    # get the search candidates
+    all_center = tf.gather(tf.reshape(center_flat0,[-1,num_point_gb,3]), gb_idx)
+
+    # the missed target pos should do not be set far
+    center_flat1 = tf.reshape(bot_cen_top, [-1, 9])[:,3:6]
+    missed_center = tf.gather(center_flat1, flat_missed_idx)
+    missed_center = tf.expand_dims(missed_center, 1)
+    distances = tf.norm(missed_center - all_center, axis=-1)
+
+    closest_idx = tf.argmin(distances, 1, output_type=tf.int32)
+    min_distances = tf.reduce_min(distances, 1)
+
+
+    # update closet for the missed
+    closest_flatidx = tf.gather(flatting_idx, closest_idx, 0)
+    tmp = tf.scatter_nd(tf.expand_dims(flat_missed_idx,1), closest_flatidx+1, flatting_idx.get_shape())
+    flatting_idx += tmp
+    return flatting_idx
 
   def clean_duplicate_block_indices(self):
     # gb auged indiecs for rm duplicated blocks
@@ -1992,8 +2051,8 @@ def gen_plys_sg(DATASET_NAME, grouped_bot_cen_top, bot_cen_tops, nblock_valid):
     for gi in range(global_block_num):
       path = '/tmp/batch%d_plys/gb%d'%(bi, gi)
       for s in range(num_scale):
-        #if s==0:
-        #  continue
+        if s==0:
+          continue
         for gi in range(global_block_num):
           valid_flag = '_valid' if gi < nblock_valid[s][bi,0] else '_invalid'
           ply_fn = '%s/scale%d_gb%d%s_blocks.ply'%(path, s, gi, valid_flag)
@@ -2039,7 +2098,7 @@ if __name__ == '__main__':
   data_path = os.path.join(raw_tfrecord_path, 'data')
   #data_path = os.path.join(raw_tfrecord_path, 'merged_data')
   tmp = '*'
-  #tmp = '17DRP5sb8fy_region2_0*'
+  tmp = '17DRP5sb8fy_region2_*'
   #tmp = '1LXtFkjw3qL_region11_0*'
   #tmp = '1LXtFkjw3qL_region0'
   filenames = glob.glob(os.path.join(data_path, tmp+'.tfrecord'))
@@ -2070,5 +2129,6 @@ if __name__ == '__main__':
   main(filenames, dset_shape_idx, main_flag, batch_size, cycles)
 
   #get_data_summary_from_tfrecord(filenames, raw_tfrecord_path)
+
 
 

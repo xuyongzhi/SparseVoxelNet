@@ -488,11 +488,11 @@ def run_network(flags_obj):
                     input_fn)
   net_data_configs = parse_flags_update_configs(flags_obj)
 
-  net_run_loop.net_main(flags_obj, network_model_fn, input_function, net_data_configs)
+  #net_run_loop.net_main(flags_obj, network_model_fn, input_function, net_data_configs)
 
   # debug mode
   net_data_configs['net_configs']['bn_decay_fn'] = None
-  #net_run_loop.net_main_check(flags_obj, Model3D, input_function, net_data_configs)
+  net_run_loop.net_main_check(flags_obj, Model3D, input_function, net_data_configs)
 
 
 def main(_):
