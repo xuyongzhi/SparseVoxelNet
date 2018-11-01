@@ -123,9 +123,11 @@ class Model(ResConvOps):
     with tf.variable_scope('Pool_S%d'%(scale)):
       points = tf.reduce_max(points, 2)
       points = tf.expand_dims(points, 1)
+      use_xyz_str = ''
       if use_xyz and xyz is not None:
         points = tf.concat([points, tf.expand_dims(xyz,1)], -1)
-      self.log_tensor_p(points, 'use xyz' if use_xyz else '', pool+' pooling')
+        use_xyz_str = 'use_xyz'
+      self.log_tensor_p(points, use_xyz_str, pool+' pooling')
       return points
 
   def sampling_grouping(self, scale, points, grouped_pindex, xyz):
@@ -139,6 +141,7 @@ class Model(ResConvOps):
         new_xyz = TfUtil.gather_second_d(xyz, grouped_pindex)
         new_xyz = tf.reduce_mean(new_xyz, 2)
         self.log_tensor_p(new_points, '', 'saming grouping')
+    new_points = self.normalize_feature(new_points, 2)
     return new_points, new_xyz
 
   def point_decoder(self, scale,  points):
@@ -193,6 +196,12 @@ class Model(ResConvOps):
     else:
       raise NotImplementedError
     return new_xyz
+
+  def normalize_feature(self, points, dim):
+    assert TfUtil.tsize(points) == 4
+    mean_p = tf.reduce_mean(points, dim, keepdims=True)
+    points = points - mean_p
+    return points
 
   def gather_sg_params(self, features):
     if not hasattr(self, 'sg_settings'):
