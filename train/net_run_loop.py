@@ -482,11 +482,8 @@ def net_main_check(
             sg_params[item] = []
           else:
             sg_params[item].append(features[item+'_%d'%(s)])
-            min_v = np.min(sg_params[item])
-            assert min_v > 0
-            import pdb; pdb.set_trace()  # XXX BREAKPOINT
-            pass
-      import pdb; pdb.set_trace()  # XXX BREAKPOINT
+            min_v = np.min(sg_params[item][-1])
+            assert min_v >= 0
       pass
 
 

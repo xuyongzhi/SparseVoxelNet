@@ -22,7 +22,7 @@ def check_sg_setting_for_vox(sg_settings):
     vox_size_err = np.max(np.abs(vox_size0-vox_size))
     #if s != num_sg_scale:
       # global scale can be not aligned
-    assert vox_size_err < 1e-5, "the sg_settings cannot do Voxelization"
+    assert vox_size_err < 1e-5, "the sg_settings scale %d cannot do Voxelization"%(s)
     vox_sizes.append(vox_size)
     flag += str(vox_size[0])
 
@@ -62,18 +62,18 @@ def get_sg_settings(sgflag):
   #-----------------------------------------------------------------------------
   # 8192_2_1024_64
   sg_settings = {}
-  sg_settings['width'] =  [[1.5,1.5,3.1], [0.3,0.3,0.3], [0.7,0.7,0.7], [1.5,1.5,1.5]]
-  sg_settings['stride'] = [[1.5,1.5,3.1], [0.2,0.2,0.2], [0.4,0.4,0.4], [1.5,1.5,0.8]]
-  sg_settings['nblock'] =  [1,            320,    64, 4]
-  sg_settings['npoint_per_block'] = [8192, 128,   16, 32]
-  sg_settings['np_perb_min_include'] = [1,1,1, 1]
+  sg_settings['width'] =  [[1.5,1.5,3.0], [0.3,0.3,0.4], [0.7,0.7,1.2]]
+  sg_settings['stride'] = [[1.5,1.5,3.0], [0.2,0.2,0.2], [0.4,0.4,0.6]]
+  sg_settings['nblock'] =  [1,            320,    32]
+  sg_settings['npoint_per_block'] = [8192, 128,   32]
+  sg_settings['np_perb_min_include'] = [1,1,1]
   sg_settings_all[sg_flag(sg_settings)] = sg_settings
   #-----------------------------------------------------------------------------
   sg_settings = {}
-  sg_settings['width'] =  [[1.5,1.5,3.0], [0.2,0.2,0.2], [0.6,0.6,1.2]]
-  sg_settings['stride'] = [[1.5,1.5,3.0], [0.1,0.1,0.1], [0.3,0.3,0.6]]
-  sg_settings['nblock'] =  [1,            1024,    48]
-  sg_settings['npoint_per_block'] = [8192, 32,   64]
+  sg_settings['width'] =  [[1.5,1.5,3.1], [0.2,0.2,0.4], [0.6,0.6,1.3]]
+  sg_settings['stride'] = [[1.5,1.5,3.1], [0.1,0.1,0.3], [0.3,0.3,0.6]]
+  sg_settings['nblock'] =  [1,            640,    64]
+  sg_settings['npoint_per_block'] = [8192, 96,   48]
   sg_settings['np_perb_min_include'] = [1,1,1]
   sg_settings_all[sg_flag(sg_settings)] = sg_settings
   sg_settings_all['default'] = sg_settings
@@ -103,7 +103,7 @@ def get_sg_settings(sgflag):
     tmpf = ''
   sg_settings['flag'] = 'SG_'+sg_flag(sg_settings) + tmpf
   sg_settings['num_sg_scale'] = len(sg_settings['width'])
-  sg_settings['gen_ply'] = True
+  sg_settings['gen_ply'] = False
   sg_settings['record'] = False
 
   sg_settings['nblocks_per_point'] = []

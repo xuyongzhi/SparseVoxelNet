@@ -450,10 +450,10 @@ def define_network_flags():
   flags_core.set_defaults(train_epochs=150*2,
                           data_dir=data_dir,
                           batch_size=12,
-                          num_gpus=2,
+                          num_gpus=1,
                           epochs_between_evals=5,)
 
-  flags.DEFINE_string('net_flag','5A','5A')
+  flags.DEFINE_string('net_flag','4A','4A')
   flags.DEFINE_string('optimizer','adam','adam momentum')
   flags.DEFINE_bool('bn', default=True, help ="")
   flags.DEFINE_string('act', default='Relu', help ="Relu, Lrelu")
@@ -471,7 +471,7 @@ def define_network_flags():
   flags.DEFINE_string('shortcut','C','C Z')
   flags.DEFINE_string('drop_imo','000','dropout rate for input, middle and out')
   flags.DEFINE_bool(name='pred_ply', default=False, help ="")
-  flags.DEFINE_string('sg', '8192_1_1024_48', help='sampling and grouping settings')
+  flags.DEFINE_string('sg', '8192_1_640_64', help='sampling and grouping settings')
 
   #if SMALL_FNUM:
   #  update_examples_num(True, data_dir)

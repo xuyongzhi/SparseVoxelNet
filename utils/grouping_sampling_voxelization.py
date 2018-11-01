@@ -585,7 +585,7 @@ class BlockGroupSampling():
     out_bot_cen_top = tf.reshape(out_bot_cen_top, [-1,9])
     flatten_bot_cen_top = tf.gather(out_bot_cen_top, flatting_idx[:,0])
     empty_mask = tf.equal(flat_valid_mask[:,0], 0)
-    correct_mask, nerr_scope = self.check_block_inblock( bot_cen_top, flatten_bot_cen_top, empty_mask=empty_mask, max_neighbour_err=0.2*self.scale)
+    correct_mask, nerr_scope = self.check_block_inblock( bot_cen_top, flatten_bot_cen_top, empty_mask=empty_mask, max_neighbour_err=0.15*self.scale)
 
     if not self._close_all_checking_info:
       nerr_scope = tf.Print(nerr_scope, [self.scale, nerr_scope], message="scale, flat scope check err")
@@ -855,13 +855,22 @@ class BlockGroupSampling():
     # some flatting_idx are missed, and replace by neighbour, check the distance
     if max_neighbour_err is not None:
       # both should be <0 if exactly included
+      def mean_out_err(err0):
+        err0 = tf.reduce_max(err0, 1)
+        out_mask = tf.cast(tf.greater(err0, 0), tf.float32)
+        err1 = err0 * out_mask
+        mean_out_err = tf.reduce_sum(err1) / (tf.reduce_sum(out_mask)+10)
+        return mean_out_err
+
       top_err = bot_cen_top_small[...,6:9] - bot_cen_top_large[...,6:9]
-      max_top_err = tf.reduce_max(top_err)
+      top_out_mean_err =  mean_out_err(top_err)
       bottom_err = bot_cen_top_large[...,0:3] - bot_cen_top_small[...,0:3]
-      max_bottom_err = tf.reduce_max(bottom_err)
-      max_err = tf.maximum(max_top_err, max_bottom_err)
-      max_err = tf.Print(max_err, [self.scale,max_err], "scale, max_nei_err")
-      check_nigh = tf.assert_less(max_err, max_neighbour_err)
+      bottom_out_mean_err = mean_out_err(bottom_err)
+
+      max_out_err = tf.maximum(top_out_mean_err, bottom_out_mean_err)
+      max_out_err = tf.Print(max_out_err, [self.scale,max_out_err], "scale, max_neighbour_err")
+      check_nigh = tf.assert_less(max_out_err, max_neighbour_err,
+        message="max_neighbour_err check failed. batch size>1 may be not ready for missed_flatidx_closest")
       with tf.control_dependencies([check_nigh]):
         correct_mask = tf.identity(correct_mask)
 
@@ -987,7 +996,7 @@ class BlockGroupSampling():
       ngpvr_min = 0.2
     else:
       ngpvr_min = 0.01
-    check1 = tf.assert_greater(self.ngp_valid_rate, [ngpvr_min, 0.1, 0.1, 0.0][self.scale],
+    check1 = tf.assert_greater(self.ngp_valid_rate, [ngpvr_min, 0.05, 0.05, 0.0][self.scale],
                   message="scale {} ngp_valid_rate {}".format(self.scale, self.ngp_valid_rate))
     with tf.control_dependencies([check0, check1]):
       bid_pindex = tf.identity(bid_pindex)
@@ -1571,7 +1580,7 @@ class BlockGroupSampling():
     flat_missed_idx = tf.squeeze(tf.where(flat_missed_mask),1)
     flat_missed_idx = tf.cast(flat_missed_idx, tf.int32)
     flat_missed_num = TfUtil.tshape0( flat_missed_idx )
-    flatting_idx = tf.Print(flatting_idx, [self.scale, flat_missed_num], "scale, flat_missed_num")
+    #flatting_idx = tf.Print(flatting_idx, [self.scale, flat_missed_num], "scale, flat_missed_num")
 
     # search the closest point with flatidx for each missed point
     # set missed points to be very far, so will not search them
@@ -2098,7 +2107,7 @@ if __name__ == '__main__':
   data_path = os.path.join(raw_tfrecord_path, 'data')
   #data_path = os.path.join(raw_tfrecord_path, 'merged_data')
   tmp = '*'
-  tmp = '17DRP5sb8fy_region2_*'
+  #tmp = '17DRP5sb8fy_region2_*'
   #tmp = '1LXtFkjw3qL_region11_0*'
   #tmp = '1LXtFkjw3qL_region0'
   filenames = glob.glob(os.path.join(data_path, tmp+'.tfrecord'))
