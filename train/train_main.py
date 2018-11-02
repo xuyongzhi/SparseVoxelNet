@@ -453,15 +453,15 @@ def define_network_flags():
                           num_gpus=1,
                           epochs_between_evals=5,)
 
-  flags.DEFINE_string('net_flag','4A','4A')
+  flags.DEFINE_string('net_flag','1A','4A')
   flags.DEFINE_string('optimizer','adam','adam momentum')
   flags.DEFINE_bool('bn', default=True, help ="")
   flags.DEFINE_string('act', default='Relu', help ="Relu, Lrelu")
   flags.DEFINE_float('weight_decay', short_name='wd', default=0.0, help="wd 1e-4")
-  flags.DEFINE_float('lr0', default=5e-4, help="base lr")
-  flags.DEFINE_float('lrd_rate', default=0.7, help="learning rate decay rate")
-  flags.DEFINE_float('bnd0', default=0.9, help="base bnd")
-  flags.DEFINE_float('bnd_decay', default=0.1, help="")
+  flags.DEFINE_float('lr0', default=1e-4, help="base lr")
+  flags.DEFINE_float('lrd_rate', default=1.0, help="learning rate decay rate")
+  flags.DEFINE_float('bnd0', default=0.99, help="base bnd")
+  flags.DEFINE_float('bnd_decay', default=1.0, help="")
   flags.DEFINE_integer('lrd_epochs', default=20, help="learning_rate decay epoches")
   flags.DEFINE_string('feed_data','xyz-nxnynz','xyz-nxnynz-color')
   flags.DEFINE_string('normxyz','min0','raw, mean0, min0')
@@ -471,7 +471,7 @@ def define_network_flags():
   flags.DEFINE_string('shortcut','C','C Z')
   flags.DEFINE_string('drop_imo','000','dropout rate for input, middle and out')
   flags.DEFINE_bool(name='pred_ply', default=False, help ="")
-  flags.DEFINE_string('sg', '8192_1_640_64', help='sampling and grouping settings')
+  flags.DEFINE_string('sg', '8192_1', help='sampling and grouping settings')
 
   #if SMALL_FNUM:
   #  update_examples_num(True, data_dir)

@@ -38,7 +38,7 @@ from utils.tf_util  import TfUtil
 #BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 #ROOT_DIR = os.path.dirname(BASE_DIR)
 
-DEBUG_TMP = True
+DEBUG_TMP = False
 
 _BATCH_NORM_DECAY = 0.997
 _BATCH_NORM_EPSILON = 1e-5
@@ -836,13 +836,15 @@ class ResConvOps(object):
 
 
   def blocks_layers(self, inputs, blocks_params, block_fn, is_training,
-                    scope, edgev_per_vertex=None, with_initial_layer=False):
+                    scope, edgev_per_vertex=None, with_initial_layer=False, end_blocks=None):
     self.log_tensor_p(inputs, 'input', scope)
     self.log_dotted_line(scope)
 
+    end_features = []
     if with_initial_layer:
       # initial layer
       with tf.variable_scope('initial_layer'):
+        assert blocks_params[0]['block_sizes'] == 0, "use block_sizes==0 indicates initial_layer"
         self.log_dotted_line(scope+'_Initial_Layer', 1)
         inputs = block_fn(inputs, blocks_params[0], is_training, projection_shortcut=None,
                           initial_layer=True)
@@ -851,13 +853,23 @@ class ResConvOps(object):
       with tf.variable_scope(scope+'_B%d'%(bi)):
         self.log_dotted_line(scope+'_Block%d'%(bi), 1)
         no_prenorm = not with_initial_layer and bi == 0
-        inputs = self.block_layer( inputs, blocks_params[bi], block_fn,
+        inputs, end_features_i = self.block_layer( inputs, blocks_params[bi], block_fn,
                                 is_training, scope+'_b%d'%(bi), edgev_per_vertex=edgev_per_vertex,
                                   no_prenorm=no_prenorm)
+        end_features += end_features_i
+
     with tf.variable_scope(scope+'_EndBn'):
       inputs = self.batch_norm_act(inputs, is_training)
     self.log_dotted_line(scope)
-    return inputs
+
+    if end_blocks is not None:
+      end_features = tf.concat( [end_features[i] for i in end_blocks], -1)
+      self.log_tensor_p(end_features, 'blocks '+str(end_blocks), 'end_features')
+      end_features = self.batch_norm_act(end_features, is_training)
+      self.log_dotted_line('End Features of Blocks')
+    else:
+      end_features = inputs
+    return inputs, end_features
 
   def block_layer(self, inputs, block_params, block_fn, is_training, name, edgev_per_vertex=None, no_prenorm=False):
     """Creates one layer of block_size for the ResNet model.
@@ -888,18 +900,21 @@ class ResConvOps(object):
 
     # (1) Only the first block per block_layer uses projection_shortcut and strides
     # and pad_stride1
+    end_features = []
     with tf.variable_scope('L0'):
       inputs = block_fn(inputs, block_params, is_training, shortcut_projection,
                         no_prenorm=no_prenorm)
+      end_features.append(inputs)
 
     block_params['strides'] = 1
     block_params['pad_stride1'] = 's'
     for j in range(1, block_size):
       with tf.variable_scope('L%d'%(j)):
         inputs = block_fn(inputs, block_params, is_training, None)
+        end_features.append(inputs)
 
     self._block_layers_num += 1
-    return tf.identity(inputs, name)
+    return tf.identity(inputs, name), end_features
 
 
   def dense_block(self, inputs, filters, is_training):

@@ -56,8 +56,8 @@ class Model(ResConvOps):
     # Encoder
     with_global_scale = False
     for scale in range(scale_n):
-      points = self.point_encoder(scale, points)
-      endpoints.append(points)
+      points, end_points_s = self.point_encoder(scale, points)
+      endpoints.append(end_points_s)
       if scale>0:
         # Change voxel to point. Scale 0 is already point, no need pooing
         points = self.pooling(scale, points, xyz)
@@ -114,10 +114,11 @@ class Model(ResConvOps):
   def point_encoder(self, scale,  points):
     with tf.variable_scope('PointEncoder_S%d'%(scale)):
       block_paras = self.model_paras('e',scale)
-      new_points = self.blocks_layers(points, block_paras, self.building_block_v2,
+      new_points, end_points_s = self.blocks_layers(points, block_paras, self.building_block_v2,
                                     self.is_training, 'PE_S%d'%(scale),
-                                    with_initial_layer = scale==0)
-    return new_points
+                                    with_initial_layer = scale==0,
+                                    end_blocks=self.model_paras.end_blocks[scale])
+    return new_points, end_points_s
 
   def pooling(self, scale, points, xyz, pool='max', use_xyz = True):
     with tf.variable_scope('Pool_S%d'%(scale)):
@@ -147,7 +148,7 @@ class Model(ResConvOps):
   def point_decoder(self, scale,  points):
     with tf.variable_scope('PointDecoder_S%d'%(scale)):
       block_paras = self.model_paras('d',scale)
-      new_points = self.blocks_layers(points, block_paras, self.building_block_v2,
+      new_points, _ = self.blocks_layers(points, block_paras, self.building_block_v2,
                                     self.is_training, 'PD_S%d'%(scale),
                                     with_initial_layer = False)
     return new_points
@@ -233,6 +234,7 @@ class ModelParams():
   def __init__(self, block_configs):
     # include global
     self.dense_filters = block_configs['dense_filters']
+    self.end_blocks = block_configs['end_blocks']
 
     self.blocks_paras_scales = {}
     scale_nums = {}
