@@ -8,7 +8,10 @@ net_flag='1B'
 bs=32
 normxyz='min0'
 
-#normxyz='raw'
+normxyz='raw'
 net_flag='1A'
 
 ipython  ./train_main.py -- --net_flag $net_flag --num_gpus $ng --batch_size $bs   $rs  --sg $sg --normxyz $normxyz
+
+#normxyz='mean0'
+#ipython  ./train_main.py -- --net_flag $net_flag --num_gpus $ng --batch_size $bs   $rs  --sg $sg --normxyz $normxyz

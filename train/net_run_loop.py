@@ -41,6 +41,7 @@ import numpy as np
 from utils.tf_util import TfUtil
 # pylint: enable=g-bad-import-order
 from models.meshnet_model import DEFAULT_DTYPE
+from train import tfmetric
 
 ################################################################################
 # Functions for input processing.
@@ -381,8 +382,17 @@ def net_model_fn( features, labels, mode, model_class,
     train_op = None
 
   accuracy = tf.metrics.accuracy(labels, predictions['classes'])
-  num_classes = net_data_configs['dset_metas'].num_classes
+  dset_metas = net_data_configs['dset_metas']
+  num_classes = dset_metas.num_classes
   mean_iou = tf.metrics.mean_iou(labels, predictions['classes'], num_classes)
+
+  MODEL_DR = net_data_configs['data_configs']['model_dir']
+  classes_names = [dset_metas.label2class[i] for i in range(num_classes)]
+  confusionMatrixSaveHook = tfmetric.SaverHook(classes_names,
+                     'mean_iou/total_confusion_matrix',
+                     tf.summary.FileWriterCache.get(MODEL_DR + "/eval"))
+
+  #iou = tf.get_default_graph().get_tensor_by_name('mean_iou/div:0')
   mean_iou = (mean_iou[0], tf.identity(mean_iou[1]))
 
   # Create a tensor named train_accuracy for logging purposes
@@ -394,6 +404,7 @@ def net_model_fn( features, labels, mode, model_class,
   #tf.identity(train_mean_iou, name='train_mean_iou')
   #mean_iou = (iou_perclass, tf.identity(mean_iou[1]))
   #mean_iou_, classes_iou = compute_iou_tf(predictions['classes'], labels, num_classes)
+  #cm = tf.confusion_matrix(tf.reshape(labels,[-1]), tf.reshape(predictions['classes'],[-1]), num_classes)
 
   metrics = {'accuracy': accuracy, 'mean_iou':mean_iou}
 
@@ -402,7 +413,8 @@ def net_model_fn( features, labels, mode, model_class,
           predictions=predictions,
           loss=loss,
           train_op=train_op,
-          eval_metric_ops=metrics)
+          eval_metric_ops=metrics,
+          evaluation_hooks=[confusionMatrixSaveHook])
 
 def compute_mean_iou(total_cm, num_classes, name='mean_iou'):
   """Compute the mean intersection-over-union via the confusion matrix."""
@@ -636,8 +648,8 @@ def net_main(
     if not only_train:
       t0 = time.time()
       eval_results = classifier.evaluate(input_fn=input_fn_eval,
-                                        steps=flags_obj.max_train_steps,
-                                        checkpoint_path=best_acc_checkpoint)
+                                        steps=flags_obj.max_train_steps,)
+                                        #checkpoint_path=best_acc_checkpoint)
       eval_t = time.time()-t0
 
       if flags_obj.pred_ply:
@@ -747,6 +759,7 @@ def compute_iou_tf(pred, label, num_classes):
   U = tf.stack(U, 0)
 
   iou_classes = I / (U+1e-5)
+  import pdb; pdb.set_trace()  # XXX BREAKPOINT
 
   non_zero_num = tf.reduce_sum(tf.cast(tf.greater(iou_classes,0), tf.float32))
   mean_iou = tf.reduce_sum(iou_classes) / non_zero_num

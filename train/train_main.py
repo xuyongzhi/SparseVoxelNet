@@ -37,14 +37,13 @@ ModelUsed = pointnet_vsg
 from datasets.tfrecord_util import parse_record, get_dset_shape_idxs
 from datasets.all_datasets_meta.datasets_meta import DatasetsMeta
 
-TMPDEBUG = False
+TMPDEBUG = True
 SMALL_FNUM = False
-FILE_RATE = 0.01 if SMALL_FNUM else 1.0
 DATA_DIR = os.path.join(ROOT_DIR, 'data')
 
 _NUM_EXAMPLES_ALL = {}
 _NUM_EXAMPLES_ALL['MATTERPORT'] = {
-        'train': int(2924 * FILE_RATE), 'validation':-1}
+        'train': int(2924 ), 'validation':-1}
 
 _NUM_TRAIN_FILES = 20 * 1
 _SHUFFLE_BUFFER = 1000 * 1
@@ -73,7 +72,6 @@ def get_filenames_1(is_training, data_dir):
   fn_glob = os.path.join(data_dir, '{}_region{}.tfrecord'.format(scene, region))
   all_fnls = glob.glob(fn_glob)
   all_fnls.sort()
-  #if TMPDEBUG:
   all_fnls = all_fnls[0:676]
   assert len(all_fnls) > 0, fn_glob
   print('\ngot {} training files for training={}\n'.format(len(all_fnls), is_training))
@@ -89,17 +87,16 @@ def get_filenames(is_training, data_dir):
   if SMALL_FNUM:
     return get_filenames_1(is_training, data_dir)
 
-  if TMPDEBUG:
-    is_training = True
   data_dir = os.path.join(data_dir, 'merged_data')
   if is_training:
     pre = 'train_'
   else:
     pre = 'test_'
+    pre = 'train_'
   fnls = glob.glob(os.path.join(data_dir, pre+'*.tfrecord'))
   if TMPDEBUG:
     fnls.sort()
-    n = max(1, int(len(fnls) * FILE_RATE))
+    n = min(1, len(fnls))
     fnls = fnls[0:n]
   print('\nfound {} files, train:{}\n'.format(len(fnls), is_training))
   return fnls
@@ -383,7 +380,7 @@ def parse_flags_update_configs(flags_obj):
 
 def define_model_dir(flags_obj, net_data_configs):
   if flags_obj.eval_only or flags_obj.pred_ply:
-    flags_obj.model_dir = os.path.join(ROOT_DIR, 'results/meshseg', flags_obj.model_dir)
+    flags_obj.model_dir = os.path.join(ROOT_DIR, 'results/seg', flags_obj.model_dir)
     assert os.path.exists(flags_obj.model_dir+'/checkpoint'),"eval but model_dir does not exist"
     return flags_obj.model_dir
 
@@ -451,7 +448,7 @@ def define_network_flags():
                           data_dir=data_dir,
                           batch_size=12,
                           num_gpus=1,
-                          epochs_between_evals=5,)
+                          epochs_between_evals=1,)
 
   flags.DEFINE_string('net_flag','1A','4A')
   flags.DEFINE_string('optimizer','adam','adam momentum')
