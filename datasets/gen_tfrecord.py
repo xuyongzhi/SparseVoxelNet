@@ -653,31 +653,36 @@ def main_matterport():
   #dset_path = '/home/z/DS/Matterport3D/Matterport3D_WHOLE_extracted/v1/scans'
   #tfrecord_path = os.path.join(ROOT_DIR, 'data/MATTERPORT_TF')
 
-  region_name = 'region*'
-  scene_names_all = os.listdir(dset_path) # 91
-  scene_names_all.sort()
-  scene_names = ['17DRP5sb8fy']
-  #scene_names = ['2t7WUuJeko7']
-  scene_names = scene_names_all
-  raw_fns = []
-  for scene_name in scene_names:
-    raw_glob = os.path.join(dset_path, '{}/*/region_segmentations/{}.ply'.format(
-                                  scene_name, region_name))
-    raw_fns += glob.glob(raw_glob)
+  def main_gen_tfrecord():
+    region_name = 'region*'
+    scene_names_all = os.listdir(dset_path) # 91
+    scene_names_all.sort()
+    scene_names = ['17DRP5sb8fy']
+    #scene_names = ['2t7WUuJeko7']
+    scene_names = scene_names_all
+    raw_fns = []
+    for scene_name in scene_names:
+      raw_glob = os.path.join(dset_path, '{}/*/region_segmentations/{}.ply'.format(
+                                    scene_name, region_name))
+      raw_fns += glob.glob(raw_glob)
 
-  ply_dir = os.path.join(tfrecord_path, 'plys/{}/{}'.format(scene_name, region_name))
+    ply_dir = os.path.join(tfrecord_path, 'plys/{}/{}'.format(scene_name, region_name))
 
-  raw_fns = clean_bad_files(dataset_name, raw_fns, dset_path)
-  raw_fns.sort()
-  main_write_multi(dataset_name, raw_fns, tfrecord_path, num_point,\
-              block_size, dynamic_block_size, ply_dir,
-              multiprocessing=4) # 4 to process data, 0 to check
+    raw_fns = clean_bad_files(dataset_name, raw_fns, dset_path)
+    raw_fns.sort()
+    main_write_multi(dataset_name, raw_fns, tfrecord_path, num_point,\
+                block_size, dynamic_block_size, ply_dir,
+                multiprocessing=4) # 4 to process data, 0 to check
 
-  main_merge_tfrecord(dataset_name, tfrecord_path)
+  def main_label_hist():
+    from datasets.tfrecord_util import label_hist_from_tfrecord
+    label_hist_from_tfrecord(dataset_name, tfrecord_path)
 
+  #main_gen_tfrecord()
+  #main_merge_tfrecord(dataset_name, tfrecord_path)
+  main_label_hist()
   #main_gen_ply(dataset_name, tfrecord_path)
   print('total time: {} sec'.format(time.time() - t0))
-
 
 
 if __name__ == '__main__':

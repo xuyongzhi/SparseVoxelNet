@@ -4,14 +4,13 @@ ng=2
 rs=--rs
 
 sg='8192_1'
-net_flag='1B'
-bs=32
+bs=2
 normxyz='min0'
-
-normxyz='raw'
 net_flag='1A'
+lwgama=2
+wd='1e-4'
 
-ipython  ./train_main.py -- --net_flag $net_flag --num_gpus $ng --batch_size $bs   $rs  --sg $sg --normxyz $normxyz
+ipython  ./train_main.py -- --net_flag $net_flag --num_gpus $ng --batch_size $bs   $rs  --sg $sg --normxyz $normxyz --lwgama $lwgama --wd $wd
 
 #normxyz='mean0'
 #ipython  ./train_main.py -- --net_flag $net_flag --num_gpus $ng --batch_size $bs   $rs  --sg $sg --normxyz $normxyz

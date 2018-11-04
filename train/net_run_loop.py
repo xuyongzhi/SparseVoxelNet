@@ -41,7 +41,7 @@ import numpy as np
 from utils.tf_util import TfUtil
 # pylint: enable=g-bad-import-order
 from models.meshnet_model import DEFAULT_DTYPE
-from train import tfmetric
+#from train import tfmetric
 
 ################################################################################
 # Functions for input processing.
@@ -305,8 +305,13 @@ def net_model_fn( features, labels, mode, model_class,
         )
 
   # Calculate loss, which includes softmax cross entropy and L2 regularization.
+  label_nw = net_data_configs['data_configs']['label_nw']
+  if label_nw is None:
+    weights = 1.0
+  else:
+    weights = tf.gather(label_nw, labels)
   cross_entropy = tf.losses.sparse_softmax_cross_entropy(
-      logits=logits, labels=labels)
+      logits=logits, labels=labels, weights=weights)
 
   # Create a tensor named cross_entropy for logging purposes.
   tf.identity(cross_entropy, name='cross_entropy')
@@ -393,9 +398,9 @@ def net_model_fn( features, labels, mode, model_class,
 
   MODEL_DR = net_data_configs['data_configs']['model_dir']
   classes_names = [dset_metas.label2class[i] for i in range(num_classes)]
-  confusionMatrixSaveHook = tfmetric.SaverHook(classes_names,
-                     'mean_iou/total_confusion_matrix',
-                     tf.summary.FileWriterCache.get(MODEL_DR + "/eval"))
+  #confusionMatrixSaveHook = tfmetric.SaverHook(classes_names,
+  #                   'mean_iou/total_confusion_matrix',
+  #                   tf.summary.FileWriterCache.get(MODEL_DR + "/eval"))
 
   mean_iou = (mean_iou[0], tf.identity(mean_iou[1]))
   cm_metric = get_cm_metric()
@@ -412,8 +417,8 @@ def net_model_fn( features, labels, mode, model_class,
           predictions=predictions,
           loss=loss,
           train_op=train_op,
-          eval_metric_ops=metrics,
-          evaluation_hooks=[confusionMatrixSaveHook])
+          eval_metric_ops=metrics,)
+          #evaluation_hooks=[confusionMatrixSaveHook])
 
 def compute_mean_iou(total_cm, num_classes, name='mean_iou'):
   """Compute the mean intersection-over-union via the confusion matrix."""
@@ -670,11 +675,9 @@ def net_main(
       global_step = cur_global_step(flags_obj.model_dir)
       epoch = int( global_step / flags_obj.examples_per_epoch * flags_obj.num_gpus)
       ious_str = get_ious_str( eval_results['cm'], net_data_configs['dset_metas'], eval_results['mean_iou'])
-      metric_logf.write('{} train t:{:.1f}  eval t:{:.1f} \teval acc:{:.3f} \tmean_iou:{:.3f} {} {}\n'.format(epoch,
+      metric_logf.write('\n{} train t:{:.1f}  eval t:{:.1f} \teval acc:{:.3f} \tmean_iou:{:.3f} {} {}\n'.format(epoch,
                         train_t, eval_t, eval_results['accuracy'], eval_results['mean_iou'], cur_is_best, ious_str))
       metric_logf.flush()
-      import pdb; pdb.set_trace()  # XXX BREAKPOINT
-      pass
 
   if flags_obj.export_dir is not None:
     # Exports a saved model for the given classifier.

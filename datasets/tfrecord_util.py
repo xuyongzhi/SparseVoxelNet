@@ -156,9 +156,8 @@ def voxel_sampling_grouping(bsg, features, dset_shape_idx):
   return features
 
 
-def read_dataset_summary(data_dir):
+def read_dataset_summary(summary_path):
   import pickle
-  summary_path = os.path.join(data_dir, 'summary.pkl')
   if not os.path.exists(summary_path):
     dataset_summary = {}
     dataset_summary['intact'] = False
@@ -167,26 +166,31 @@ def read_dataset_summary(data_dir):
   return dataset_summary
 
 
-def get_label_num_weights(dataset_summary, loss_lw_gama):
-  if loss_lw_gama<0:
-    return
-  IsPlot = False
+def get_label_num_weights(tf_path, loss_lw_gama=1, IsPlot=False):
+  summary_path = os.path.join(tf_path, 'summary.pkl')
+  assert os.path.exists(summary_path)
+  dataset_summary = read_dataset_summary(summary_path)
+  if loss_lw_gama<=0:
+    return None
   label_hist = dataset_summary['label_hist']
   mean = np.mean(label_hist)
-  assert np.min(label_hist) > 0
-  weight = mean / label_hist
+  weight = mean / (label_hist+1e-5)
   weights = {}
   gamas = [loss_lw_gama, 1, 2, 5, 10, 20]
   gamas = [loss_lw_gama]
   for gama in gamas:
-    weights[gama] = gama * weight
-  dataset_summary['label_num_weights'] = weights[loss_lw_gama]
+    w0 = gama * weight
+    w = np.minimum(w0, 50)
+    w = np.maximum(w, 0.01)
+    weights[gama]  = w
   if  IsPlot:
     import matplotlib.pyplot as plt
     for gama in gamas:
       plt.plot(label_hist, weights[gama], '.', label=str(gama))
     plt.legend()
     plt.show()
+  label_num_weights = weights[loss_lw_gama].astype(np.float32)
+  return label_num_weights
 
 
 def get_dset_shape_idxs(tf_path):
@@ -245,20 +249,22 @@ def get_ele(datas, ele, dset_shape_idx):
   raise ValueError, ele+' not found'
 
 
-def read_tfrecord(dataset_name, tf_path, loss_lw_gama=-1):
+def label_hist_from_tfrecord(dataset_name, tf_path):
   tf.enable_eager_execution()
 
   dset_shape_idx = get_dset_shape_idxs(tf_path)
-  dataset_summary = read_dataset_summary(tf_path)
+  summary_path = os.path.join(tf_path, 'summary.pkl')
+  dataset_summary = read_dataset_summary(summary_path)
   if dataset_summary['intact']:
-    print('dataset_summary intact, no need to read')
-    get_label_num_weights(dataset_summary, loss_lw_gama)
-    #return dataset_summary
+    print('dataset_summary intact, no need to read: \n{} \n{}'.format(summary_path, dataset_summary))
+    label_num_weights = get_label_num_weights(tf_path, loss_lw_gama=1, IsPlot=False)
+    print(label_num_weights)
+    return dataset_summary
 
   #data_path = os.path.join(tf_path, 'merged_data')
   data_path = os.path.join(tf_path, 'data')
   scene = '17DRP5sb8fy'
-  #scene = '2t7WUuJeko7'
+  scene = '*'
   region = 'region*'
   filenames = glob.glob(os.path.join(data_path,'%s_%s.tfrecord'%(scene, region)))
   assert len(filenames) > 0, data_path
@@ -275,7 +281,7 @@ def read_tfrecord(dataset_name, tf_path, loss_lw_gama=-1):
                                     buffer_size=1024*100,
                                     num_parallel_reads=1)
 
-  batch_size = 1
+  batch_size = 10
   is_training = False
 
   dataset = dataset.prefetch(buffer_size=batch_size)
@@ -289,13 +295,15 @@ def read_tfrecord(dataset_name, tf_path, loss_lw_gama=-1):
   dset_iterater = dataset.make_one_shot_iterator()
 
   #***************************************************************************
-  label_hist = np.zeros(num_classes)
+  label_hist = np.zeros(num_classes).astype(np.int64)
   batch_num = 0
-  for batch_k in range( min(len(filenames), 20) ):
-    print('\nreading %s'%(filenames[batch_k]))
+  total_batch_num = len(filenames) // batch_size
+  for batch_k in range(total_batch_num):
+    if batch_k %10 ==0:
+      print('\n %d/%d reading %s'%( batch_k, total_batch_num, filenames[batch_k]))
     base_fn = os.path.splitext( os.path.basename(filenames[batch_k]))[0]
     features, labels = dset_iterater.get_next()
-    batch_num += 1
+    batch_num += labels.shape[0]
     labels = labels.numpy()
     for key in features:
       features[key] = features[key].numpy()
@@ -308,15 +316,9 @@ def read_tfrecord(dataset_name, tf_path, loss_lw_gama=-1):
 
     xyz = get_ele(features, 'xyz', dset_shape_idx)
     color = get_ele(features, 'color', dset_shape_idx)
-    valid_num_face = features['valid_num_face']
     vidx_per_face = get_ele(features, 'vidx_per_face', dset_shape_idx)
-    edgev_per_vertex = get_ele(features, 'edgev_per_vertex', dset_shape_idx)
-    valid_ev_num_pv = get_ele(features, 'valid_ev_num_pv', dset_shape_idx)
 
-    min_vidx = np.min(edgev_per_vertex)
-    assert min_vidx >= 0
     check_nan(features, dset_shape_idx)
-    import pdb; pdb.set_trace()  # XXX BREAKPOINT
     #***************************************************************************
     if gen_ply:
       for bi in range(batch_size):
@@ -333,23 +335,24 @@ def read_tfrecord(dataset_name, tf_path, loss_lw_gama=-1):
 
 
   dataset_summary = {}
+  label_hist_normed = 1.0 * label_hist / np.sum(label_hist)
   dataset_summary['size'] = batch_num
   dataset_summary['label_hist'] = label_hist
+  dataset_summary['label_hist_normed'] = label_hist_normed
   write_dataset_summary(dataset_summary, tf_path)
   get_label_num_weights(dataset_summary, loss_lw_gama)
+  print(dataset_summary)
   return dataset_summary
 
 
 def check_nan(features, dset_shape_idx):
-  for key in ['xyz', 'color', 'vidx_per_face', 'edgev_per_vertex',\
-              'valid_ev_num_pv']:
-    data = get_ele(features, key, dset_shape_idx)
+  for data in features.values():
     any_nan = np.any(np.isnan(data))
     if any_nan:
       print('found nan')
       import pdb; pdb.set_trace()  # XXX BREAKPOINT
       pass
-  print('no nan found')
+  #print('no nan found')
 
 
 def write_dataset_summary(dataset_summary, data_dir):
