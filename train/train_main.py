@@ -45,8 +45,8 @@ _NUM_EXAMPLES_ALL = {}
 _NUM_EXAMPLES_ALL['MATTERPORT'] = {
         'train': int(2924 ), 'validation':-1}
 
-_NUM_TRAIN_FILES = 20 * 1
-_SHUFFLE_BUFFER = 1000 * 1
+_NUM_TRAIN_FILES = 1000
+_SHUFFLE_BUFFER = 10000
 
 DATASET_NAME = 'MATTERPORT'
 _NUM_EXAMPLES = _NUM_EXAMPLES_ALL[DATASET_NAME]
@@ -342,7 +342,7 @@ def parse_flags_update_configs(flags_obj):
   data_configs['feed_data'] = feed_data
   data_configs['normxyz'] = flags_obj.normxyz
   from datasets.tfrecord_util import get_label_num_weights
-  data_configs['label_nw'] = get_label_num_weights(flags_obj.data_dir, flags_obj.lwgama)
+  data_configs['label_nw'] = get_label_num_weights(flags_obj.data_dir, flags_obj.lw_delta)
 
   net_data_configs['data_configs'] = data_configs
 
@@ -418,7 +418,7 @@ def define_model_dir(flags_obj, net_data_configs):
   wd = '%.E'%(flags_obj.weight_decay)
   wd = -int(wd.split('E')[1])
   logname += '-wd' + str(wd)
-  logname += '-lw' + str(int(flags_obj.lwgama))
+  logname += '-lw' + str(int(flags_obj.lw_delta))
 
   model_dir = os.path.join(ROOT_DIR, 'results/seg', logname)
   flags_obj.model_dir = model_dir
@@ -447,7 +447,7 @@ def define_network_flags():
   net_run_loop.define_net_flags()
   flags.adopt_module_key_flags(net_run_loop)
   data_dir = os.path.join(DATA_DIR,'MATTERPORT_TF/tfrecord')
-  flags_core.set_defaults(train_epochs=150*2,
+  flags_core.set_defaults(train_epochs=30,
                           data_dir=data_dir,
                           batch_size=12,
                           num_gpus=1,
@@ -458,12 +458,12 @@ def define_network_flags():
   flags.DEFINE_bool('bn', default=True, help ="")
   flags.DEFINE_string('act', default='Relu', help ="Relu, Lrelu")
   flags.DEFINE_float('weight_decay', short_name='wd', default=1e-4, help="wd 1e-4")
-  flags.DEFINE_float('lwgama', default=2, help="loss weight gama. 0 means no weight. eg:0, 1, 5, 10")
+  flags.DEFINE_float('lw_delta', default=1.2, help="loss weight gama. 0 means no weight. eg:0, 1.1,1.2,1.6")
   flags.DEFINE_float('lr0', default=1e-3, help="base lr")
   flags.DEFINE_float('lrd_rate', default=0.7, help="learning rate decay rate")
   flags.DEFINE_float('bnd0', default=0.8, help="base bnd")
   flags.DEFINE_float('bnd_decay', default=0.3, help="")
-  flags.DEFINE_integer('lrd_epochs', default=20, help="learning_rate decay epoches")
+  flags.DEFINE_integer('lrd_epochs', default=10, help="learning_rate decay epoches")
   flags.DEFINE_string('feed_data','xyz-nxnynz','xyz-nxnynz-color')
   flags.DEFINE_string('normxyz','min0','raw, mean0, min0')
   flags.DEFINE_string('normedge','raw','raw, l0, all')

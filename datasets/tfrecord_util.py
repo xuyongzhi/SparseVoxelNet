@@ -166,30 +166,32 @@ def read_dataset_summary(summary_path):
   return dataset_summary
 
 
-def get_label_num_weights(tf_path, loss_lw_gama=1, IsPlot=False):
+def get_label_num_weights(tf_path, lw_delta=1.2, IsPlot=False):
   summary_path = os.path.join(tf_path, 'summary.pkl')
   assert os.path.exists(summary_path)
   dataset_summary = read_dataset_summary(summary_path)
-  if loss_lw_gama<=0:
+  if lw_delta<=1:
     return None
   label_hist = dataset_summary['label_hist']
-  mean = np.mean(label_hist)
-  weight = mean / (label_hist+1e-5)
+  lh = 1.0*label_hist / np.sum(label_hist)
+
   weights = {}
-  gamas = [loss_lw_gama, 1, 2, 5, 10, 20]
-  gamas = [loss_lw_gama]
-  for gama in gamas:
-    w0 = gama * weight
+  if IsPlot:
+    lw_deltas = [lw_delta, 1.05, 1.1, 1.5]
+  else:
+    lw_deltas = [lw_delta]
+  for lw_delta in lw_deltas:
+    w0 = 1/np.log(lw_delta + lh)
     w = np.minimum(w0, 50)
     w = np.maximum(w, 0.01)
-    weights[gama]  = w
+    weights[lw_delta]  = w
   if  IsPlot:
     import matplotlib.pyplot as plt
-    for gama in gamas:
-      plt.plot(label_hist, weights[gama], '.', label=str(gama))
+    for lw_delta in lw_deltas:
+      plt.plot(label_hist, weights[lw_delta], '.', label=str(lw_delta))
     plt.legend()
     plt.show()
-  label_num_weights = weights[loss_lw_gama].astype(np.float32)
+  label_num_weights = weights[lw_delta].astype(np.float32)
   return label_num_weights
 
 
@@ -257,7 +259,7 @@ def label_hist_from_tfrecord(dataset_name, tf_path):
   dataset_summary = read_dataset_summary(summary_path)
   if dataset_summary['intact']:
     print('dataset_summary intact, no need to read: \n{} \n{}'.format(summary_path, dataset_summary))
-    label_num_weights = get_label_num_weights(tf_path, loss_lw_gama=1, IsPlot=False)
+    label_num_weights = get_label_num_weights(tf_path, IsPlot=True)
     print(label_num_weights)
     return dataset_summary
 
@@ -340,7 +342,7 @@ def label_hist_from_tfrecord(dataset_name, tf_path):
   dataset_summary['label_hist'] = label_hist
   dataset_summary['label_hist_normed'] = label_hist_normed
   write_dataset_summary(dataset_summary, tf_path)
-  get_label_num_weights(dataset_summary, loss_lw_gama)
+  get_label_num_weights(dataset_summary, lw_delta)
   print(dataset_summary)
   return dataset_summary
 
