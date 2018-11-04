@@ -6,7 +6,7 @@ def block_configs(net_flag):
   #*****************************************************************************
   block_configs = {}
 
-  block_configs['dense_filters'] = [128]
+  block_configs['dense_filters'] = [256, 128]
 
   if net_flag == '4A':
     filters_e = [ [32,64], [64,128], [128+3,256], [512]]
