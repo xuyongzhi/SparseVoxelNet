@@ -342,7 +342,7 @@ def parse_flags_update_configs(flags_obj):
   data_configs['feed_data'] = feed_data
   data_configs['normxyz'] = flags_obj.normxyz
   from datasets.tfrecord_util import get_label_num_weights
-  data_configs['label_nw'] = get_label_num_weights(flags_obj.data_dir, flags_obj.lw_delta)
+  data_configs['label_nw'] = get_label_num_weights(flags_obj.data_dir, flags_obj.lw)
 
   net_data_configs['data_configs'] = data_configs
 
@@ -418,7 +418,7 @@ def define_model_dir(flags_obj, net_data_configs):
   wd = '%.E'%(flags_obj.weight_decay)
   wd = -int(wd.split('E')[1])
   logname += '-wd' + str(wd)
-  logname += '-lw' + str(int(flags_obj.lw_delta))
+  logname += '-lw' + str(int(flags_obj.lw))
 
   model_dir = os.path.join(ROOT_DIR, 'results/seg', logname)
   flags_obj.model_dir = model_dir
@@ -458,7 +458,7 @@ def define_network_flags():
   flags.DEFINE_bool('bn', default=True, help ="")
   flags.DEFINE_string('act', default='Relu', help ="Relu, Lrelu")
   flags.DEFINE_float('weight_decay', short_name='wd', default=1e-4, help="wd 1e-4")
-  flags.DEFINE_float('lw_delta', default=1.2, help="loss weight gama. 0 means no weight. eg:0, 1.1,1.2,1.6")
+  flags.DEFINE_float('lw', default=1.2, help="loss weight delta. 0 means no weight. eg:0, 1.1,1.2,1.6")
   flags.DEFINE_float('lr0', default=1e-3, help="base lr")
   flags.DEFINE_float('lrd_rate', default=0.7, help="learning rate decay rate")
   flags.DEFINE_float('bnd0', default=0.8, help="base bnd")
