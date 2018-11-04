@@ -219,6 +219,11 @@ def learning_rate_with_decay(
   net_configs['bnd_vals'] = bnd_vals
   return learning_rate_fn, bn_decay_fn
 
+def get_cm_metric():
+  from tensorflow.python.ops import state_ops
+  total_cm = tf.get_default_graph().get_tensor_by_name('mean_iou/total_confusion_matrix:0')
+  cm_metric = (total_cm, tf.identity(total_cm))
+  return cm_metric
 
 def net_model_fn( features, labels, mode, model_class,
                   net_data_configs,
@@ -392,21 +397,15 @@ def net_model_fn( features, labels, mode, model_class,
                      'mean_iou/total_confusion_matrix',
                      tf.summary.FileWriterCache.get(MODEL_DR + "/eval"))
 
-  #iou = tf.get_default_graph().get_tensor_by_name('mean_iou/div:0')
   mean_iou = (mean_iou[0], tf.identity(mean_iou[1]))
+  cm_metric = get_cm_metric()
 
   # Create a tensor named train_accuracy for logging purposes
   tf.identity(accuracy[1], name='train_accuracy')
   tf.summary.scalar('accuracy', accuracy[1])
   tf.summary.scalar('mean_iou', mean_iou[0])
 
-  #train_mean_iou, iou_perclass = compute_mean_iou(mean_iou[1], num_classes)
-  #tf.identity(train_mean_iou, name='train_mean_iou')
-  #mean_iou = (iou_perclass, tf.identity(mean_iou[1]))
-  #mean_iou_, classes_iou = compute_iou_tf(predictions['classes'], labels, num_classes)
-  #cm = tf.confusion_matrix(tf.reshape(labels,[-1]), tf.reshape(predictions['classes'],[-1]), num_classes)
-
-  metrics = {'accuracy': accuracy, 'mean_iou':mean_iou}
+  metrics = {'accuracy': accuracy, 'mean_iou':mean_iou, 'cm':cm_metric}
 
   return tf.estimator.EstimatorSpec(
           mode=mode,
@@ -670,9 +669,12 @@ def net_main(
         cur_is_best = 'best'
       global_step = cur_global_step(flags_obj.model_dir)
       epoch = int( global_step / flags_obj.examples_per_epoch * flags_obj.num_gpus)
-      metric_logf.write('{} train t:{:.1f}  eval t:{:.1f} \teval acc:{:.3f} \tmean_iou:{:.3f} {}\n'.format(epoch,
-                        train_t, eval_t, eval_results['accuracy'], eval_results['mean_iou'], cur_is_best))
+      ious_str = get_ious_str( eval_results['cm'], net_data_configs['dset_metas'], eval_results['mean_iou'])
+      metric_logf.write('{} train t:{:.1f}  eval t:{:.1f} \teval acc:{:.3f} \tmean_iou:{:.3f} {} {}\n'.format(epoch,
+                        train_t, eval_t, eval_results['accuracy'], eval_results['mean_iou'], cur_is_best, ious_str))
       metric_logf.flush()
+      import pdb; pdb.set_trace()  # XXX BREAKPOINT
+      pass
 
   if flags_obj.export_dir is not None:
     # Exports a saved model for the given classifier.
@@ -741,29 +743,36 @@ def define_net_flags():
                                 'the latest checkpoint.'))
 
 
+def get_ious_str(total_cm, dset_metas, mean_iou0):
+  mean_iou, ious, label_hist, pred_hist = compute_iou_cm_np(total_cm)
+  assert abs(mean_iou - mean_iou0) < 0.01
+  classes_names = [dset_metas.label2class[i] for i in range(dset_metas.num_classes)]
+  cs_str = '\n%8s'%('classes:')+ ' '.join([cs[0:3] for cs in classes_names])
+  def f2intstr(fls, name):
+    return '\n%8s'%(name+': ')  + ' '.join(['%3d'%(int(i*1000)) for i in fls])
+  ious_str = f2intstr(ious, 'ious')
+  label_hist = f2intstr(label_hist, 'lhist')
+  pred_hist = f2intstr(pred_hist, 'phist')
+  classes_str = cs_str + ious_str + label_hist + pred_hist
+  print(classes_str)
+  return classes_str
 
-def compute_iou_tf(pred, label, num_classes):
-  assert TfUtil.tsize(pred) == TfUtil.tsize(label)
+def compute_iou_cm_np(total_cm):
+  sum_over_row = np.sum(total_cm,0) # label
+  sum_over_col = np.sum(total_cm,1) # prediction
+  cm_diag = np.diag(total_cm)
+  denominator = sum_over_row + sum_over_col - cm_diag
 
-  I = []
-  U = []
-  for c in range(num_classes):
-    pred_c = tf.equal(pred, c)
-    label_c = tf.equal(label, c)
-    tmp = tf.cast(tf.logical_and(label_c, pred_c),tf.float32)
-    I.append(tf.reduce_sum(tmp))
-    tmp = tf.cast(tf.logical_or(label_c, pred_c),tf.float32)
-    U.append(tf.reduce_sum(tmp))
+  num_valid_entries = np.sum(denominator!=0)
+  assert num_valid_entries > 0
+  denominator += (denominator==0).astype(np.float64)
+  ious = cm_diag / denominator
+  mean_iou = np.sum(ious) / num_valid_entries
 
-  I = tf.stack(I, 0)
-  U = tf.stack(U, 0)
-
-  iou_classes = I / (U+1e-5)
-  import pdb; pdb.set_trace()  # XXX BREAKPOINT
-
-  non_zero_num = tf.reduce_sum(tf.cast(tf.greater(iou_classes,0), tf.float32))
-  mean_iou = tf.reduce_sum(iou_classes) / non_zero_num
-  return mean_iou, iou_classes
+  # histgram
+  label_hist = sum_over_row / np.sum(sum_over_row)
+  pred_hist = sum_over_col / np.sum(sum_over_col)
+  return mean_iou, ious, label_hist, pred_hist
 
 
 def compute_iou_np(pred, label, num_classes, weighted=False):

@@ -92,7 +92,7 @@ def get_filenames(is_training, data_dir):
     pre = 'train_'
   else:
     pre = 'test_'
-    pre = 'train_'
+    #pre = 'train_'
   fnls = glob.glob(os.path.join(data_dir, pre+'*.tfrecord'))
   if TMPDEBUG:
     fnls.sort()
