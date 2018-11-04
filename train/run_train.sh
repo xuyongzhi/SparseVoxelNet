@@ -12,6 +12,7 @@ wd='0'
 drop_imo='005'
 
 ipython  ./train_main.py -- --net_flag $net_flag --num_gpus $ng --batch_size $bs   $rs  --sg $sg --normxyz $normxyz --lw $lw --wd $wd --drop_imo $drop_imo
+ipython  ./train_main.py -- --net_flag $net_flag --num_gpus $ng --batch_size $bs   $rs  --sg $sg --normxyz $normxyz --lw '1.1' --wd $wd --drop_imo $drop_imo
 
 #ipython  ./train_main.py -- --net_flag $net_flag --num_gpus $ng --batch_size $bs   $rs  --sg $sg --normxyz $normxyz --lw '1.2' --wd $wd --drop_imo $drop_imo
 #

@@ -46,7 +46,7 @@ _NUM_EXAMPLES_ALL['MATTERPORT'] = {
         'train': int(2924 ), 'validation':-1}
 
 _NUM_TRAIN_FILES = 1000
-_SHUFFLE_BUFFER = 10000
+_SHUFFLE_BUFFER = 20000
 
 DATASET_NAME = 'MATTERPORT'
 _NUM_EXAMPLES = _NUM_EXAMPLES_ALL[DATASET_NAME]
@@ -418,7 +418,8 @@ def define_model_dir(flags_obj, net_data_configs):
   wd = '%.E'%(flags_obj.weight_decay)
   wd = -int(wd.split('E')[1])
   logname += '-wd' + str(wd)
-  logname += '-lw' + str(int(flags_obj.lw))
+  if flags_obj.lw >1:
+    logname += '-lw' + str(int((flags_obj.lw-1)*100))
 
   model_dir = os.path.join(ROOT_DIR, 'results/seg', logname)
   flags_obj.model_dir = model_dir
